@@ -19,5 +19,6 @@ Then point your browser twice to port 8080:
 
 
 Play around with the client.
+
 Also have a look at [the Wamp specification](http://wamp.ws/spec) for further
 informations on the possibilities.
