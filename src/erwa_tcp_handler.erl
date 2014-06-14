@@ -85,7 +85,7 @@ handle_info({OK,Socket,Data},  #state{ok=OK,socket=Socket,transport=Transport,bu
   {ok,NewProtState} = handle_messages(Messages,Socket,Transport,ProtState),
   {noreply, State#state{prot_state=NewProtState,buffer=NewBuffer}};
 handle_info({Closed,Socket}, #state{closed=Closed,socket=Socket}=State) ->
-  rooms_prot_lib:remove_connection(),
+  %erwa_protocol:close(connection_closed,ProtState),
 	{stop, normal, State};
 handle_info({Error,Socket,Reason}, #state{error=Error,socket=Socket}=State) ->
 	{stop, {error, Reason} , State};
@@ -98,7 +98,8 @@ handle_info(_Info, State) ->
 	{noreply, State}.
 
 
-terminate(_Reason, _State) ->
+terminate(Reason, #state{prot_state=ProtState}) ->
+  erwa_protocol:close(Reason,ProtState),
 	ok.
 
 code_change(_OldVsn, State, _Extra) ->

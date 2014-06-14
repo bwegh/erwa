@@ -69,7 +69,8 @@ websocket_info({erwa,Msg}, Req, #state{enc=Enc}=State) ->
 websocket_info(_Data, Req, State) ->
   {ok,Req,State}.
 
-websocket_terminate(_Reason, _Req, _State) ->
+websocket_terminate(Reason, _Req, #state{prot=Prot}) ->
+  erwa_protocol:close(Reason,Prot),
   ok.
 
 
