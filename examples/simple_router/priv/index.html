@@ -1,0 +1,202 @@
+<html>
+    <head>
+        <meta http-equiv="Content-Type" content="text/html; charset=ISO-8859-1">
+        <title>Websocket client</title>
+        <script src="/static/jquery.min.js"></script>
+        <script src="/static/msgpack.min.js"></script>
+        <script src="/static/wampy-all.min.js"></script>
+        <script type="text/javascript">
+
+            //var websocket;
+            var wamp;
+            $(document).ready(init);
+
+            function init() {
+                if(!("WebSocket" in window)){
+                    $('#status').append('<p><span style="color: red;">websockets are not supported </span></p>');
+                    $("#navigation").hide();
+                } else {
+                    $('#status').append('<p><span style="color: green;">websockets are supported </span></p>');
+                    // connect();
+                };
+                $("#connected").hide();
+                $("#content").hide();
+            };
+
+            function connect()
+            {
+                var Encoding = $('#enc_type').val();
+                wsHost = 'ws://localhost:8080/wamp';
+                wamp = new Wampy(wsHost, {onConnect: function() { onConnect(); },
+                                          onClose: function() { onDisconnect(); },
+                                          onError: function() { onError(); },
+                                          realm: 'test',
+                                          transportEncoding: Encoding});
+                console.log('Connecting to: ' +  wsHost + ' using encoding '+Encoding);
+                $('#status').append('<p><span style="color: orange;">Connecting to: ' +  wsHost + ' using encoding '+Encoding+'</span></p>');
+            };
+
+            function disconnect() {
+                wamp.disconnect();
+                onDisconnect();
+            };
+
+
+            function wamp_subscribe() {
+                var SubUri = $('#sub_uri').val();
+                console.log('subscribing to '+SubUri);
+                wamp.subscribe(SubUri,{
+                    onSuccess: function() {showScreen('subscribed to '+SubUri);},
+                    onError: function(Err) {showScreen('error '+Err+' when subscribing to '+SubUri);},
+                    onEvent: function(Data) {showScreen('Event: '+Data);}
+                });
+            }
+
+            function wamp_publish() {
+                var PubUri = $('#pub_uri').val();
+                var PubData = $('#pub_data').val();
+                console.log('publishing '+PubData+' on '+PubUri);
+                wamp.publish(PubUri,PubData,{
+                    onSuccess: function() {showScreen('Published '+PubData+' on '+PubUri);},
+                    onError: function(Err) {showScreen('Error '+Err+' at publish of '+PubData+' on '+PubUri);},
+                });
+            };
+
+            var square = function(X) {return X*X;};
+            var add3 = function(X) {return X+3;};
+            var sub2 = function(X) {return X-2;};
+            var hello = function(X) {return "Hello "+X;};
+
+            function get_reg_fun(Name) {
+                if(Name == "square") {
+                    return square;
+                } else if(Name == "add3") {
+                    return add3;
+                } else if(Name == "sub2") {
+                    return sub2;
+                } else if(Name == "hello") {
+                    return hello;
+                }
+            }
+
+            function wamp_register() {
+
+                var RegFunName = $('#reg_fun').val();
+                var RegUri = $('#reg_uri').val();
+                wamp.register(RegUri, {
+                    rpc: get_reg_fun(RegFunName),
+                    onSuccess: function (Data) {
+                        showScreen('RPC '+RegUri+' successfully registered ('+Data+')');
+                    },
+                    onError: function (Err) {
+                        showScreen('RPC registration of '+RegUri+' failed! ('+Err+')');
+                    }
+                });
+            };
+
+
+            function wamp_call() {
+                var CallUri = $('#call_uri').val();
+                var CallData = $('#call_data').val();
+                wamp.call(CallUri, [CallData] , {
+                    onSuccess: function (Result) {showScreen('Result of '+CallUri+' ['+CallData+'] is '+Result);},
+                    onError: function (Err) { showScreen('Error with call '+CallUri+' ['+CallData+']'); }
+                });
+            };
+
+
+            function onConnect() {
+                $('#status').html("");
+                $('#status').append('<p><span style="color: green;">CONNECTED</span></p>');
+                $("#disconnected").hide();
+                $("#connected").fadeIn('slow');
+                $("#content").fadeIn('slow');
+            };
+
+            function onDisconnect() {
+                $('#status').html("");
+                $('#status').append('<p><span style="color: red;">DISCONNECTED</span></p>');
+                $("#connected").hide();
+                $("#content").html("");
+                $("#disconnected").fadeIn('slow');
+                showScreen('<span style="color: red;">DISCONNECTED </span>');
+            };
+
+            function onError() {
+                console.log("connection error ")
+                showScreen('<span style="color: red;">CONNECTION ERROR </span>');
+                disconnect();
+            };
+
+            function showScreen(txt) {
+                $('#output').prepend('<p>' + txt + '</p>');
+            };
+
+            function clearScreen()
+            {
+                $('#output').html("");
+            };
+        </script>
+    </head>
+
+    <body>
+        <div id="header">
+            <h1>WAMP Test Client</h1>
+            <div id="status"></div>
+        </div>
+
+
+        <div id="navigation">
+            <div id="connected">
+                <p>
+                    URI:
+                    <input id="pub_uri" type="text"></input>
+            data:
+            <input id="pub_data" type="text"></input>
+        <button type="button" onclick="wamp_publish();">publish</button>
+    </p>
+    <p>
+        URI:
+        <input id="sub_uri" type="text"></input>
+<button type="button" onclick="wamp_subscribe();">subscribe</button>
+</p>
+<p>
+    URI:
+    <input id="call_uri" type="text"></input>
+data:
+<input id="call_data" type="text"></input>
+<button type="button" onclick="wamp_call();">call</button>
+</p>
+<p>
+    URI:
+    <input id="reg_uri" type="text"></input>
+function:
+<select id="reg_fun">
+    <option>square</option>
+    <option>add3</option>
+    <option>sub2</option>
+    <option>hello</option>
+</select>
+<button type="button" onclick="wamp_register();">register</button>
+</p>
+<p>
+        <button id="clear" onclick="disconnect()" >Disconnect</button>
+        <button id="clear" onclick="clearScreen()" >Clear text</button>
+    </p>
+</div>
+
+<div id="content">
+
+    <div id="output"></div>
+</div>
+
+</div>
+<div id="disconnected">
+    <select id="enc_type">
+        <option>msgpack</option>
+        <option>json</option>
+    </select>
+    <button type="button" onclick="connect();">connect</button>
+</div>
+</body>
+</html>

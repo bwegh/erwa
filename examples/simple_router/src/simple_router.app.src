@@ -1,0 +1,20 @@
+
+{application, simple_router, [
+	{id, "simple_router"},
+	{description, "a simple wamp router"},
+	{vsn, "0.0.1"},
+	{modules, []},
+	{registered, []},
+	{applications, [
+		kernel,
+		stdlib,
+		crypto,
+    ranch,
+    cowboy,
+    erwa
+
+     ,debugger,  tv, runtime_tools
+	]},
+	{mod, {simple_router_app, []}},
+	{env, []}
+]}.
