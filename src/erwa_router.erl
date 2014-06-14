@@ -127,6 +127,7 @@ start_link(Args) ->
 -record(session, {
   id = undefined,
   pid = undefined,
+  ref = undefined,
   details = undefined,
   requestId = 1,
   goodbye_sent = false,
@@ -286,6 +287,10 @@ handle_call({yield,RequestId,Options,Arguments,ArgumentsKw},{Pid,_Ref},State) ->
       end,
   {reply,Reply,State};
 
+handle_call({remove_session,_Reason},{Pid,_Ref},State) ->
+  Session = get_session_from_pid(Pid,State),
+  remove_given_session(Session,State),
+  {reply,shutdown,State};
 handle_call(_Msg,_From,State) ->
    {reply,shutdown,State}.
 
@@ -313,7 +318,7 @@ code_change(_OldVsn, State, _Extra) ->
 create_session(Pid,Details,#state{sess=Sessions}=State) ->
   Id = gen_id(),
   Ref = monitor(process,Pid),
-  case ets:insert_new(Sessions,[#session{id=Id,pid=Pid,details=Details},
+  case ets:insert_new(Sessions,[#session{id=Id,pid=Pid,details=Details,ref=Ref},
                                 #ref_session{ref=Ref,session_id=Id},
                                 #pid_session{pid=Pid,session_id=Id}]) of
     true ->
@@ -450,12 +455,22 @@ dequeue_procedure_call(Pid,Id,_Options,Arguments,ArgumentsKw,#state{i=I,sess=Ses
       end
   end.
 
+
+
 -spec remove_session_with_ref(Ref :: reference(), State :: #state{}) -> ok.
 remove_session_with_ref(Ref,#state{sess=Sessions}=State) ->
   [RefSession] = ets:lookup(Sessions,Ref),
   Id = RefSession#ref_session.session_id,
   [Session] = ets:lookup(Sessions,Id),
+  remove_given_session(Session,State).
 
+
+-spec remove_given_session(Session :: #session{}|undefined, State :: #state{}) -> ok.
+remove_given_session(undefined,_) ->
+  ok;
+remove_given_session(Session,#state{sess=Sessions}=State) ->
+  Id = Session#session.id,
+  Ref = Session#session.ref,
   RemoveTopic = fun(TopicId,Results) ->
         Result = remove_session_from_topic(Session,TopicId,State),
         [{TopicId,Result}|Results]
@@ -472,7 +487,6 @@ remove_session_with_ref(Ref,#state{sess=Sessions}=State) ->
   ets:delete(Sessions,Ref),
   ets:delete(Sessions,Session#session.pid),
   ok.
-
 
 
 -spec remove_session_from_topic(Session :: #session{}, TopicId :: non_neg_integer(), State :: #state{}) -> ok | not_found.
@@ -555,9 +569,14 @@ send_message_to_peers(Msg,Peers) ->
 
 -spec get_session_from_pid(Pid :: pid(), State :: #state{}) -> #session{}.
 get_session_from_pid(Pid,#state{sess=Sessions}) ->
-  [PidSession] = ets:lookup(Sessions,Pid),
-  [Session] = ets:lookup(Sessions,PidSession#pid_session.session_id),
-  Session.
+  case ets:lookup(Sessions,Pid) of
+    [PidSession] ->
+        case ets:lookup(Sessions,PidSession#pid_session.session_id) of
+          [Session] -> Session;
+          _ -> undefined
+        end;
+      _ -> undefined
+  end.
 
 
 -spec gen_id() -> non_neg_integer().
