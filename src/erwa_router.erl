@@ -368,10 +368,13 @@ create_topic(Url,Options,#state{t=Topics,ut=UrlTopic}=State) ->
 -spec unsubscribe_from_topic(Pid :: pid(), SubscriptionId :: non_neg_integer(), State :: #state{}) -> {ok} | {error,no_such_subscription,list()}.
 unsubscribe_from_topic(Pid,SubscriptionId,State) ->
   Session = get_session_from_pid(Pid,State),
+  case lists:member(SubscriptionId,Session#session.subscriptions) of
+    false ->
+      {error,[{}],no_such_subscription};
 
-  case remove_session_from_topic(Session,SubscriptionId,State) of
-    ok -> {ok};
-    _ -> {error,[{}],no_such_subscription}
+    true ->
+      ok = remove_session_from_topic(Session,SubscriptionId,State),
+      {ok}
   end.
 
 
@@ -410,9 +413,12 @@ register_procedure(Pid,Options,ProcedureUrl,#state{up=UP}=State) ->
 -spec unregister_procedure( Pid :: pid(), ProcedureId :: non_neg_integer(), State :: #state{}) -> {ok} | {error,Details :: list(), Reason :: atom()}.
 unregister_procedure(Pid,ProcedureId,State) ->
   Session = get_session_from_pid(Pid,State),
-  case remove_session_from_procedure(Session,ProcedureId,State) of
-    ok -> {ok};
-    not_found -> {error,[{}],no_such_registration}
+  case lists:member(ProcedureId,Session#session.registrations) of
+    true ->
+      ok = remove_session_from_procedure(Session,ProcedureId,State),
+      {ok};
+    false ->
+      {error,[{}],no_such_registration}
   end.
 
 
@@ -497,16 +503,9 @@ remove_given_session(Session,#state{sess=Sessions}=State) ->
 remove_session_from_topic(Session,TopicId,#state{t=T,sess=Sessions}) ->
   SessionId = Session#session.id,
   [Topic] = ets:lookup(T,TopicId),
-
-  case lists:member(TopicId,Session#session.subscriptions) of
-    false ->
-      not_found;
-
-    true ->
-      ets:update_element(T,TopicId,{#topic.subscribers,lists:delete(SessionId,Topic#topic.subscribers)}),
-      ets:update_element(Sessions,SessionId,{#session.subscriptions,lists:delete(TopicId,Session#session.subscriptions)}),
-      ok
-  end.
+  ets:update_element(T,TopicId,{#topic.subscribers,lists:delete(SessionId,Topic#topic.subscribers)}),
+  ets:update_element(Sessions,SessionId,{#session.subscriptions,lists:delete(TopicId,Session#session.subscriptions)}),
+  ok.
 
 
 -spec create_procedure(Url :: binary(), Options :: list(), Session :: #session{}, State :: #state{} ) -> {ok,non_neg_integer()}.
@@ -524,18 +523,14 @@ create_procedure(Url,Options,Session,#state{p=P,up=UP,sess=Sessions}=State) ->
   end.
 
 -spec remove_session_from_procedure( Session :: #session{}, ProcedureId :: non_neg_integer(), State :: #state{}) -> ok | not_found.
-remove_session_from_procedure(Session,ProcedureId,#state{p=P,sess=Sessions}) ->
+remove_session_from_procedure(Session,ProcedureId,#state{p=P,up=UP,sess=Sessions}) ->
   SessionId = Session#session.id,
+  [Procedure] = ets:lookup(P,ProcedureId),
+  ets:delete(P,ProcedureId),
+  ets:delete(UP,Procedure#procedure.url),
+  ets:update_element(Sessions,SessionId,{#session.registrations,lists:delete(ProcedureId,Session#session.registrations)}),
+  ok.
 
-  case lists:member(ProcedureId,Session#session.registrations) of
-    false ->
-      not_found;
-
-    true ->
-      ets:delete(P,ProcedureId),
-      ets:update_element(Sessions,SessionId,{#session.registrations,lists:delete(ProcedureId,Session#session.registrations)}),
-      ok
-  end.
 
 -spec create_invocation(Session :: #session{}, CalleeSession :: #session{}, RequestId :: non_neg_integer(), Procedure :: #procedure{}, Options :: list(), Arguments :: list(), ArgumentsKw :: list(), State :: #state{}) -> {ok, non_neg_integer()}.
 create_invocation(Session,CalleeSession,RequestId,Procedure,Options,Arguments,ArgumentsKw,#state{i=I}=State) ->
