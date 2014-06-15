@@ -215,7 +215,7 @@ handle_info({erwa,{event,SubscriptionId,PublishId,Details,Arguments,ArgumentsKw}
     [[Method]] ->
       {ok,NewClientState} = Module:Method(PublishId,Details,Arguments,ArgumentsKw,ClientState,State),
       {noreply,State#state{cs=NewClientState}};
-    false ->
+    [] ->
       {noreply,State}
   end;
 handle_info({erwa,{result,RequestId,Details,Result,ResultKw}}, #state{module=Module,cs=ClientState}=State) ->

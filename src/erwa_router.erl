@@ -567,7 +567,7 @@ send_message_to_peers(Msg,Peers) ->
   ok.
 
 
--spec get_session_from_pid(Pid :: pid(), State :: #state{}) -> #session{}.
+-spec get_session_from_pid(Pid :: pid(), State :: #state{}) -> #session{}|undefined.
 get_session_from_pid(Pid,#state{sess=Sessions}) ->
   case ets:lookup(Sessions,Pid) of
     [PidSession] ->
