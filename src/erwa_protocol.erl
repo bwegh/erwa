@@ -62,13 +62,9 @@ handle_message({hello,Realm,Details},#state{router=undefined}=State) ->
         {shutdown,undefined}
     end,
    {ok,Reply,State#state{realm=Realm, router=Router}};
-handle_message({goodbye,_,goodbye_and_out},State) ->
-  {ok,shutdown,State};
-handle_message({goodbye,_,_},State) ->
-  %TODO: remove the connection or maybe on closing when listening ... or so ...
-  {ok,{goodbye,[{}]},goodbye_and_out,State};
-
-
+handle_message({goodbye,Details,Reason},#state{router=Router}=State) ->
+  Reply = erwa_router:goodbye(Router,Details,Reason),
+  {ok,Reply,State};
 
 % **************** Subscription and Events **************************
 handle_message({subscribe,RequestId,Options,Topic},#state{router=Router}=State) ->

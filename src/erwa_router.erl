@@ -225,7 +225,7 @@ handle_call({goodbye,_Details,_Reason},{Pid,_Ref},#state{sess=Sess}=State) ->
       _ ->
         ets:update_element(Sess,SessionId,{#session.goodbye_sent,true}),
         %TODO: send a message after a timeout to close the session
-        %send_message_to_peers({erwar,shutdown},[SessionId]),
+        %send_message_to_peers({shutdown},[SessionId]),
         {goodbye,[{}],goodbye_and_out}
     end,
   {reply,Reply,State};
