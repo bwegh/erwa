@@ -404,7 +404,7 @@ register_procedure(Pid,Options,ProcedureUrl,#state{up=UP}=State) ->
       create_procedure(ProcedureUrl,Options,Session,State);
     _ ->
       {error,[{}],procedure_already_exists}
-  end  .
+  end.
 
 
 -spec unregister_procedure( Pid :: pid(), ProcedureId :: non_neg_integer(), State :: #state{}) -> {ok} | {error,Details :: list(), Reason :: atom()}.
@@ -626,7 +626,28 @@ unregister_test() ->
   {error,unregister,RequestId,_Details,no_such_registration} = unregister(Pid,RequestId,RegistrationId).
 
 
-%call_test() ->
+disconnect_test() ->
+  {ok,Router} = start(<<"some.realm">>),
+  TesterPid = self(),
+  F = fun() ->
+        {welcome,_,_} = hello(Router,<<"blah">>),
+        RequestId = crypto:rand_uniform(0,9007199254740993),
+        {registered,RequestId,RegistrationId} = register(Router,RequestId,[],<<"nice_fun">>),
+        TesterPid ! registered,
+        receive
+          go_on ->
+            ok
+        end
+  end,
+  ClientPid = spawn(F),
+  receive
+    registered ->
+      ok
+  end,
+
+  ClientPid ! go_on,
+  ok.
+
 
 
 -endif.

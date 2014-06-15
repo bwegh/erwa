@@ -112,7 +112,7 @@ get_messages_from_buffer(Data) ->
 
 get_messages_from_buffer(<<"">>,Messages) ->
   {<<"">>,lists:reverse(Messages)};
-get_messages_from_buffer(<<Len:32,Data/binary>>=Buffer,Messages)  ->
+get_messages_from_buffer(<<Len:32/unsigned-integer-big,Data/binary>>=Buffer,Messages)  ->
   case byte_size(Data) >= Len of
     true ->
       <<Enc:Len/binary,NewBuffer/binary>> = Data,
@@ -156,11 +156,11 @@ encode(Message) ->
 encode(Message,json) ->
   Enc = jsx:encode(Message),
   Len = byte_size(Enc),
-  <<Len:32,Enc/binary>>;
+  <<Len:32/unsigned-integer-big,Enc/binary>>;
 encode(Message,msgpack) ->
   Enc = msgpack:pack(Message,[jsx]),
   Len = byte_size(Enc),
-  <<Len:32,Enc/binary>>.
+  <<Len:32/unsigned-integer-big,Enc/binary>>.
 
 
 
