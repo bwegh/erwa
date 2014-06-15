@@ -279,6 +279,8 @@ to_wamp({goodbye,Details,system_shutdown}) ->
   [?GOODBYE,Details,?ERROR_SHUTDOWN];
 to_wamp({goodbye,Details,invalid_argument}) ->
   [?GOODBYE,Details,?ERROR_INVALID_ARGUMENT];
+to_wamp({goodbye,Details,goodbye_and_out}) ->
+  [?GOODBYE,Details,?ERROR_AND_OUT];
 
 to_wamp({error,unsubscribe,RequestId,Details,no_such_subscription}) ->
   [?ERROR,?SUBSCRIBE,RequestId,Details,?ERROR_NO_SUCH_SUBSCRIPTION];
