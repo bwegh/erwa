@@ -37,6 +37,7 @@
 
 -callback init(any()) -> {ok,state()}.
 -callback on_connect(state(),connection()) -> {ok,state()}.
+%-callback on_error(non_neg_integer(),non_neg_integer(),state(),connection()) -> {ok,state()}.
 -callback on_result(non_neg_integer(),list(),list(),list(),state(),connection()) -> {ok,state()}.
 
 %% @doc Test whether a module exists and exports all needed functions

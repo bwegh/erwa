@@ -27,6 +27,7 @@
 -export([get_router_for_realm/1]).
 
 -export([connect/3]).
+-export([connect/5]).
 
 
 -spec start_realm(Name :: binary() ) -> ok.
@@ -49,6 +50,8 @@ get_router_for_realm(Realm) ->
 connect(Realm,Module,Args) ->
   supervisor:start_child(erwa_con_sup,[[{realm,Realm},{module,Module},{args,Args}]]).
 
+connect(Realm,Module,Host,Port,Args) ->
+  supervisor:start_child(erwa_con_sup,[[{realm,Realm},{module,Module},{host,Host},{port,Port},{args,Args}]]).
 
 
 -ifdef(TEST).

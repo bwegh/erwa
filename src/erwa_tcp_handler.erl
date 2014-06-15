@@ -143,7 +143,7 @@ handle_message(Message,Socket,Transport,ProtState)  ->
 
 
 decode(Message) ->
-  decode(Message,json).
+  decode(Message,msgpack).
 decode(Message,json) ->
   jsx:decode(Message);
 decode(Message,msgpack) ->
@@ -152,7 +152,7 @@ decode(Message,msgpack) ->
 
 
 encode(Message) ->
-  encode(Message,json).
+  encode(Message,msgpack).
 encode(Message,json) ->
   Enc = jsx:encode(Message),
   Len = byte_size(Enc),

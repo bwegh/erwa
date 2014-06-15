@@ -46,7 +46,7 @@
 
 
 -define(DEFAULT_PORT,5555).
-
+-define(CLIENT_ROLES,[{<<"publisher">>,[{}]},{<<"subscriber">>,[{}]},{<<"caller">>,[{}]},{<<"callee">>,[{}]}]).
 
 
 -record(state,{
@@ -54,6 +54,7 @@
     module = undefined,
     router=undefined,
     socket=undefined,
+    buffer = <<"">>,
     host = undefined,
     port = undefined,
     cs = undefined,
@@ -61,9 +62,9 @@
     ets = undefined
   }).
 
--record(subscription,{
-  id = undefined,
-  method = undefined}).
+%-record(subscription,{
+%  id = undefined,
+%  method = undefined}).
 
 -record(registration,{
   id = undefined,
@@ -73,17 +74,21 @@
   id = undefined,
   mfa = undefined}).
 
-subscribe(#state{module=Module,ets=Ets}=State,Options,Topic,Method) ->
+subscribe(#state{module=Module}=State,Options,Topic,Method) ->
   true = erwa_client:is_valid_event(Module,Method),
-  {ok,SubscriptionId} = subscribe(destination(State),Options,Topic,Method,State),
-  true = ets:insert_new(Ets,#subscription{id=SubscriptionId,method=Method}),
-  {ok,SubscriptionId}.
+  {ok,RequestId} = subscribe(destination(State),Options,Topic,Method,State),
+  %true = ets:insert_new(Ets,#subscription{id=SubscriptionId,method=Method}),
+  {ok,RequestId}.
 
 subscribe(local,Options,Topic,_Method,#state{router=Router})->
   RequestId = gen_id(),
-  {subscribed,RequestId,SubscriptionId} = erwa_router:subscribe(Router,RequestId,Options,Topic),
-  {ok,SubscriptionId}.
-
+  Msg = erwa_router:subscribe(Router,RequestId,Options,Topic),
+  self() ! {erwa,Msg},
+  {ok,RequestId};
+subscribe(remote,Options,Topic,_Method,#state{socket=Socket})->
+  RequestId = gen_id(),
+  gen_tcp:send(Socket,encode(erwa_protocol:to_wamp({subscribe,RequestId,Options,Topic}))),
+  {ok,RequestId}.
 
 unsubscribe(State,SubscriptionId) ->
   ok = unsubscribe(destination(State),SubscriptionId,State),
@@ -108,6 +113,10 @@ publish(State,Options,Topic,Arguments,ArgumentsKw) ->
 publish(local,Options,Topic,Arguments,ArgumentsKw,#state{router=Router}) ->
   RequestId = gen_id(),
   erwa_router:publish(Router,RequestId,Options,Topic,Arguments,ArgumentsKw),
+  {ok,noreply};
+publish(remote,Options,Topic,Arguments,ArgumentsKw,#state{socket=Socket}) ->
+  RequestId = gen_id(),
+  gen_tcp:send(Socket,encode(erwa_protocol:to_wamp({publish,RequestId,Options,Topic,Arguments,ArgumentsKw}))),
   {ok,noreply}.
 
 register(#state{module=Module,ets=Ets}=State,Options,Procedure,Method) ->
@@ -170,7 +179,7 @@ init(Args) ->
   {module, Module} = lists:keyfind(module,1,Args),
   {args, Arguments} = lists:keyfind(args,1,Args),
   true = erwa_client:is_valid_client_module(Module),
-  {ok,ClientState1} = Module:init(Arguments),
+  {ok,ClientState} = Module:init(Arguments),
   {realm, Realm} = lists:keyfind(realm,1,Args),
   Host =
     case lists:keyfind(host,1,Args) of
@@ -184,10 +193,9 @@ init(Args) ->
       {_,P} -> P
     end,
   Ets = ets:new(con_data,[bag,protected,{keypos,2}]),
-  State1 = #state{realm=Realm, module=Module, host=Host, port=Port, ets=Ets},
+  State1 = #state{realm=Realm, module=Module, host=Host, port=Port, ets=Ets,cs=ClientState},
   State2 = connect(destination(State1),State1),
-  {ok,ClientState2} = Module:on_connect(ClientState1,State2),
-  {ok,State2#state{cs=ClientState2}}.
+  {ok,State2}.
 
 
 
@@ -200,6 +208,10 @@ handle_call(_Msg,_From,State) ->
 handle_cast(_Request, State) ->
 	{noreply, State}.
 
+handle_info({erwa,{welcome,SessionId,_Details}}, #state{module=Module,cs=ClientState}=State) ->
+  State1 = State#state{sess=SessionId},
+  {ok,NewClientState} = Module:on_connect(ClientState,State),
+  {noreply,State1#state{cs=NewClientState}};
 handle_info({erwa,{invocation,RequestId,RegistrationId,Details,Arguments,ArgumentsKw}}, #state{module=Module,ets=Ets,cs=ClientState}=State) ->
   case ets:match(Ets,{registration,RegistrationId,'$1'}) of
     [[Method]] ->
@@ -221,6 +233,11 @@ handle_info({erwa,{event,SubscriptionId,PublishId,Details,Arguments,ArgumentsKw}
 handle_info({erwa,{result,RequestId,Details,Result,ResultKw}}, #state{module=Module,cs=ClientState}=State) ->
   {ok,NewClientState} = Module:on_result(RequestId,Details,Result,ResultKw,ClientState,State),
   {noreply, State#state{cs=NewClientState}};
+
+handle_info({tcp,Socket,Data},#state{buffer=Buffer,socket=Socket}=State) ->
+  Buf = <<Buffer/binary, Data/binary>>,
+  NewBuffer = enqueue_messages_from_buffer(Buf),
+  {noreply,State#state{buffer=NewBuffer}};
 handle_info(_Info, State) ->
 	{noreply, State}.
 
@@ -235,8 +252,14 @@ code_change(_OldVsn, State, _Extra) ->
 
 connect(local,#state{realm=Realm}=State) ->
   {ok, Router} =  erwa:get_router_for_realm(Realm),
-  {welcome,SessionId,_Details} = erwa_router:hello(Router,[]),
-  State#state{router=Router,sess=SessionId }.
+  Msg = erwa_router:hello(Router,[]),
+  self() ! {erwa,Msg},
+  State#state{router=Router};
+connect(remote,#state{realm=Realm,host=Host,port=Port}=State) ->
+  {ok, Socket} = gen_tcp:connect(Host,Port,[binary]),
+  ok = gen_tcp:send(Socket,encode(erwa_protocol:to_wamp({hello,Realm,[{<<"roles">>,?CLIENT_ROLES}]}))),
+  State#state{socket=Socket}.
+
 
 yield(local,RequestId,Options,Result,ResultKw,#state{router=Router}) ->
   erwa_router:yield(Router,RequestId,Options,Result,ResultKw),
@@ -244,8 +267,8 @@ yield(local,RequestId,Options,Result,ResultKw,#state{router=Router}) ->
 
 
 -spec destination(#state{}) -> local | remote.
-destination(#state{socket=S}) ->
-  case S of
+destination(#state{host=H}) ->
+  case H of
     undefined ->
       local;
     _ ->
@@ -257,3 +280,33 @@ gen_id() ->
   crypto:rand_uniform(0,9007199254740993).
 
 
+enqueue_messages_from_buffer(<<Len:32/unsigned-integer-big,Data/binary>>=Buffer)  ->
+  case byte_size(Data) >= Len of
+    true ->
+      <<Enc:Len/binary,NewBuffer/binary>> = Data,
+      Wamp = decode(Enc),
+      self() ! {erwa,erwa_protocol:to_erl(Wamp)},
+      enqueue_messages_from_buffer(NewBuffer);
+    false ->
+      Buffer
+  end.
+
+decode(Message) ->
+  decode(Message,msgpack).
+decode(Message,json) ->
+  jsx:decode(Message);
+decode(Message,msgpack) ->
+  {ok,Msg} = msgpack:unpack(Message,[jsx]),
+  Msg.
+
+
+encode(Message) ->
+  encode(Message,msgpack).
+encode(Message,json) ->
+  Enc = jsx:encode(Message),
+  Len = byte_size(Enc),
+  <<Len:32/unsigned-integer-big,Enc/binary>>;
+encode(Message,msgpack) ->
+  Enc = msgpack:pack(Message,[jsx]),
+  Len = byte_size(Enc),
+  <<Len:32/unsigned-integer-big,Enc/binary>>.
