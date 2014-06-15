@@ -459,10 +459,14 @@ dequeue_procedure_call(Pid,Id,_Options,Arguments,ArgumentsKw,#state{i=I,sess=Ses
 
 -spec remove_session_with_ref(Ref :: reference(), State :: #state{}) -> ok.
 remove_session_with_ref(Ref,#state{sess=Sessions}=State) ->
-  [RefSession] = ets:lookup(Sessions,Ref),
-  Id = RefSession#ref_session.session_id,
-  [Session] = ets:lookup(Sessions,Id),
-  remove_given_session(Session,State).
+  case ets:lookup(Sessions,Ref) of
+    [RefSession] ->
+      Id = RefSession#ref_session.session_id,
+      [Session] = ets:lookup(Sessions,Id),
+      remove_given_session(Session,State);
+    [] ->
+      ok
+  end.
 
 
 -spec remove_given_session(Session :: #session{}|undefined, State :: #state{}) -> ok.
