@@ -31,6 +31,8 @@
 -define(PORT,5555).
 -define(ENCODING,msgpack). %% msgpack or json
 
+-export([start_link/0]).
+
 %% gen_server
 -export([init/1]).
 -export([handle_call/3]).
@@ -46,8 +48,10 @@
   rpc_echo_id = undefined,
   event_sub_id = undefined
               }).
+start_link() ->
+  gen_server:start_link(?MODULE, [], []).
 
-init(Realm) ->
+init(_) ->
   {ok,Con} = erwa:start_client(),
   {ok,SessionId,_RouterDetails} = erwa:connect(Con,?HOST,?PORT,?REALM,?ENCODING),
   {ok,SubId} = erwa:subscribe(Con,[{}],?EVENT_URL),
@@ -62,19 +66,19 @@ handle_cast(_Msg,State) ->
   {noreply,State}.
 
 
-handle_info({erwa,{event,SubscriptionId,_PublicationId,_Details,Arguments,ArgumentsKw}},#state{subscription=SubscriptionId}=State) ->
+handle_info({erwa,{event,SubId,_PublicationId,_Details,Arguments,ArgumentsKw}},#state{event_sub_id=SubId}=State) ->
   io:format("received event ~p ~p~n",[Arguments,ArgumentsKw]),
-  {noreply,State#state{event_received=true}};
+  {noreply,State};
 
 handle_info({erwa,{invocation,RequestId,RpcId,_Details,[A,B],_ArgumentsKw}},#state{rpc_sum_id=RpcId,con=Con}=State) ->
   %invocation of the sum rpc
   ok = erwa:yield(Con,RequestId,[{}],[A+B]),
-  {noreply,State#state{been_called=true}};
+  {noreply,State};
 
 handle_info({erwa,{invocation,RequestId,RpcId,_Details,Arguments,ArgumentsKw}},#state{rpc_echo_id=RpcId,con=Con}=State) ->
   %invocation of the echo rpc
   ok = erwa:yield(Con,RequestId,[{}],Arguments,ArgumentsKw),
-  {noreply,State#state{been_called=true}};
+  {noreply,State};
 
 handle_info(Msg,State) ->
   io:format("received message: ~p~n",[Msg]),

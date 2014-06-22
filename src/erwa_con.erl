@@ -97,7 +97,7 @@ handle_call({connect,Host,Port,Realm,Encoding},From,#state{ets=Ets}=State) ->
         {ok, Router} =  erwa:get_router_for_realm(Realm),
         {Router,undefined};
       _ ->
-        {ok, Socket} = gen_tcp:connect(Host,Port,[binary]),
+        {ok, Socket} = gen_tcp:connect(Host,Port,[binary,{packet,0}]),
         {undefined,Socket}
     end,
   State1 = State#state{enc=Enc,router=R,socket=S,realm=Realm},
