@@ -40,7 +40,6 @@ start_link() ->
 init([]) ->
 Procs = [
 		{erwa_con, {erwa_con, start_link, []},
-			%transient,
      temporary, 5000, supervisor, []}
 	],
 	{ok, {{simple_one_for_one, 1000, 10}, Procs}}.

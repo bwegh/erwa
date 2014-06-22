@@ -21,39 +21,59 @@
 %%
 
 -module(client_simple).
+-behaviour(gen_server).
 
--export([init/1]).
--export([on_connect/2]).
--export([on_test_event/6]).
--export([rpc_sum/5]).
+
 -export([get_event_url/0]).
 -export([get_rpc_url/0]).
--export([on_result/6]).
--export([all_done/1]).
+
+%% gen_server
+-export([init/1]).
+-export([handle_call/3]).
+-export([handle_cast/2]).
+-export([handle_info/2]).
+-export([terminate/2]).
+-export([code_change/3]).
 
 -record(state,{
+  con = undefined,
+  session = undefined,
   subscription = undefined,
   event_received = false,
   registration = undefined,
   been_called = false
               }).
 
-init(_) ->
-  {ok,#state{}}.
+init(Realm) ->
+  {ok,Con} = erwa:start_client(),
+  {ok,SessionId,_RouterDetails} = erwa:connect(Con,Realm),
+  {ok,SubscriptionId} = erwa:subscribe(Con,[{}],get_event_url()),
+  {ok,RegistrationId} = erwa:register(Con,[{}],get_rpc_url()),
+  {ok,#state{con=Con,session=SessionId,subscription=SubscriptionId,registration=RegistrationId}}.
 
-on_connect(State,Con) ->
-  {ok,SubscriptionId} = erwa_con:subscribe(Con,[{}],get_event_url(),on_test_event),
-  {ok,RegistrationId} = erwa_con:register(Con,[{}],get_rpc_url(),rpc_sum),
-  {ok,State#state{subscription=SubscriptionId, registration=RegistrationId}}.
+handle_call({all_done},_From,State) ->
+  {reply,all_done(State),State}.
+
+handle_cast(_Msg,State) ->
+  {noreply,State}.
 
 
-on_test_event(_PublishId,_Details,_Arguments,_ArgumentsKw,#state{subscription=S}=State,Con) ->
-  ok = erwa_con:unsubscribe(Con,S),
-  {ok,State#state{event_received=true, subscription=undefined}}.
+handle_info({erwa,{event,SubscriptionId,_PublicationId,_Details,_Arguments,_ArgumentsKw}},#state{subscription=SubscriptionId}=State) ->
+  {noreply,State#state{event_received=true}};
 
-rpc_sum(_Details,[A,B],_ArgumentsKw,#state{registration=R}=State,Con) ->
-  ok = erwa_con:unregister(Con,R),
-  {ok,[{}],[A+B],undefined,State#state{been_called=true, registration=undefined}}.
+handle_info({erwa,{invocation,RequestId,RegistrationId,_Details,[A,B],_ArgumentsKw}},#state{registration=RegistrationId,con=Con}=State) ->
+  ok = erwa:yield(Con,RequestId,[{}],[A+B]),
+  {noreply,State#state{been_called=true}};
+handle_info(Msg,State) ->
+  io:format("received message: ~p~n",[Msg]),
+  {noreply,State}.
+
+terminate(_Reason,_State) ->
+  ok.
+
+code_change(_OldVsn,State,_Extra) ->
+  {ok,State}.
+
 
 
 get_event_url() ->
@@ -62,12 +82,7 @@ get_event_url() ->
 get_rpc_url() ->
   <<"com.test.sum">>.
 
-on_result(_RequestId,_Details,_Results,_ResultsKw,State,_Connection) ->
-  {ok,State}.
-
-
 all_done(#state{event_received=true,been_called=true}) ->
   true;
 all_done(_) ->
   false.
-

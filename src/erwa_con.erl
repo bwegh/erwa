@@ -23,16 +23,6 @@
 -module(erwa_con).
 -behaviour(gen_server).
 
--export([subscribe/4]).
--export([unsubscribe/2]).
--export([publish/3,publish/4,publish/5]).
-
--export([register/4]).
--export([unregister/2]).
--export([call/3,call/4,call/5]).
-
--export([get_client_state/1]).
-
 %% API.
 -export([start_link/1]).
 
@@ -46,126 +36,40 @@
 
 
 -define(DEFAULT_PORT,5555).
--define(CLIENT_ROLES,[{<<"publisher">>,[{}]},{<<"subscriber">>,[{}]},{<<"caller">>,[{}]},{<<"callee">>,[{}]}]).
+-define(CLIENT_ROLES,{<<"roles">>,[{<<"publisher">>,[{}]},{<<"subscriber">>,[{}]},{<<"caller">>,[{}]},{<<"callee">>,[{}]}]}).
 
 
 -record(state,{
     realm = unknown,
-    module = undefined,
     router=undefined,
     socket=undefined,
     buffer = <<"">>,
-    host = undefined,
-    port = undefined,
-    cs = undefined,
     sess = undefined,
-    ets = undefined
+    ets = undefined,
+    enc = undefined
   }).
 
-%-record(subscription,{
-%  id = undefined,
-%  method = undefined}).
+-record(subscription,{
+  id = undefined,
+  mfa = undefined,
+  pid=undefined}).
+
+-record(ref, {
+  req = undefined,
+  method = undefined,
+  ref=undefined,
+  args = []
+              }).
 
 -record(registration,{
   id = undefined,
-  method = undefined}).
+  mfa = undefined,
+  pid = undefined
+                      }).
 
--record(call,{
-  id = undefined,
-  mfa = undefined}).
-
-subscribe(#state{module=Module}=State,Options,Topic,Method) ->
-  true = erwa_client:is_valid_event(Module,Method),
-  {ok,RequestId} = subscribe(destination(State),Options,Topic,Method,State),
-  %true = ets:insert_new(Ets,#subscription{id=SubscriptionId,method=Method}),
-  {ok,RequestId}.
-
-subscribe(local,Options,Topic,_Method,#state{router=Router})->
-  RequestId = gen_id(),
-  Msg = erwa_router:subscribe(Router,RequestId,Options,Topic),
-  self() ! {erwa,Msg},
-  {ok,RequestId};
-subscribe(remote,Options,Topic,_Method,#state{socket=Socket})->
-  RequestId = gen_id(),
-  gen_tcp:send(Socket,encode(erwa_protocol:to_wamp({subscribe,RequestId,Options,Topic}))),
-  {ok,RequestId}.
-
-unsubscribe(State,SubscriptionId) ->
-  ok = unsubscribe(destination(State),SubscriptionId,State),
-  ok.
-
-unsubscribe(local,SubscriptionId,#state{router=Router,ets=Ets}) ->
-  RequestId = gen_id(),
-  {unsubscribed,RequestId} = erwa_router:unsubscribe(Router,RequestId,SubscriptionId),
-  true = ets:delete(Ets,SubscriptionId),
-  ok.
-
-
-
-publish(State,Options,Topic) ->
-  publish(State,Options,Topic,undefined,undefined).
-publish(State,Options,Topic,Arguments)->
-  publish(State,Options,Topic,Arguments,undefined).
-publish(State,Options,Topic,Arguments,ArgumentsKw) ->
-  {ok,Reply} = publish(destination(State),Options,Topic,Arguments,ArgumentsKw,State),
-  {ok,Reply}.
-
-publish(local,Options,Topic,Arguments,ArgumentsKw,#state{router=Router}) ->
-  RequestId = gen_id(),
-  erwa_router:publish(Router,RequestId,Options,Topic,Arguments,ArgumentsKw),
-  {ok,noreply};
-publish(remote,Options,Topic,Arguments,ArgumentsKw,#state{socket=Socket}) ->
-  RequestId = gen_id(),
-  gen_tcp:send(Socket,encode(erwa_protocol:to_wamp({publish,RequestId,Options,Topic,Arguments,ArgumentsKw}))),
-  {ok,noreply}.
-
-register(#state{module=Module,ets=Ets}=State,Options,Procedure,Method) ->
-  true = erwa_client:is_valid_rpc(Module,Method),
-  {ok,RegistrationId} = register(destination(State),Options,Procedure,Method,State),
-  true = ets:insert_new(Ets,#registration{id=RegistrationId,method=Method}),
-  {ok,RegistrationId}.
-
-register(local,Options,Procedure,_Method,#state{router=Router}) ->
-  RequestId = gen_id(),
-  {registered,RequestId,RegistrationId} = erwa_router:register(Router,RequestId,Options,Procedure),
-  {ok,RegistrationId}.
-
-unregister(#state{ets=Ets}=State,RegistrationId) ->
-  ok = unregister(destination(State),RegistrationId,State),
-  true = ets:delete(Ets,RegistrationId),
-  ok.
-
-unregister(local,RegistrationId,#state{router=Router}) ->
-  RequestId = gen_id(),
-  {unregistered,RequestId} = erwa_router:unregister(Router,RequestId,RegistrationId),
-  ok.
-
-
-call(State,Options,ProcedureUrl) ->
-  call(State,Options,ProcedureUrl,undefined,undefined).
-call(State,Options,ProcedureUrl,Arguments) ->
-  call(State,Options,ProcedureUrl,Arguments,undefined).
-call(State,Options,ProcedureUrl,Arguments,ArgumentsKw) ->
-  {ok,RequestId} = call(destination(State),Options,ProcedureUrl,Arguments,ArgumentsKw,State),
-  {ok,RequestId}.
-
-call(local,Options,ProcedureUrl,Arguments,ArgumentsKw,#state{ets=Ets,router=Router}=State) ->
-  RequestId = gen_id(),
-  case ets:insert_new(Ets,#call{id=RequestId}) of
-    false ->
-      call(local,Options,ProcedureUrl,Arguments,ArgumentsKw,State);
-    true ->
-      erwa_router:call(Router,RequestId,Options,ProcedureUrl,Arguments,ArgumentsKw),
-      {ok,RequestId}
-  end.
-
-
-
-
-get_client_state(Con) ->
-  {client_state,CS} = gen_server:call(Con,get_client_state),
-  CS.
-
+%-record(call,{
+%  id = undefined,
+%  mfa = undefined}).
 
 
 
@@ -175,69 +79,76 @@ start_link(Args) ->
 
 
 -spec init(Params :: list() ) -> {ok,#state{}}.
-init(Args) ->
-  {module, Module} = lists:keyfind(module,1,Args),
-  {args, Arguments} = lists:keyfind(args,1,Args),
-  true = erwa_client:is_valid_client_module(Module),
-  {ok,ClientState} = Module:init(Arguments),
-  {realm, Realm} = lists:keyfind(realm,1,Args),
-  Host =
-    case lists:keyfind(host,1,Args) of
-      false -> undefined;
-      H -> H
-    end,
-  Port =
-    case {Host, lists:keyfind(port,1,Args)} of
-      {undefined,_} -> undefined;
-      {_,false} -> ?DEFAULT_PORT;
-      {_,P} -> P
-    end,
+init([]) ->
   Ets = ets:new(con_data,[bag,protected,{keypos,2}]),
-  State1 = #state{realm=Realm, module=Module, host=Host, port=Port, ets=Ets,cs=ClientState},
-  State2 = connect(destination(State1),State1),
-  {ok,State2}.
+  {ok,#state{ets=Ets}}.
 
 
 
 -spec handle_call(Msg :: term(), From :: term(), #state{}) -> {reply,Msg :: term(), #state{}}.
-handle_call(get_client_state,_From,#state{cs=ClientState}=State) ->
-  {reply,{client_state,ClientState},State};
+handle_call({connect,Host,Port,Realm,Encoding},From,#state{ets=Ets}=State) ->
+  Enc = case Encoding of
+          json -> json;
+          _ -> msgpack
+        end,
+  {R,S} =
+    case Host of
+      undefined ->
+        {ok, Router} =  erwa:get_router_for_realm(Realm),
+        {Router,undefined};
+      _ ->
+        {ok, Socket} = gen_tcp:connect(Host,Port,[binary]),
+        {undefined,Socket}
+    end,
+  State1 = State#state{enc=Enc,router=R,socket=S,realm=Realm},
+  ok = raw_send({hello,Realm,[?CLIENT_ROLES]},State1),
+  true = ets:insert_new(Ets,#ref{req=hello,method=hello,ref=From}),
+  {noreply,State1};
+
+handle_call({subscribe,Options,Topic,Mfa},From,State) ->
+  send({subscribe,request_id,Options,Topic},From,[{mfa,Mfa}],State),
+  {noreply,State};
+
+handle_call({unsubscribe,SubscriptionId},From,State) ->
+  send({unsubscribe,request_id,SubscriptionId},From,[{sub_id,SubscriptionId}],State),
+  {noreply,State};
+
+handle_call({publish,Options,Topic,Arguments,ArgumentsKw},From,State) ->
+  send({publish,request_id,Options,Topic,Arguments,ArgumentsKw},From,[],State),
+  {reply,ok,State};
+
+handle_call({register,Options,Procedure,Mfa},From,State) ->
+  send({register,request_id,Options,Procedure},From,[{mfa,Mfa}],State),
+  {noreply,State};
+
+handle_call({unregister,RegistrationId},From,State) ->
+  send({unregister,request_id,RegistrationId},From,[{reg_id,RegistrationId}],State),
+  {noreply,State};
+
+handle_call({call,Options,Procedure,Arguments,ArgumentsKw},From,State) ->
+  ok = send({call,request_id,Options,Procedure,Arguments,ArgumentsKw},From,[],State),
+  {noreply,State};
+
+handle_call({yield,_,_,_,_}=Msg,_From,State) ->
+  ok = raw_send(Msg,State),
+  {reply,ok,State};
+
 handle_call(_Msg,_From,State) ->
-  {noreply, State}.
+  {noreply,State}.
+
+
 
 handle_cast(_Request, State) ->
 	{noreply, State}.
 
-handle_info({erwa,{welcome,SessionId,_Details}}, #state{module=Module,cs=ClientState}=State) ->
-  State1 = State#state{sess=SessionId},
-  {ok,NewClientState} = Module:on_connect(ClientState,State),
-  {noreply,State1#state{cs=NewClientState}};
-handle_info({erwa,{invocation,RequestId,RegistrationId,Details,Arguments,ArgumentsKw}}, #state{module=Module,ets=Ets,cs=ClientState}=State) ->
-  case ets:match(Ets,{registration,RegistrationId,'$1'}) of
-    [[Method]] ->
-      {ok,Options,Result,ResultKw,NewClientState} = Module:Method(Details,Arguments,ArgumentsKw,ClientState,State),
-      ok = yield(destination(State),RequestId,Options,Result,ResultKw,State),
-      {noreply,State#state{cs=NewClientState}};
-    _ ->
-      %erwa_router:error()
-      {noreply,State}
-   end;
-handle_info({erwa,{event,SubscriptionId,PublishId,Details,Arguments,ArgumentsKw}}, #state{module=Module,ets=Ets,cs=ClientState}=State) ->
-  case ets:match(Ets,{subscription,SubscriptionId,'$1'}) of
-    [[Method]] ->
-      {ok,NewClientState} = Module:Method(PublishId,Details,Arguments,ArgumentsKw,ClientState,State),
-      {noreply,State#state{cs=NewClientState}};
-    [] ->
-      {noreply,State}
-  end;
-handle_info({erwa,{result,RequestId,Details,Result,ResultKw}}, #state{module=Module,cs=ClientState}=State) ->
-  {ok,NewClientState} = Module:on_result(RequestId,Details,Result,ResultKw,ClientState,State),
-  {noreply, State#state{cs=NewClientState}};
-
 handle_info({tcp,Socket,Data},#state{buffer=Buffer,socket=Socket}=State) ->
   Buf = <<Buffer/binary, Data/binary>>,
-  NewBuffer = enqueue_messages_from_buffer(Buf),
+  {Messages,NewBuffer} = get_messages_from_buffer(Buf,State),
+  handle_messages(Messages,State),
   {noreply,State#state{buffer=NewBuffer}};
+handle_info({erwa,Msg}, State) ->
+  handle_message(Msg,State),
+	{noreply, State};
 handle_info(_Info, State) ->
 	{noreply, State}.
 
@@ -250,63 +161,158 @@ code_change(_OldVsn, State, _Extra) ->
 
 
 
-connect(local,#state{realm=Realm}=State) ->
-  {ok, Router} =  erwa:get_router_for_realm(Realm),
-  Msg = erwa_router:hello(Router,[]),
-  self() ! {erwa,Msg},
-  State#state{router=Router};
-connect(remote,#state{realm=Realm,host=Host,port=Port}=State) ->
-  {ok, Socket} = gen_tcp:connect(Host,Port,[binary]),
-  ok = gen_tcp:send(Socket,encode(erwa_protocol:to_wamp({hello,Realm,[{<<"roles">>,?CLIENT_ROLES}]}))),
-  State#state{socket=Socket}.
+handle_message({welcome,SessionId,RouterDetails},#state{ets=Ets}) ->
+  [#ref{method=hello,ref=From}] = ets:lookup(Ets,hello),
+  ets:delete(Ets,welcome),
+  gen_server:reply(From,{ok,SessionId,RouterDetails});
+
+%handle_message({abort,},#state{ets=Ets}) ->
+
+%handle_message({goodbye,},#state{ets=Ets}) ->
+
+%handle_message({error,},#state{ets=Ets}) ->
+
+%handle_message({published,},#state{ets=Ets}) ->
+
+handle_message({subscribed,RequestId,SubscriptionId},#state{ets=Ets}) ->
+  [#ref{method=subscribe,ref=From,args=Args}] = ets:lookup(Ets,RequestId),
+  ets:delete(Ets,RequestId),
+  {mfa,Mfa} = lists:keyfind(mfa,1,Args),
+  {Pid,_} = From,
+  ets:insert_new(Ets,#subscription{id=SubscriptionId,mfa=Mfa,pid=Pid}),
+  gen_server:reply(From,{ok,SubscriptionId});
+
+handle_message({unsubscribed,RequestId},#state{ets=Ets}) ->
+  [#ref{method=unsubscribe,ref=From,args=Args}] = ets:lookup(Ets,RequestId),
+  ets:delete(Ets,RequestId),
+  SubscriptionId = lists:keyfind(sub_id,1,Args),
+  ets:delete(Ets,SubscriptionId),
+  gen_server:reply(From,ok);
+
+handle_message({event,SubscriptionId,_PublicationId,_Details,_Arguments,_ArgumentsKw}=Msg,#state{ets=Ets}) ->
+  [#subscription{
+                id = SubscriptionId,
+                mfa = Mfa,
+                pid=Pid}] = ets:lookup(Ets,SubscriptionId),
+  case Mfa of
+    undefined ->
+      Pid ! {erwa,Msg};
+    {M,F,A}  ->
+      erlang:apply(M,F,[Msg|A])
+  end;
+handle_message({result,RequestId,Details,Arguments,ArgumentsKw},#state{ets=Ets}) ->
+  [#ref{method=call,ref=From}] = ets:lookup(Ets,RequestId),
+  ets:delete(Ets,RequestId),
+  gen_server:reply(From,{ok,Details,Arguments,ArgumentsKw});
+
+handle_message({registered,RequestId,RegistrationId},#state{ets=Ets}) ->
+  [#ref{method=register,ref=From,args=Args}] = ets:lookup(Ets,RequestId),
+  ets:delete(Ets,RequestId),
+  {mfa,Mfa} = lists:keyfind(mfa,1,Args),
+  {Pid,_} = From,
+  ets:insert_new(Ets,#registration{id=RegistrationId,mfa=Mfa,pid=Pid}),
+  gen_server:reply(From,{ok,RegistrationId});
+
+handle_message({unregistered,RequestId},#state{ets=Ets}) ->
+  [#ref{method=unregister,ref=From,args=Args}] = ets:lookup(Ets,RequestId),
+  ets:delete(Ets,RequestId),
+  RegistrationId = lists:keyfind(reg_id,1,Args),
+  ets:delete(Ets,RegistrationId),
+  gen_server:reply(From,ok);
+
+handle_message({invocation,_RequestId,RegistrationId,_Details,_Arguments,_ArgumentsKw}=Msg,#state{ets=Ets}) ->
+  [#registration{
+                id = RegistrationId,
+                mfa = Mfa,
+                pid=Pid}] = ets:lookup(Ets,RegistrationId),
+  case Mfa of
+    undefined ->
+      Pid ! {erwa,Msg};
+    {M,F,A}  ->
+      erlang:apply(M,F,[Msg|A])
+  end;
 
 
-yield(local,RequestId,Options,Result,ResultKw,#state{router=Router}) ->
-  erwa_router:yield(Router,RequestId,Options,Result,ResultKw),
+handle_message(Msg,_State) ->
+  io:format("unhandled message ~p~n",[Msg]).
+
+
+
+
+handle_messages([],_State) ->
+  ok;
+handle_messages([Message|Messages],State) ->
+  handle_message(Message,State),
+  handle_messages(Messages,State).
+
+
+
+send(Msg,From,Args,#state{ets=Ets}=State) ->
+  RequestId = gen_id(State),
+  Message = setelement(2,Msg,RequestId),
+  Method = element(1,Message),
+  true = ets:insert_new(Ets,#ref{req=RequestId,method=Method,ref=From,args=Args}),
+  raw_send(Message,State).
+
+
+raw_send(Message,#state{router=R,socket=S}=State) ->
+  case destination(State) of
+    local ->
+      Reply = gen_server:call(R,Message),
+      self() ! {erwa,Reply};
+    remote ->
+      ok = gen_tcp:send(S,encode(erwa_protocol:to_wamp(Message),State))
+  end,
   ok.
 
-
 -spec destination(#state{}) -> local | remote.
-destination(#state{host=H}) ->
-  case H of
+destination(#state{socket=S}) ->
+  case S of
     undefined ->
       local;
     _ ->
       remote
   end.
 
--spec gen_id() -> non_neg_integer().
-gen_id() ->
-  crypto:rand_uniform(0,9007199254740993).
+-spec gen_id(#state{}) -> non_neg_integer().
+gen_id(#state{ets=Ets}=State) ->
+  Id = crypto:rand_uniform(0,9007199254740993),
+  case ets:lookup(Ets,Id) of
+    [] ->
+      Id;
+    _ ->
+      gen_id(State)
+  end.
 
 
-enqueue_messages_from_buffer(<<Len:32/unsigned-integer-big,Data/binary>>=Buffer)  ->
+
+get_messages_from_buffer(Buffer,State)  ->
+  get_messages_from_buffer(Buffer,[],State).
+
+get_messages_from_buffer(<<Len:32/unsigned-integer-big,Data/binary>>=Buffer,Messages,State)  ->
   case byte_size(Data) >= Len of
     true ->
       <<Enc:Len/binary,NewBuffer/binary>> = Data,
-      Wamp = decode(Enc),
-      self() ! {erwa,erwa_protocol:to_erl(Wamp)},
-      enqueue_messages_from_buffer(NewBuffer);
+      Wamp = decode(Enc,State),
+      get_messages_from_buffer(NewBuffer,[erwa_protocol:to_erl(Wamp)|Messages],State);
     false ->
-      Buffer
+      {lists:reverse(Messages),Buffer}
   end.
 
-decode(Message) ->
-  decode(Message,msgpack).
-decode(Message,json) ->
+decode(Message,#state{enc=json}) ->
   jsx:decode(Message);
-decode(Message,msgpack) ->
+decode(Message,#state{enc=msgpack}) ->
   {ok,Msg} = msgpack:unpack(Message,[jsx]),
   Msg.
 
 
-encode(Message) ->
-  encode(Message,msgpack).
-encode(Message,json) ->
+encode(Message,#state{enc=json}) ->
   Enc = jsx:encode(Message),
   Len = byte_size(Enc),
   <<Len:32/unsigned-integer-big,Enc/binary>>;
-encode(Message,msgpack) ->
+encode(Message,#state{enc=msgpack}) ->
   Enc = msgpack:pack(Message,[jsx]),
   Len = byte_size(Enc),
   <<Len:32/unsigned-integer-big,Enc/binary>>.
+
+

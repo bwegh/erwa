@@ -44,6 +44,7 @@ all() ->
 
 init_per_suite(Config) ->
   {ok,_} = application:ensure_all_started(erwa),
+  {ok,_} = application:ensure_all_started(sasl),
   ok = erwa:start_realm(?REALM),
   Config.
 
@@ -55,10 +56,9 @@ end_per_suite(Config) ->
 all_passed(_C1,_C2,TimeLeft) when TimeLeft =< 0 ->
   false;
 all_passed(C1,C2,TimeLeft) ->
-  CS1 = erwa_con:get_client_state(C1),
-  CS2 = erwa_con:get_client_state(C2),
-  case {roundtrip_client1:test_passed(CS1),
-        roundtrip_client2:test_passed(CS2)} of
+  CS1 = gen_server:call(C1,{test_passed}),
+  CS2 = gen_server:call(C2,{test_passed}),
+  case {CS1,CS2} of
     {true,true} -> true;
     { _, _} ->
       receive
@@ -72,10 +72,11 @@ pubsub(_) ->
   RpcUrl2 = <<"com.test.diff">>,
   EventUrl = <<"com.test.event">>,
 
-  C1 = [{rpc_url,RpcUrl1},{event_url,EventUrl}],
-  C2 = [{rpc_url,RpcUrl2},{event_url,EventUrl}],
-  {ok,Con1} = erwa:connect(?REALM,roundtrip_client1,C1),
-  {ok,Con2} = erwa:connect(?REALM,roundtrip_client2,C2),
+  C1 = [{rpc_url,RpcUrl1},{event_url,EventUrl},{realm,?REALM}],
+  C2 = [{rpc_url,RpcUrl2},{event_url,EventUrl},{realm,?REALM}],
+
+  {ok,Con1} = gen_server:start(roundtrip_client1,C1,[]),
+  {ok,Con2} = gen_server:start(roundtrip_client2,C2,[]),
   true = all_passed(Con1,Con2,5000),
   ok.
 

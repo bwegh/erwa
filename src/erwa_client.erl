@@ -36,12 +36,27 @@
 
 
 -callback init(any()) -> {ok,state()}.
--callback on_connect(state(),connection()) -> {ok,state()}.
+-callback handle(state(),connection()) -> {ok,state()}.
 %-callback on_error(non_neg_integer(),non_neg_integer(),state(),connection()) -> {ok,state()}.
+
+%-callback on_subscribed(non_neg_integer(),non_neg_integer(),state(),connection()) -> {ok,state()}.
+%-callback on_unsubscribed(non_neg_integer(),state(),connection()) -> {ok,state()}.
+
+%-callback on_registered(non_neg_integer(),non_neg_integer(),state(),connection()) -> {ok,state()}.
+%-callback on_unregistered(non_neg_integer(),non_neg_integer(),state(),connection()) -> {ok,state()}.
 -callback on_result(non_neg_integer(),list(),list(),list(),state(),connection()) -> {ok,state()}.
+
+
 
 %% @doc Test whether a module exists and exports all needed functions
 is_valid_client_module(Module) when is_atom(Module) ->
+  NeededExports =
+    [
+     {init,1},
+     {on_connect,2},
+     {on_result,6}
+     ],
+
   true =
     try Module:module_info() of
       _InfoList ->
@@ -51,9 +66,8 @@ is_valid_client_module(Module) when is_atom(Module) ->
         false
     end,
   Exports = Module:module_info(exports),
-  true = lists:member({init,1},Exports),
-  true = lists:member({on_connect,2},Exports),
-  true = lists:member({on_result,6},Exports),
+  Check = fun(Export,Bool) -> lists:member(Export,Exports) and Bool end,
+  true = lists:foldl(Check,true,NeededExports),
   true.
 
 is_valid_rpc(Module,Method) when is_atom(Module), is_atom(Method) ->

@@ -184,11 +184,9 @@ start_link(Args) ->
 
 -spec init(Params :: list() ) -> {ok,#state{}}.
 init([Realm]) ->
-
   T = ets:new(erwa_topics,[?TABLE_ACCESS,set,{keypos,#topic.id}]),
   UT = ets:new(erwa_url_topic,[?TABLE_ACCESS,set]),
   %Su = ets:new(subscriptions,[?TABLE_ACCESS,set,{keypos,#subscription.id}]),
-
 
   P = ets:new(erwa_procedures,[?TABLE_ACCESS,set,{keypos,#procedure.id}]),
   UP = ets:new(erwa_url_procedures,[?TABLE_ACCESS,set]),
@@ -204,6 +202,8 @@ init([Realm]) ->
 
 
 -spec handle_call(Msg :: term(), From :: term(), #state{}) -> {reply,Msg :: term(), #state{}}.
+handle_call({hello,Realm,Details}, From, #state{realm=Realm}=State) ->
+  handle_call({hello,Details}, From,State);
 handle_call({hello,Details}, {Pid,_Ref}, #state{sess=Sess}=State) ->
   Reply =
     case ets:member(Sess,Pid) of
@@ -270,7 +270,7 @@ handle_call({unregister,RequestId,RegistrationId},{Pid,_Ref},State) ->
 handle_call({call,RequestId,Options,ProcedureUrl,Arguments,ArgumentsKw},{Pid,_Ref},State) ->
   Reply =
   case enqueue_procedure_call(Pid,RequestId,Options,ProcedureUrl,Arguments,ArgumentsKw,State) of
-    {ok} -> noreply;
+    {ok} -> ok;
     {error,Details,Reason} -> {error,call,RequestId,Details,Reason,Arguments,ArgumentsKw}
   end,
   {reply,Reply,State};
@@ -631,7 +631,7 @@ disconnect_test() ->
   F = fun() ->
         {welcome,_,_} = hello(Router,<<"blah">>),
         RequestId = crypto:rand_uniform(0,9007199254740993),
-        {registered,RequestId,RegistrationId} = register(Router,RequestId,[],<<"nice_fun">>),
+        {registered,RequestId,_RegistrationId} = register(Router,RequestId,[],<<"nice_fun">>),
         TesterPid ! registered,
         receive
           go_on ->

@@ -21,54 +21,72 @@
 %%
 
 -module(roundtrip_client2).
--behaviour(erwa_client).
-
--export([init/1]).
--export([on_connect/2]).
--export([on_result/6]).
-
--export([on_test_event/6]).
--export([rpc_diff/5]).
-
--export([test_passed/1]).
-
 
 -record(state,{
-  event_url = undefined,
-  rpc_url = undefined,
+  con = undefined,
+  session = undefined,
   subscription = undefined,
   event_received = false,
   registration = undefined,
   been_called = false,
-  call_id = undefined,
-  result_received = false
+  event_url = undefined
               }).
+
+-behaviour(gen_server).
+
+-export([test_passed/1]).
+
+%% gen_server
+-export([init/1]).
+-export([handle_call/3]).
+-export([handle_cast/2]).
+-export([handle_info/2]).
+-export([terminate/2]).
+-export([code_change/3]).
+
+
 
 init(Args) ->
   {event_url,Event} = lists:keyfind(event_url,1,Args),
   {rpc_url,RPC} = lists:keyfind(rpc_url,1,Args),
-  {ok,#state{event_url=Event, rpc_url=RPC}}.
+  {realm,Realm} = lists:keyfind(realm,1,Args),
+  {ok,Con} = erwa:start_client(),
+  {ok,SessionId,_RouterDetails} = erwa:connect(Con,Realm),
+  {ok,SubscriptionId} = erwa:subscribe(Con,[{}],Event),
+  {ok,RegistrationId} = erwa:register(Con,[{}],RPC),
+  erwa:publish(Con,[{}],Event),
+  {ok,#state{con=Con,session=SessionId,subscription=SubscriptionId,registration=RegistrationId,event_url=Event}}.
 
-on_connect(#state{event_url=E, rpc_url=R}=State,Con) ->
-  {ok,SubscriptionId} = erwa_con:subscribe(Con,[{}],E,on_test_event),
-  {ok,RegistrationId} = erwa_con:register(Con,[{}],R,rpc_diff),
-  {ok,_Reply} = erwa_con:publish(Con,[{}],E),
-  {ok,State#state{subscription=SubscriptionId, registration=RegistrationId}}.
+handle_call({test_passed},_From,State) ->
+  {reply,test_passed(State),State}.
 
-on_result(RequestId,_Details,[14],_ResultsKw,#state{call_id=RequestId}=State,_Con) ->
-  {ok,State#state{result_received=true}}.
-
-on_test_event(_PubId, _Details, _Arguments, _ArgumentsKW, #state{subscription=Id}=State, Con) ->
-  ok = erwa_con:unsubscribe(Con,Id),
-  {ok,State#state{event_received=true}}.
-
-rpc_diff(_Details,[A,B],_ArgumentsKw,#state{registration=Id}=State,Con) ->
-  {ok,RequestId} = erwa_con:call(Con,[{}],<<"com.test.sum">>,[9,5]),
-  ok = erwa_con:unregister(Con,Id),
-  {ok,[{}],[A-B],undefined,State#state{been_called=true,call_id=RequestId}}.
+handle_cast(_Msg,State) ->
+  {noreply,State}.
 
 
-test_passed(#state{event_received=true,been_called=true,result_received=true}) ->
+handle_info({erwa,{event,SubscriptionId,_PublicationId,_Details,_Arguments,_ArgumentsKw}},#state{con=Con,subscription=SubscriptionId}=State) ->
+  ok = erwa:unsubscribe(Con,SubscriptionId),
+  {noreply,State#state{event_received=true}};
+
+handle_info({erwa,{invocation,RequestId,RegistrationId,_Details,[A,B],_ArgumentsKw}},#state{registration=RegistrationId,con=Con}=State) ->
+  io:format("invocation of roundtrip_client1~n"),
+  ok = erwa:yield(Con,RequestId,[{}],[A-B]),
+  {ok,_Details,[14],_} = erwa:call(Con,[{}],<<"com.test.sum">>,[9,5]),
+  erwa:unregister(Con,RegistrationId),
+  {noreply,State#state{been_called=true}};
+
+handle_info(Msg,State) ->
+  io:format("~p received message: ~p (state: ~p)~n",[?MODULE,Msg,State]),
+  {noreply,State}.
+
+terminate(_Reason,_State) ->
+  ok.
+
+code_change(_OldVsn,State,_Extra) ->
+  {ok,State}.
+
+
+test_passed(#state{event_received=true,been_called=true}) ->
   true;
 test_passed(_) ->
   false.

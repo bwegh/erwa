@@ -62,16 +62,16 @@ receive_result() ->
   end.
 
 client_test(_) ->
-  {ok,Pid} = erwa:connect(?REALM,client_simple,[]),
+  erwa:start_realm(?REALM),
   {ok,Router} = erwa:get_router_for_realm(?REALM),
+  {ok,Pid} = gen_server:start(client_simple,?REALM,[]),
   EventUrl = client_simple:get_event_url(),
   RpcUrl = client_simple:get_rpc_url(),
   {welcome,_SessionId,_Details} = erwa_router:hello(Router,[]),
   erwa_router:publish(Router,1,[{}],EventUrl),
   erwa_router:call(Router,2,[{}],RpcUrl,[5,9],undefined),
   ok = receive_result(),
-  CS = erwa_con:get_client_state(Pid),
-  true = client_simple:all_done(CS),
+  true = gen_server:call(Pid,{all_done}),
   ok.
 
 
