@@ -27,7 +27,7 @@
 -define(RPC_ECHO_URL,<<"ws.wamp.test.echo">>).
 -define(EVENT_URL,<<"ws.wamp.test.info">>).
 -define(REALM,<<"ws.wamp.test">>).
--define(HOST,<<"localhost">>).
+-define(HOST,"localhost"). % has to be a string
 -define(PORT,5555).
 -define(ENCODING,msgpack). %% msgpack or json
 
@@ -52,11 +52,17 @@ start_link() ->
   gen_server:start_link(?MODULE, [], []).
 
 init(_) ->
+  io:format("starting client~n"),
   {ok,Con} = erwa:start_client(),
+  io:format("connecting~n"),
   {ok,SessionId,_RouterDetails} = erwa:connect(Con,?HOST,?PORT,?REALM,?ENCODING),
+  io:format("subscribe~n"),
   {ok,SubId} = erwa:subscribe(Con,[{}],?EVENT_URL),
+  io:format("register sum~n"),
   {ok,SumRPCId} = erwa:register(Con,[{}],?RPC_SUM_URL),
+  io:format("register echo~n"),
   {ok,EchoRPCId} = erwa:register(Con,[{}],?RPC_ECHO_URL),
+  io:format("done~n"),
   {ok,#state{con=Con,session=SessionId,rpc_sum_id=SumRPCId,rpc_echo_id=EchoRPCId,event_sub_id=SubId}}.
 
 handle_call(_,_From,State) ->

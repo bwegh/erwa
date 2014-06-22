@@ -47,6 +47,8 @@ handle(Wamp,State) ->
 
 
 
+close(_Reason,#state{router=undefined}) ->
+  ok;
 close(Reason,#state{router=R}) ->
   erwa_router:remove_session(R,Reason).
 

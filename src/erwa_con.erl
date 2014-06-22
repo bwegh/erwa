@@ -259,11 +259,11 @@ raw_send(Message,#state{router=R,socket=S}=State) ->
   case destination(State) of
     local ->
       Reply = gen_server:call(R,Message),
-      self() ! {erwa,Reply};
+      self() ! {erwa,Reply},
+      ok;
     remote ->
       ok = gen_tcp:send(S,encode(erwa_protocol:to_wamp(Message),State))
-  end,
-  ok.
+  end.
 
 -spec destination(#state{}) -> local | remote.
 destination(#state{socket=S}) ->
@@ -297,7 +297,9 @@ get_messages_from_buffer(<<Len:32/unsigned-integer-big,Data/binary>>=Buffer,Mess
       get_messages_from_buffer(NewBuffer,[erwa_protocol:to_erl(Wamp)|Messages],State);
     false ->
       {lists:reverse(Messages),Buffer}
-  end.
+  end;
+get_messages_from_buffer(Buffer,Messages,_State) ->
+  {lists:reverse(Messages),Buffer}.
 
 decode(Message,#state{enc=json}) ->
   jsx:decode(Message);

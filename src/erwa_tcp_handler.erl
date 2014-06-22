@@ -118,8 +118,10 @@ get_messages_from_buffer(<<Len:32/unsigned-integer-big,Data/binary>>=Buffer,Mess
       <<Enc:Len/binary,NewBuffer/binary>> = Data,
       get_messages_from_buffer(NewBuffer,[decode(Enc)|Messages]);
     false ->
-      {Buffer,Messages}
-  end.
+      {Buffer,lists:reverse(Messages)}
+  end;
+get_messages_from_buffer(Buffer,Messages)  ->
+  {Buffer,lists:reverse(Messages)}.
 
 -spec handle_messages(Messages :: list(), Socket :: any(), Transport :: atom(), ProtState :: any()) -> {ok,any()} | {error,any()}.
 handle_messages([],_Socket,_Transport,ProtState) ->
