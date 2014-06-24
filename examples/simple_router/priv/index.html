@@ -30,7 +30,7 @@
                 wamp = new Wampy(wsHost, {onConnect: function() { onConnect(); },
                                           onClose: function() { onDisconnect(); },
                                           onError: function() { onError(); },
-                                          realm: 'test',
+                                          realm: 'ws.wamp.test',
                                           transportEncoding: Encoding});
                 console.log('Connecting to: ' +  wsHost + ' using encoding '+Encoding);
                 $('#status').append('<p><span style="color: orange;">Connecting to: ' +  wsHost + ' using encoding '+Encoding+'</span></p>');

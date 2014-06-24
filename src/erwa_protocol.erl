@@ -203,6 +203,9 @@ to_erl([?PUBLISHED,RequestId,PublicationId]) ->
 to_erl([?SUBSCRIBE,RequestId,Options,Topic]) ->
   {subscribe,RequestId,Options,Topic};
 
+to_erl([?SUBSCRIBED,RequestId,SubscriptionId]) ->
+  {subscribed,RequestId,SubscriptionId};
+
 to_erl([?UNSUBSCRIBE,RequestId,SubscriptionId]) ->
   {unsubscribe,RequestId,SubscriptionId};
 

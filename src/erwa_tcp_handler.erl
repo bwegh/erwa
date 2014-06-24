@@ -80,6 +80,7 @@ handle_cast(_Request, State) ->
 
 
 handle_info({OK,Socket,Data},  #state{ok=OK,socket=Socket,transport=Transport,buffer=Buf,prot_state=ProtState}=State) ->
+   Transport:setopts(Socket, [{active, once}]),
   Buffer = <<Buf/binary, Data/binary>>,
   {NewBuffer,Messages} = get_messages_from_buffer(Buffer),
   {ok,NewProtState} = handle_messages(Messages,Socket,Transport,ProtState),
@@ -92,7 +93,7 @@ handle_info({Error,Socket,Reason}, #state{error=Error,socket=Socket}=State) ->
 handle_info({erwar,shutdown}, State) ->
   {stop, normal, State};
 handle_info({erwa,Msg}, #state{socket=Socket,transport=Transport}=State) ->
-  Transport:send(Socket,encode(Msg)),
+  Transport:send(Socket,encode(erwa_protocol:to_wamp(Msg))),
   {noreply, State};
 handle_info(_Info, State) ->
 	{noreply, State}.
