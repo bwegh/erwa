@@ -150,7 +150,7 @@
             <div id="connected">
                 <p>
                     URI:
-                    <input id="pub_uri" type="text"></input>
+                    <input id="pub_uri" type="text" value="ws.wamp.test.info"></input>
             data:
             <input id="pub_data" type="text"></input>
         <button type="button" onclick="wamp_publish();">publish</button>
@@ -162,14 +162,14 @@
 </p>
 <p>
     URI:
-    <input id="call_uri" type="text"></input>
+    <input id="call_uri" type="text" value="ws.wamp.test.echo"></input>
 data:
 <input id="call_data" type="text"></input>
 <button type="button" onclick="wamp_call();">call</button>
 </p>
 <p>
     URI:
-    <input id="reg_uri" type="text"></input>
+    <input id="reg_uri" type="text" value="ws.wamp.test.square"></input>
 function:
 <select id="reg_fun">
     <option>square</option>

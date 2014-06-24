@@ -23,7 +23,7 @@
 -module(simple_client).
 -behaviour(gen_server).
 
--define(RPC_SUM_URL,<<"ws.wamp.test.sum">>).
+-define(RPC_SQUARE_URL,<<"ws.wamp.test.square">>).
 -define(RPC_ECHO_URL,<<"ws.wamp.test.echo">>).
 -define(EVENT_URL,<<"ws.wamp.test.info">>).
 -define(REALM,<<"ws.wamp.test">>).
@@ -44,7 +44,6 @@
 -record(state,{
   con = undefined,
   session = undefined,
-  rpc_sum_id = undefined,
   rpc_echo_id = undefined,
   event_sub_id = undefined
               }).
@@ -54,16 +53,10 @@ start_link() ->
 init(_) ->
   io:format("starting client~n"),
   {ok,Con} = erwa:start_client(),
-  io:format("connecting~n"),
   {ok,SessionId,_RouterDetails} = erwa:connect(Con,?HOST,?PORT,?REALM,?ENCODING),
-  io:format("subscribe~n"),
   {ok,SubId} = erwa:subscribe(Con,[{}],?EVENT_URL),
-  io:format("register sum~n"),
-  {ok,SumRPCId} = erwa:register(Con,[{}],?RPC_SUM_URL),
-  io:format("register echo~n"),
   {ok,EchoRPCId} = erwa:register(Con,[{}],?RPC_ECHO_URL),
-  io:format("done~n"),
-  {ok,#state{con=Con,session=SessionId,rpc_sum_id=SumRPCId,rpc_echo_id=EchoRPCId,event_sub_id=SubId}}.
+  {ok,#state{con=Con,session=SessionId,rpc_echo_id=EchoRPCId,event_sub_id=SubId}}.
 
 handle_call(_,_From,State) ->
   {noreply,State}.
@@ -72,18 +65,20 @@ handle_cast(_Msg,State) ->
   {noreply,State}.
 
 
-handle_info({erwa,{event,SubId,_PublicationId,_Details,Arguments,ArgumentsKw}},#state{event_sub_id=SubId}=State) ->
+handle_info({erwa,{event,SubId,_PublicationId,_Details,Arguments,ArgumentsKw}},#state{event_sub_id=SubId,con=Con}=State) ->
   io:format("received event ~p ~p~n",[Arguments,ArgumentsKw]),
+  {ok,Details,ResA,ResAKw} = erwa:call(Con,[{}],?RPC_SQUARE_URL,[7]),
+  [Res] = ResA,
+  io:format("result of call was: ~B ~p [~p]~n",[Res,ResAKw,Details]),
+  Res = 49,
+  ok = erwa:unsubscribe(Con,SubId),
   {noreply,State};
 
-handle_info({erwa,{invocation,RequestId,RpcId,_Details,[A,B],_ArgumentsKw}},#state{rpc_sum_id=RpcId,con=Con}=State) ->
-  %invocation of the sum rpc
-  ok = erwa:yield(Con,RequestId,[{}],[A+B]),
-  {noreply,State};
 
 handle_info({erwa,{invocation,RequestId,RpcId,_Details,Arguments,ArgumentsKw}},#state{rpc_echo_id=RpcId,con=Con}=State) ->
   %invocation of the echo rpc
   ok = erwa:yield(Con,RequestId,[{}],Arguments,ArgumentsKw),
+  ok = erwa:unregister(Con,RpcId),
   {noreply,State};
 
 handle_info(Msg,State) ->
