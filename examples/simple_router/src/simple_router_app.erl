@@ -1,3 +1,6 @@
+%% do with this code what ever you like
+%% Bas Wegh
+
 %% @private
 -module(simple_router_app).
 -behaviour(application).

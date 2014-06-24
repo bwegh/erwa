@@ -1,3 +1,6 @@
+%% do with this code what ever you like
+%% Bas Wegh
+
 %% @private
 -module(simple_client_app).
 -behaviour(application).
