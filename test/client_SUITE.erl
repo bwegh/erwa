@@ -69,8 +69,8 @@ client_test(_) ->
   RpcUrl = client_simple:get_rpc_url(),
   {welcome,_SessionId,_Details} = erwa_router:hello(Router,[]),
   erwa_router:publish(Router,1,[{}],EventUrl),
-  erwa_router:call(Router,2,[{}],RpcUrl,[5,9],undefined),
-  ok = receive_result(),
+  {result,2,_,[14],_} = erwa_router:call(Router,2,[{}],RpcUrl,[5,9],undefined),
+  %ok = receive_result(),
   true = gen_server:call(Pid,{all_done}),
   ok.
 

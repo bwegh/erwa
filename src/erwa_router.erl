@@ -170,6 +170,7 @@ start_link(Args) ->
   timestamp = undefined,
   id = undefined,
   callee_id = undefined,
+  ref = undefined,
   procedure_id = undefined,
   request_id = undefined,
   caller_id = undefined,
@@ -267,13 +268,11 @@ handle_call({unregister,RequestId,RegistrationId},{Pid,_Ref},State) ->
     end,
   {reply,Reply,State};
 
-handle_call({call,RequestId,Options,ProcedureUrl,Arguments,ArgumentsKw},{Pid,_Ref},State) ->
-  Reply =
-  case enqueue_procedure_call(Pid,RequestId,Options,ProcedureUrl,Arguments,ArgumentsKw,State) of
-    {ok} -> ok;
-    {error,Details,Reason} -> {error,call,RequestId,Details,Reason,Arguments,ArgumentsKw}
-  end,
-  {reply,Reply,State};
+handle_call({call,RequestId,Options,ProcedureUrl,Arguments,ArgumentsKw},{Pid,_Ref}=From,State) ->
+  case enqueue_procedure_call(From,Pid,RequestId,Options,ProcedureUrl,Arguments,ArgumentsKw,State) of
+    {ok} -> {noreply,State};
+    {error,Details,Reason} -> {reply,{error,call,RequestId,Details,Reason,Arguments,ArgumentsKw},State}
+  end;
 
 handle_call({yield,RequestId,Options,Arguments,ArgumentsKw},{Pid,_Ref},State) ->
   Reply =
@@ -422,7 +421,7 @@ unregister_procedure(Pid,ProcedureId,State) ->
   end.
 
 
-enqueue_procedure_call(Pid, RequestId, Options,ProcedureUrl,Arguments,ArgumentsKw,#state{up=UP,p=P,sess=Sessions}=State) ->
+enqueue_procedure_call(From, Pid, RequestId, Options,ProcedureUrl,Arguments,ArgumentsKw,#state{up=UP,p=P,sess=Sessions}=State) ->
   Session = get_session_from_pid(Pid,State),
   %SessionId = Session#session.id,
 
@@ -437,12 +436,12 @@ enqueue_procedure_call(Pid, RequestId, Options,ProcedureUrl,Arguments,ArgumentsK
       CalleePid = CalleeSession#session.pid,
 
       Details = [{}],
-      {ok,InvocationId} = create_invocation(Session,CalleeSession,RequestId,Procedure,Options,Arguments,ArgumentsKw,State),
+      {ok,InvocationId} = create_invocation(From,Session,CalleeSession,RequestId,Procedure,Options,Arguments,ArgumentsKw,State),
       send_message_to_peers({invocation,InvocationId,ProcedureId,Details,Arguments,ArgumentsKw},[CalleePid]),
       {ok}
   end.
 
-dequeue_procedure_call(Pid,Id,_Options,Arguments,ArgumentsKw,#state{i=I,sess=Sessions}=State) ->
+dequeue_procedure_call(Pid,Id,_Options,Arguments,ArgumentsKw,#state{i=I}=State) ->
   Session = get_session_from_pid(Pid,State),
   SessionId = Session#session.id,
   case ets:lookup(I,Id) of
@@ -450,10 +449,11 @@ dequeue_procedure_call(Pid,Id,_Options,Arguments,ArgumentsKw,#state{i=I,sess=Ses
     [Invocation] ->
       case Invocation#invocation.callee_id of
        SessionId ->
-          #invocation{caller_id=CallerId, request_id=RequestId} = Invocation,
+          #invocation{ref=From, request_id=RequestId} = Invocation,
           Details = [{}],
-          [Caller] = ets:lookup(Sessions,CallerId),
-          send_message_to_peers({result,RequestId,Details,Arguments,ArgumentsKw},[Caller#session.pid]),
+          %[Caller] = ets:lookup(Sessions,CallerId),
+          %send_message_to_peers({result,RequestId,Details,Arguments,ArgumentsKw},[Caller#session.pid]),
+          gen_server:reply(From,{result,RequestId,Details,Arguments,ArgumentsKw}),
           remove_invocation(Id,State),
           {ok};
         _ ->
@@ -532,8 +532,8 @@ remove_session_from_procedure(Session,ProcedureId,#state{p=P,up=UP,sess=Sessions
   ok.
 
 
--spec create_invocation(Session :: #session{}, CalleeSession :: #session{}, RequestId :: non_neg_integer(), Procedure :: #procedure{}, Options :: list(), Arguments :: list(), ArgumentsKw :: list(), State :: #state{}) -> {ok, non_neg_integer()}.
-create_invocation(Session,CalleeSession,RequestId,Procedure,Options,Arguments,ArgumentsKw,#state{i=I}=State) ->
+-spec create_invocation(From :: term(), Session :: #session{}, CalleeSession :: #session{}, RequestId :: non_neg_integer(), Procedure :: #procedure{}, Options :: list(), Arguments :: list(), ArgumentsKw :: list(), State :: #state{}) -> {ok, non_neg_integer()}.
+create_invocation(From,Session,CalleeSession,RequestId,Procedure,Options,Arguments,ArgumentsKw,#state{i=I}=State) ->
   Id = gen_id(),
   case ets:lookup(I,Id) of
     [] ->
@@ -543,6 +543,7 @@ create_invocation(Session,CalleeSession,RequestId,Procedure,Options,Arguments,Ar
         procedure_id = Procedure#procedure.id,
         request_id = RequestId,
         caller_id = Session#session.id,
+        ref = From,
         callee_id = CalleeSession#session.id,
         options = Options,
         arguments = Arguments,
@@ -550,7 +551,7 @@ create_invocation(Session,CalleeSession,RequestId,Procedure,Options,Arguments,Ar
         true = ets:insert_new(I,Invocation),
       {ok,Id};
     _ ->
-      create_invocation(Session,CalleeSession,RequestId,Procedure,Options,Arguments,ArgumentsKw,State)
+      create_invocation(From,Session,CalleeSession,RequestId,Procedure,Options,Arguments,ArgumentsKw,State)
   end.
 
 -spec remove_invocation(Id :: non_neg_integer(), State :: #state{}) -> ok.

@@ -7,7 +7,6 @@
 	{registered, []},
 	{applications, [
 		kernel,
-    timer,
     sasl,
 		stdlib,
 		crypto,

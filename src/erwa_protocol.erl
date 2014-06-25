@@ -53,7 +53,7 @@ close(Reason,#state{router=R}) ->
   erwa_router:remove_session(R,Reason).
 
 
-
+-spec handle_message(term(),#state{}) -> term().
 % **************** Session Begin/End **************************
 handle_message({hello,Realm,Details},#state{router=undefined}=State) ->
   {Reply,Router} =

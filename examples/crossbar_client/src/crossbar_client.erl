@@ -8,7 +8,7 @@
 -define(RPC_ADD2_URL,<<"com.example.add2">>).
 -define(EVENT_ONHELLO_URL,<<"com.example.onhello">>).
 -define(EVENT_ONCOUNTER_URL,<<"com.example.oncounter">>).
--define(REALM,<<"com.example">>).
+-define(REALM,<<"realm1">>).
 -define(HOST,"localhost"). % has to be a string
 -define(PORT,5555).
 -define(ENCODING,msgpack). %% msgpack or json
@@ -40,11 +40,11 @@ init(_) ->
   {ok,Con} = erwa:start_client(),
   io:format("done.~nconnecting to realm ~p at ~p:~p ... ",[?REALM,?HOST,?PORT]),
   {ok,SessionId,_RouterDetails} = erwa:connect(Con,?HOST,?PORT,?REALM,?ENCODING),
-  io:format("done (~p).~nsubscribe to ~p ... ",[SessionId,?EVENT_URL]),
-  {ok,_SubId} = erwa:subscribe(Con,[{}],?EVENT_ONHELLO_URL{crossbar_client,on_hello,[]}),
-  io:format("subscribed (~p).~nregister ~p ... ",[SubId,?RPC_ECHO_URL]),
-  {ok,_RegId} = erwa:register(Con,[{}],?RPC_ADD2_URL,{crossbar_client,add2,[]}),
-  io:format("registered (~p).~nstarting the timer ...",[EchoRPCId]),
+  io:format("done (~p).~nsubscribe to ~p ... ",[SessionId,?EVENT_ONHELLO_URL]),
+  {ok,SubId} = erwa:subscribe(Con,[{}],?EVENT_ONHELLO_URL,{crossbar_client,on_hello,[]}),
+  io:format("subscribed (~p).~nregister ~p ... ",[SubId,?RPC_ADD2_URL]),
+  {ok,RegId} = erwa:register(Con,[{}],?RPC_ADD2_URL,{crossbar_client,add2,[]}),
+  io:format("registered (~p).~nstarting the timer ...",[RegId]),
   ok = timer:start(),
   {ok,_TRef} = timer:send_after(1000,on_timer),
   io:format("done~n"),
@@ -55,7 +55,7 @@ on_hello(_Details,Arguments,ArgumentsKw,_) ->
   io:format("onhello(): ~p ~p~n",[Arguments,ArgumentsKw]),
   ok.
 
-on_add2(_Details,[A,B],_ArgumentsKw,_) ->
+add2(_Details,[A,B],_ArgumentsKw,_) ->
   io:format("add2() called with ~p and ~p",[A,B]),
   {ok,[{}],[A+B],undefined}.
 
@@ -69,11 +69,11 @@ handle_cast(_Msg,State) ->
 handle_info(on_timer,#state{con=Con, counter=Counter}=State) ->
   io:format("tick~n"),
   ok = erwa:publish(Con,[{}],?EVENT_ONCOUNTER_URL,[Counter]),
-  case erwa:call(Con,[{}],?RPC_MUL2_URL,Params) of
-    {ok,_Details,ResA,ResAkw} ->
+  case erwa:call(Con,[{}],?RPC_MUL2_URL,[Counter,3]) of
+    {ok,_Details,ResA,_ResAkw} ->
       io:format("mul2() result: ~p~n",ResA);
-    Msg ->
-      io:format("mul2() error ~p~n",[Msg]);
+    {error,_Details,Error,_Arguments,_ArgumentsKw} ->
+      io:format("mul2() error ~p~n",[Error])
     end,
   {ok,_TRef} = timer:send_after(1000,on_timer),
   {noreply,State#state{counter=Counter+1}};
