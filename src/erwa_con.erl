@@ -220,7 +220,7 @@ handle_message({unregistered,RequestId},#state{ets=Ets}) ->
   ets:delete(Ets,RegistrationId),
   gen_server:reply(From,ok);
 
-handle_message({invocation,RequestId,RegistrationId,Details,Arguments,ArgumentsKw}=Msg,#state{ets=Ets}) ->
+handle_message({invocation,RequestId,RegistrationId,Details,Arguments,ArgumentsKw}=Msg,#state{ets=Ets}=State) ->
   [#registration{
                 id = RegistrationId,
                 mfa = Mfa,
