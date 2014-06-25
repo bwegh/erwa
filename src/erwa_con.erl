@@ -189,7 +189,7 @@ handle_message({unsubscribed,RequestId},#state{ets=Ets}) ->
   ets:delete(Ets,SubscriptionId),
   gen_server:reply(From,ok);
 
-handle_message({event,SubscriptionId,_PublicationId,_Details,_Arguments,_ArgumentsKw}=Msg,#state{ets=Ets}) ->
+handle_message({event,SubscriptionId,_PublicationId,Details,Arguments,ArgumentsKw}=Msg,#state{ets=Ets}) ->
   [#subscription{
                 id = SubscriptionId,
                 mfa = Mfa,
@@ -197,8 +197,8 @@ handle_message({event,SubscriptionId,_PublicationId,_Details,_Arguments,_Argumen
   case Mfa of
     undefined ->
       Pid ! {erwa,Msg};
-    {M,F,A}  ->
-      erlang:apply(M,F,[Msg|A])
+    {M,F,S}  ->
+      erlang:apply(M,F,[Details,Arguments,ArgumentsKw,S])
   end;
 handle_message({result,RequestId,Details,Arguments,ArgumentsKw},#state{ets=Ets}) ->
   [#ref{method=call,ref=From}] = ets:lookup(Ets,RequestId),
@@ -220,7 +220,7 @@ handle_message({unregistered,RequestId},#state{ets=Ets}) ->
   ets:delete(Ets,RegistrationId),
   gen_server:reply(From,ok);
 
-handle_message({invocation,_RequestId,RegistrationId,_Details,_Arguments,_ArgumentsKw}=Msg,#state{ets=Ets}) ->
+handle_message({invocation,RequestId,RegistrationId,Details,Arguments,ArgumentsKw}=Msg,#state{ets=Ets}) ->
   [#registration{
                 id = RegistrationId,
                 mfa = Mfa,
@@ -228,8 +228,9 @@ handle_message({invocation,_RequestId,RegistrationId,_Details,_Arguments,_Argume
   case Mfa of
     undefined ->
       Pid ! {erwa,Msg};
-    {M,F,A}  ->
-      erlang:apply(M,F,[Msg|A])
+    {M,F,S}  ->
+       {ok,Options,ResA,ResAKw} = erlang:apply(M,F,[Details,Arguments,ArgumentsKw,S]),
+       ok = raw_send({yield,RequestId,Options,ResA,ResAKw},State)
   end;
 
 
