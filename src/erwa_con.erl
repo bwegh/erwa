@@ -233,6 +233,10 @@ handle_message({invocation,RequestId,RegistrationId,Details,Arguments,ArgumentsK
        ok = raw_send({yield,RequestId,Options,ResA,ResAKw},State)
   end;
 
+handle_message({error,call,RequestId,Details,Error,Arguments,ArgumentsKw},#state{ets=Ets}) ->
+  [#ref{method=call,ref=From}] = ets:lookup(Ets,RequestId),
+  ets:delete(Ets,RequestId),
+  gen_server:reply(From,{error,Details,Error,Arguments,ArgumentsKw});
 
 handle_message(Msg,_State) ->
   io:format("unhandled message ~p~n",[Msg]).

@@ -187,8 +187,11 @@ to_erl([?ERROR,RequestType,RequestId,Details,Error]) ->
   to_erl([?ERROR,RequestType,RequestId,Details,Error,undefined,undefined]);
 to_erl([?ERROR,RequestType,RequestId,Details,Error,Arguments]) ->
   to_erl([?ERROR,RequestType,RequestId,Details,Error,Arguments,undefined]);
-to_erl([?ERROR,RequestType,RequestId,Details,Error,Arguments,ArgumentsKw]) ->
-  {error,RequestType,RequestId,Details,Error,Arguments,ArgumentsKw};
+
+to_erl([?ERROR,?CALL,RequestId,Details,?ERROR_NO_SUCH_PROCEDURE,Arguments,ArgumentsKw]) ->
+  {error,call,RequestId,Details,no_such_procedure,Arguments,ArgumentsKw};
+to_erl([?ERROR,?CALL,RequestId,Details,Error,Arguments,ArgumentsKw]) ->
+  {error,call,RequestId,Details,Error,Arguments,ArgumentsKw};
 
 to_erl([?PUBLISH,RequestId,Options,Topic]) ->
   to_erl([?PUBLISH,RequestId,Options,Topic,undefined,undefined]);
