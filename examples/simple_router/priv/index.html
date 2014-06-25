@@ -27,10 +27,11 @@
             {
                 var Encoding = $('#enc_type').val();
                 wsHost = 'ws://localhost:8080/wamp';
+                Realm = $('#realm').val();
                 wamp = new Wampy(wsHost, {onConnect: function() { onConnect(); },
                                           onClose: function() { onDisconnect(); },
                                           onError: function() { onError(); },
-                                          realm: 'ws.wamp.test',
+                                          realm: Realm,
                                           transportEncoding: Encoding});
                 console.log('Connecting to: ' +  wsHost + ' using encoding '+Encoding);
                 $('#status').append('<p><span style="color: orange;">Connecting to: ' +  wsHost + ' using encoding '+Encoding+'</span></p>');
@@ -66,6 +67,7 @@
             var add3 = function(X) {return X+3;};
             var sub2 = function(X) {return X-2;};
             var hello = function(X) {return "Hello "+X;};
+            var mul2 = function(X,Y) {return X*Y;};
 
             function get_reg_fun(Name) {
                 if(Name == "square") {
@@ -76,7 +78,10 @@
                     return sub2;
                 } else if(Name == "hello") {
                     return hello;
+                } else if(Name == "mul2") {
+                    return mul2;
                 }
+
             }
 
             function wamp_register() {
@@ -172,6 +177,7 @@ data:
     <input id="reg_uri" type="text" value="ws.wamp.test.square"></input>
 function:
 <select id="reg_fun">
+    <option>mul2</option>
     <option>square</option>
     <option>add3</option>
     <option>sub2</option>
@@ -196,7 +202,8 @@ function:
         <option>msgpack</option>
         <option>json</option>
     </select>
-    <button type="button" onclick="connect();">connect</button>
+    <input id="realm" value="realm1"></input>
+    <button type="button" onclick="connect()">connect</button>
 </div>
 </body>
 </html>
