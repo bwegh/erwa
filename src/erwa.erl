@@ -35,11 +35,11 @@
 -export([connect/2]).
 -export([connect/5]).
 
--export([subscribe/3]).
+-export([subscribe/3,subscribe/4]).
 -export([unsubscribe/2]).
 -export([publish/3,publish/4,publish/5]).
 
--export([register/3]).
+-export([register/3,register/4]).
 -export([unregister/2]).
 -export([call/3,call/4,call/5]).
 -export([yield/3,yield/4,yield/5]).
