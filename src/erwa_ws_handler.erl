@@ -31,7 +31,8 @@
 
 -record(state,{
   enc = undefined,
-  prot = undefined
+  prot = undefined,
+  buffer = <<"">>
                }).
 
 init({tcp, http}, _Req, _Opts) ->
@@ -56,8 +57,9 @@ websocket_init(_TransportName, Req, _Opts) ->
 websocket_handle({text, Data}, Req, #state{enc=json}=State) ->
   handle_wamp(Data,Req,State);
 
-websocket_handle({binary, Data}, Req, #state{enc=msgpack}=State) ->
-  handle_wamp(Data,Req,State);
+websocket_handle({binary, Data}, Req, #state{enc=msgpack,buffer=Buf}=State) ->
+  Buffer = <<Buf/binary, Data/binary>>,
+  handle_wamp(Buffer,Req,State);
 
 websocket_handle(_Data, Req, State) ->
   {ok, Req, State}.
@@ -75,18 +77,23 @@ websocket_terminate(Reason, _Req, #state{prot=Prot}) ->
 
 
 handle_wamp(Data,Req,#state{prot=Prot, enc=Enc}=State) ->
-  Msg = decode(Data,Enc),
-  {ok,Reply,NewProt} = erwa_protocol:handle(Msg,Prot),
-  NewState = State#state{prot=NewProt},
-  case Reply of
-    noreply -> {ok, Req, NewState};
-    shutdown -> {shutdown,Req,NewState};
-    Reply -> {reply, encode(Reply,Enc),Req,NewState}
+  case decode(Data,Enc) of
+    incomplete -> {ok,Req,State};
+    Msg ->
+      {ok,Reply,NewProt} = erwa_protocol:handle(Msg,Prot),
+      NewState = State#state{prot=NewProt},
+      case Reply of
+        noreply -> {ok, Req, NewState};
+        shutdown -> {shutdown,Req,NewState};
+        Reply -> {reply, encode(Reply,Enc),Req,NewState}
+      end
   end.
 
 decode(Data,msgpack) ->
-    {ok,Msg} = msgpack:unpack(Data,[{format,jsx}]),
-    Msg;
+    case msgpack:unpack(Data,[{format,jsx}]) of
+      {ok,Msg} -> Msg;
+      {error, _ } -> incomplete
+    end;
 decode(Data,json) ->
     jsx:decode(Data).
 
