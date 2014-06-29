@@ -263,9 +263,7 @@ send(Msg,From,Args,#state{ets=Ets}=State) ->
 raw_send(Message,#state{router=R,socket=S}=State) ->
   case destination(State) of
     local ->
-      Reply = gen_server:call(R,Message),
-      self() ! {erwa,Reply},
-      ok;
+      ok = erwa_router:handle_wamp_message(R,Message);
     remote ->
       ok = gen_tcp:send(S,encode(erwa_protocol:to_wamp(Message),State))
   end.

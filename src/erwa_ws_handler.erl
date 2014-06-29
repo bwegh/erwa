@@ -29,9 +29,13 @@
 -export([websocket_info/3]).
 -export([websocket_terminate/3]).
 
+-define(SUBPROTHEADER,<<"sec-websocket-protocol">>).
+-define(WSMSGPACK,<<"wamp.2.msgpack">>).
+-define(WSJSON,<<"wamp.2.json">>).
+
 -record(state,{
   enc = undefined,
-  prot = undefined,
+  router = undefined,
   buffer = <<"">>
                }).
 
@@ -40,14 +44,14 @@ init({tcp, http}, _Req, _Opts) ->
 
 websocket_init(_TransportName, Req, _Opts) ->
   % need to check for the wamp.2.json or wamp.2.msgpack
-  {ok, Protocols, Req1} = cowboy_req:parse_header(<<"sec-websocket-protocol">>, Req),
+  {ok, Protocols, Req1} = cowboy_req:parse_header(?SUBPROTHEADER, Req),
   Prot = erwa_protocol:create(),
   case lists:nth(1,Protocols) of
-      <<"wamp.2.msgpack">> ->
-        Req2  = cowboy_req:set_resp_header(<<"sec-websocket-protocol">>,<<"wamp.2.msgpack">>,Req1),
+      ?WSMSGPACK ->
+        Req2  = cowboy_req:set_resp_header(?SUBPROTHEADER,?WSMSGPACK,Req1),
         {ok,Req2,#state{enc=msgpack,prot=Prot}};
-      <<"wamp.2.json">> ->
-        Req2  = cowboy_req:set_resp_header(<<"sec-websocket-protocol">>,<<"wamp.2.json">>,Req1),
+      ?WSJSON ->
+        Req2  = cowboy_req:set_resp_header(?SUBPROTHEADER,?WSJSON,Req1),
         {ok,Req2,#state{enc=json,prot=Prot}};
       _ ->
         {shutdown,Req1}
@@ -57,9 +61,8 @@ websocket_init(_TransportName, Req, _Opts) ->
 websocket_handle({text, Data}, Req, #state{enc=json}=State) ->
   handle_wamp(Data,Req,State);
 
-websocket_handle({binary, Data}, Req, #state{enc=msgpack,buffer=Buf}=State) ->
-  Buffer = <<Buf/binary, Data/binary>>,
-  handle_wamp(Buffer,Req,State);
+websocket_handle({binary, Data}, Req, #state{enc=msgpack}=State) ->
+  handle_wamp(Data,Req,State);
 
 websocket_handle(_Data, Req, State) ->
   {ok, Req, State}.
@@ -67,43 +70,39 @@ websocket_handle(_Data, Req, State) ->
 websocket_info({erwar,shutdown}, Req, State) ->
   {shutdown,Req,State};
 websocket_info({erwa,Msg}, Req, #state{enc=Enc}=State) ->
-  {reply, encode(erwa_protocol:to_wamp(Msg),Enc), Req, State};
+	EncWamp = erwa_protocol:serialize(Msg,Enc),
+	Reply =
+	case Enc of
+		mspack -> {binary,EncWamp};
+		json -> {text,EncWamp}
+	end,
+	{reply,Reply,State};
 websocket_info(_Data, Req, State) ->
   {ok,Req,State}.
 
 websocket_terminate(Reason, _Req, #state{prot=Prot}) ->
-  erwa_protocol:close(Reason,Prot),
   ok.
 
 
-handle_wamp(Data,Req,#state{prot=Prot, enc=Enc}=State) ->
-  case decode(Data,Enc) of
-    incomplete -> {ok,Req,State};
-    Msg ->
-      {ok,Reply,NewProt} = erwa_protocol:handle(Msg,Prot),
-      NewState = State#state{prot=NewProt},
-      case Reply of
-        noreply -> {ok, Req, NewState};
-        shutdown -> {shutdown,Req,NewState};
-        Reply -> {reply, encode(Reply,Enc),Req,NewState}
-      end
+handle_wamp(Data,Req,#state{buffer=Buffer, enc=Enc}=State) ->
+  NewBuffer = <<Buffer/binary, Data/binary>>,
+  Messages = erwar_protocol:deserialize(NewBuffer,Enc);
+
+
+forward_message({hello,Realm,_} = Msg,#state{router=undefined}=State) ->
+  {ok,Pid} = erwa_realms:get_router(Realm),
+  forward_message(Msg,State#state{router=Pid});
+
+  {ok,Pid} = erwa_realms:get_router(Realm),
+
+  Msg = decode(Data,Enc),
+  {ok,Reply,NewProt} = erwa_protocol:handle(Msg,Prot),
+  NewState = State#state{prot=NewProt},
+  case Reply of
+    noreply -> {ok, Req, NewState};
+    shutdown -> {shutdown,Req,NewState};
+    Reply -> {reply, encode(Reply,Enc),Req,NewState}
   end.
-
-decode(Data,msgpack) ->
-    case msgpack:unpack(Data,[{format,jsx}]) of
-      {ok,Msg} -> Msg;
-      {error, _ } -> incomplete
-    end;
-decode(Data,json) ->
-    jsx:decode(Data).
-
-
-encode(Msg,_Enc) when is_atom(Msg) ->
-  Msg;
-encode(Msg,msgpack)  ->
-  {binary,msgpack:pack(Msg,[{format,jsx}])};
-encode(Msg,json)  ->
-  {text,jsx:encode(Msg)}.
 
 
 -ifdef(TEST).

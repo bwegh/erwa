@@ -115,6 +115,7 @@ handle_cast(_Request, State) ->
 handle_info({'DOWN',Ref,process,_Pid,_Reason},State) ->
   remove_router(Ref,State),
   {noreply,State};
+
 handle_info(_Info, State) ->
 	{noreply, State}.
 

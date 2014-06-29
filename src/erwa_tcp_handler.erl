@@ -21,6 +21,8 @@
 %%
 
 -module(erwa_tcp_handler).
+
+
 -behaviour(ranch_protocol).
 -behaviour(gen_server).
 
@@ -68,7 +70,7 @@ init(Ref, Socket, Transport, _Opts = []) ->
 
 
 init(_Opts) ->
-  erlang:error("never call this").
+  {error,dont_call}.
 
 
 handle_call(_Request, _From, State) ->

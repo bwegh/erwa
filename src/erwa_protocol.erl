@@ -21,96 +21,83 @@
 %%
 
 -module(erwa_protocol).
--record(state,{
-               router = undefined,
-               realm = undefined
-               }).
 
-
--export([create/0]).
--export([handle/2]).
--export([close/2]).
+-export([deserialize/2]).
+-export([serialize/2]).
 -export([to_wamp/1]).
 -export([to_erl/1]).
 
-% @TODO: validate all message parts and if not ok just crash it ...
-
-create() ->
-  #state{}.
-
-
-handle(Wamp,State) ->
-  Msg = to_erl(Wamp),
-  {ok,Reply,NewState} = handle_message(Msg,State),
-  WampReply = to_wamp(Reply),
-  {ok,WampReply,NewState}.
+-export([is_valid_uri/1]).
+-export([is_valid_id/1]).
+-export([is_valid_dict/1]).
 
 
+deserialize(Buffer,Encoding) ->
+  deserialize(Buffer,[],Encoding).
 
-close(_Reason,#state{router=undefined}) ->
-  ok;
-close(Reason,#state{router=R}) ->
-  erwa_router:remove_session(R,Reason).
+-spec deserialize(Buffer :: binary(), Messages :: list(), Encoding :: atom() ) -> {[Message :: term()], NewBuffer :: binary()}.
 
+deserialize(Buffer,Messages,msgpack) ->
+  case msgpack:unpack_stream(Buffer,[{format,jsx}]) of
+    {Msg,NewBuffer} when is_binary(Msg) ->
+      deserialize(NewBuffer,[Msg|Messages],msgpack);
+    {error,incomplete} ->
+      {to_erl_reverse(Messages),Buffer}
 
--spec handle_message(term(),#state{}) -> term().
-% **************** Session Begin/End **************************
-handle_message({hello,Realm,Details},#state{router=undefined}=State) ->
-  {Reply,Router} =
-    case erwa_realms:get_router(Realm) of
-      {ok,R} ->
-        {erwa_router:hello(R,Details),R};
-      {error,_} ->
-        {shutdown,undefined}
-    end,
-   {ok,Reply,State#state{realm=Realm, router=Router}};
-handle_message({goodbye,Details,Reason},#state{router=Router}=State) ->
-  Reply = erwa_router:goodbye(Router,Details,Reason),
-  {ok,Reply,State};
-
-% **************** Subscription and Events **************************
-handle_message({subscribe,RequestId,Options,Topic},#state{router=Router}=State) ->
-  Reply = erwa_router:subscribe(Router,RequestId,Options,Topic),
-  {ok,Reply,State};
-handle_message({unsubscribe,RequestId,SubscriptionId},#state{router=Router}=State) ->
-  Reply = erwa_router:unsubscribe(Router,RequestId,SubscriptionId),
-  {ok,Reply,State};
-
-handle_message({publish,RequestId,Options,Topic,Arguments,ArgumentsKw},#state{router=Router}=State) ->
-  Reply =  erwa_router:publish(Router,RequestId,Options,Topic,Arguments,ArgumentsKw),
-  {ok,Reply,State};
+  end;
+deserialize(Buffer,Messages,json) ->
+  %% is it possible to check the data here ?
+  %% length and stuff, yet should not be needed
+  {[to_erl(jsx:decode(Buffer))|Messages],<<"">>};
+deserialize(<<Len:32/unsigned-integer-big,Data/binary>>  = Buffer,Messages,raw_msgpack) ->
+  case byte_size(Data) >= Len of
+    true ->
+      <<Enc:Len/binary,NewBuffer/binary>> = Data,
+      {ok,Msg} = msgpack:unpack(Enc),
+      deserialize(NewBuffer,[Msg|Messages],raw_msgpack);
+    false ->
+      {to_erl_reverse(Messages),Buffer}
+  end;
+deserialize(Buffer,Messages,_) ->
+  {to_erl_reverse(Messages),Buffer}.
 
 
 
+serialize({erwa,Erwa},Enc) ->
+  WAMP = to_wamp(Erwa),
+  serialize(WAMP,Enc);
+serialize(Msg,msgpack)  ->
+  msgpack:pack(Msg,[{format,jsx}]);
+serialize(Msg,json)  ->
+  jsx:encode(Msg);
+serialize(Message,raw_msgpack) ->
+  Enc = msgpack:pack(Message,[jsx]),
+  Len = byte_size(Enc),
+  <<Len:32/unsigned-integer-big,Enc/binary>>;
+serialize(Message,raw_json) ->
+  Enc = jsx:encode(Message),
+  Len = byte_size(Enc),
+  <<Len:32/unsigned-integer-big,Enc/binary>>.
 
+to_erl_reverse(List)->
+  to_erl_reverse(List,[]).
 
-% **************** Remote Procedure calls **************************
+to_erl_reverse([],List) ->
+  List;
+to_erl_reverse([H|T],Messages) ->
+  to_erl_reverse(T,[to_erl(H)|Messages]).
 
-handle_message({register,RequestId,Options,ProcedureUrl},#state{router=Router}=State) ->
-  Reply = erwa_router:register(Router,RequestId,Options,ProcedureUrl),
-  {ok,Reply,State};
-handle_message({unregister,RequestId,RegistrationId},#state{router=Router}=State) ->
-  Reply = erwa_router:unregister(Router,RequestId,RegistrationId),
-  {ok,Reply,State};
+is_valid_uri(Uri) when is_binary(Uri) -> true;
+is_valid_uri(_) -> false.
 
-handle_message({call,RequestId,Options,Procedure,Arguments,ArgumentsKw},#state{router=Router}=State) ->
-  Reply = erwa_router:call(Router,RequestId,Options,Procedure,Arguments,ArgumentsKw),
-  {ok,Reply,State};
+is_valid_id(Id) when is_integer(Id), Id >= 0, Id =< 9007199254740992 -> true;
+is_valid_id(_) -> false.
 
-handle_message({yield,InvocationId,Options,Arguments,ArgumentsKw},#state{router=Router}=State) ->
-  Reply = erwa_router:yield(Router,InvocationId,Options,Arguments,ArgumentsKw),
-  {ok,Reply,State};
+is_valid_dict(Dict) when is_list(Dict) -> true;
+is_valid_dict(_) -> false.
 
-
-
-handle_message(_,State) ->
-  {ok,{goodbye,[{message, <<"unknown message">>}],invalid_argument},State}.
-
-
-
-
-
-
+is_valid_list(List) when is_list(List) -> true;
+is_valid_list(_) -> false.
 
 
 -define(HELLO,1).
@@ -155,19 +142,19 @@ handle_message(_,State) ->
 -define(ERROR_INVALID_TOPIC,<<"wamp.error.invalid_topic">>).
 -define(ERROR_PROCEDURE_ALREADY_EXISTS,<<"wamp.error.procedure_already_exists">>).
 
-
-
-
-
-
-
 to_erl([?HELLO,Realm,Details]) ->
+  true = is_valid_uri(Realm),
+  true = is_valid_dict(Details),
   {hello,Realm,Details};
 
 to_erl([?WELCOME,SessionId,Details]) ->
+  true = is_valid_id(SessionId),
+  true = is_valid_dict(Details),
   {welcome,SessionId,Details};
 
 to_erl([?ABORT,Details,Reason]) ->
+  true = is_valid_dict(Details),
+  true = is_valid_uri(Reason),
   {abort,Details,Reason};
 
 to_erl([?GOODBYE,Details,?ERROR_NOT_AUTHORIZED]) ->
@@ -181,6 +168,8 @@ to_erl([?GOODBYE,Details,?ERROR_CLOSE_REALM]) ->
 to_erl([?GOODBYE,Details,?ERROR_AND_OUT]) ->
   to_erl([?GOODBYE,Details,goodbye_and_out]);
 to_erl([?GOODBYE,Details,Reason]) ->
+  true = is_valid_dict(Details),
+  true = is_valid_uri(Reason) or is_atom(Reason),
   {goodbye,Details,Reason};
 
 to_erl([?ERROR,RequestType,RequestId,Details,Error]) ->
@@ -189,8 +178,14 @@ to_erl([?ERROR,RequestType,RequestId,Details,Error,Arguments]) ->
   to_erl([?ERROR,RequestType,RequestId,Details,Error,Arguments,undefined]);
 
 to_erl([?ERROR,?CALL,RequestId,Details,?ERROR_NO_SUCH_PROCEDURE,Arguments,ArgumentsKw]) ->
-  {error,call,RequestId,Details,no_such_procedure,Arguments,ArgumentsKw};
+  to_erl([?ERROR,?CALL,RequestId,Details,no_such_procedure,Arguments,ArgumentsKw]);
+
 to_erl([?ERROR,?CALL,RequestId,Details,Error,Arguments,ArgumentsKw]) ->
+  true = is_valid_id(RequestId),
+  true = is_valid_dict(Details),
+  true = is_valid_uri(Error) or is_atom(Error),
+  true = is_valid_list(Arguments) or is_atom(Arguments),
+  true = is_valid_dict(ArgumentsKw) or is_atom(ArgumentsKw),
   {error,call,RequestId,Details,Error,Arguments,ArgumentsKw};
 
 to_erl([?PUBLISH,RequestId,Options,Topic]) ->
@@ -198,21 +193,36 @@ to_erl([?PUBLISH,RequestId,Options,Topic]) ->
 to_erl([?PUBLISH,RequestId,Options,Topic,Arguments]) ->
   to_erl([?PUBLISH,RequestId,Options,Topic,Arguments,undefined]);
 to_erl([?PUBLISH,RequestId,Options,Topic,Arguments,ArgumentsKw]) ->
+  true = is_valid_id(RequestId),
+  true = is_valid_dict(Options),
+  true = is_valid_uri(Topic),
+  true = is_valid_list(Arguments) or is_atom(Arguments),
+  true = is_valid_dict(ArgumentsKw) or is_atom(ArgumentsKw),
   {publish,RequestId,Options,Topic,Arguments,ArgumentsKw};
 
 to_erl([?PUBLISHED,RequestId,PublicationId]) ->
+  true = is_valid_id(RequestId),
+  true = is_valid_id(PublicationId),
   {published,RequestId,PublicationId};
 
 to_erl([?SUBSCRIBE,RequestId,Options,Topic]) ->
+  true = is_valid_id(RequestId),
+  true = is_valid_dict(Options),
+  true = is_valid_uri(Topic),
   {subscribe,RequestId,Options,Topic};
 
 to_erl([?SUBSCRIBED,RequestId,SubscriptionId]) ->
+  true = is_valid_id(RequestId),
+  true = is_valid_id(SubscriptionId),
   {subscribed,RequestId,SubscriptionId};
 
 to_erl([?UNSUBSCRIBE,RequestId,SubscriptionId]) ->
+  true = is_valid_id(RequestId),
+  true = is_valid_id(SubscriptionId),
   {unsubscribe,RequestId,SubscriptionId};
 
 to_erl([?UNSUBSCRIBED,RequestId]) ->
+  true = is_valid_id(RequestId),
   {unsubscribed,RequestId};
 
 to_erl([?EVENT,SubscriptionId,PublicationId,Details]) ->
@@ -220,12 +230,23 @@ to_erl([?EVENT,SubscriptionId,PublicationId,Details]) ->
 to_erl([?EVENT,SubscriptionId,PublicationId,Details,Arguments]) ->
   to_erl([?EVENT,SubscriptionId,PublicationId,Details,Arguments,undefined]);
 to_erl([?EVENT,SubscriptionId,PublicationId,Details,Arguments,ArgumentsKw]) ->
+  true = is_valid_id(SubscriptionId),
+  true = is_valid_id(PublicationId),
+  true = is_valid_dict(Details),
+  true = is_valid_list(Arguments) or is_atom(Arguments),
+  true = is_valid_dict(ArgumentsKw) or is_atom(ArgumentsKw),
   {event,SubscriptionId,PublicationId,Details,Arguments,ArgumentsKw};
+
 to_erl([?CALL,RequestId,Options,Procedure]) ->
   to_erl([?CALL,RequestId,Options,Procedure,undefined,undefined]);
 to_erl([?CALL,RequestId,Options,Procedure,Arguments]) ->
   to_erl([?CALL,RequestId,Options,Procedure,Arguments,undefined]);
 to_erl([?CALL,RequestId,Options,Procedure,Arguments,ArgumentsKw]) ->
+  true = is_valid_id(RequestId),
+  true = is_valid_dict(Options),
+  true = is_valid_uri(Procedure),
+  true = is_valid_list(Arguments) or is_atom(Arguments),
+  true = is_valid_dict(ArgumentsKw) or is_atom(ArgumentsKw),
   {call,RequestId,Options,Procedure,Arguments,ArgumentsKw};
 
 to_erl([?RESULT,RequestId,Details]) ->
@@ -233,18 +254,28 @@ to_erl([?RESULT,RequestId,Details]) ->
 to_erl([?RESULT,RequestId,Details,Arguments]) ->
   to_erl([?RESULT,RequestId,Details,Arguments,undefined]);
 to_erl([?RESULT,RequestId,Details,Arguments,ArgumentsKw]) ->
+  true = is_valid_id(RequestId),
+  true = is_valid_dict(Details),
+  true = is_valid_list(Arguments) or is_atom(Arguments),
+  true = is_valid_dict(ArgumentsKw) or is_atom(ArgumentsKw),
   {result,RequestId,Details,Arguments,ArgumentsKw};
 
 to_erl([?REGISTER,RequestId,Options,Procedure]) ->
+  true = is_valid_id(RequestId),
+  true = is_valid_dict(Options),
+  true = is_valid_uri(Procedure),
   {register,RequestId,Options,Procedure};
 
 to_erl([?REGISTERED,RequestId,RegistrationId]) ->
+  true = is_valid_id(RequestId),
+  true = is_valid_id(RegistrationId),
   {registered,RequestId,RegistrationId};
 
 to_erl([?UNREGISTER,RequestId,RegistrationId]) ->
   {unregister,RequestId,RegistrationId};
 
 to_erl([?UNREGISTERED,RequestId]) ->
+  true = is_valid_id(RequestId),
   {unregistered,RequestId};
 
 to_erl([?INVOCATION,RequestId, RegistrationId, Details]) ->
@@ -252,6 +283,11 @@ to_erl([?INVOCATION,RequestId, RegistrationId, Details]) ->
 to_erl([?INVOCATION,RequestId, RegistrationId, Details, Arguments]) ->
   to_erl([?INVOCATION,RequestId, RegistrationId, Details, Arguments, undefined]);
 to_erl([?INVOCATION,RequestId, RegistrationId, Details, Arguments, ArgumentsKw]) ->
+  true = is_valid_id(RequestId),
+  true = is_valid_id(RegistrationId),
+  true = is_valid_dict(Details),
+  true = is_valid_list(Arguments) or is_atom(Arguments),
+  true = is_valid_dict(ArgumentsKw) or is_atom(ArgumentsKw),
   {invocation,RequestId, RegistrationId, Details, Arguments, ArgumentsKw};
 
 to_erl([?YIELD, RequestId, Options]) ->
@@ -259,6 +295,10 @@ to_erl([?YIELD, RequestId, Options]) ->
 to_erl([?YIELD, RequestId, Options, Arguments]) ->
   to_erl([?YIELD, RequestId, Options, Arguments, undefined]);
 to_erl([?YIELD, RequestId, Options, Arguments, ArgumentsKw]) ->
+  true = is_valid_id(RequestId),
+  true = is_valid_dict(Options),
+  true = is_valid_list(Arguments) or is_atom(Arguments),
+  true = is_valid_dict(ArgumentsKw) or is_atom(ArgumentsKw),
   {yield,RequestId,Options, Arguments,ArgumentsKw}.
 
 

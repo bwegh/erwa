@@ -124,16 +124,9 @@ start_link(Args) ->
 
 -record(invocation, {
   id = undefined,
-  timestamp = undefined,
-  callee_id = undefined,
-  ref = undefined,
-  procedure_id = undefined,
+  callee_pid = undefined,
   request_id = undefined,
-  caller_id = undefined,
-  caller_pid = undefined,
-  options = undefined,
-  arguments = undefined,
-  argumentskw = undefined
+  caller_pid = undefined
 }).
 
 %% gen_server.
@@ -181,7 +174,7 @@ handle_wamp_message({hello,Realm,Details},Pid,#state{realm=Realm}=State) ->
   {ok,SessionId} = create_session(Pid,Details,State),
   send_message_to(Pid,{welcome,SessionId,?ROUTER_DETAILS});
 
-handle_wamp_message({goodbye,Details,_Reason},Pid,#state{ets=Ets}=State) ->
+handle_wamp_message({goodbye,_Details,_Reason},Pid,#state{ets=Ets}=State) ->
   Session = get_session_from_pid(Pid,State),
   SessionId = Session#session.id,
   case Session#session.goodbye_sent of
@@ -193,8 +186,8 @@ handle_wamp_message({goodbye,Details,_Reason},Pid,#state{ets=Ets}=State) ->
 
   end;
 
-handle_wamp_message({publish,RequestId,Options,Topic,Arguments,ArgumentsKw},Pid,State) ->
-  {ok,PublicationId} = send_event_to_topic(Pid,Options,Topic,Arguments,ArgumentsKw,State),
+handle_wamp_message({publish,_RequestId,Options,Topic,Arguments,ArgumentsKw},Pid,State) ->
+  {ok,_PublicationId} = send_event_to_topic(Pid,Options,Topic,Arguments,ArgumentsKw,State),
   % TODO: send a reply if asked for ...
   ok;
 
@@ -237,8 +230,8 @@ handle_wamp_message({unregister,RequestId,RegistrationId},Pid,State) ->
 handle_wamp_message({error,invocation,_InvocationId,_Details,_Error,_Arguments,_ArgumentsKw},_Pid,_State) ->
   % TODO: implement
   ok;
-handle_wamp_message({yield,_InvocationId,_Options,_Arguments,_ArgumentsKw},_Pid,_State) ->
-  % TODO: implement
+handle_wamp_message({yield,InvocationId,Options,Arguments,ArgumentsKw},Pid,State) ->
+  dequeue_procedure_call(Pid,InvocationId,Options,Arguments,ArgumentsKw,State),
   ok;
 handle_wamp_message(Msg,_Pid,_State) ->
   io:format("unknown message ~p~n",[Msg]),
@@ -376,19 +369,14 @@ enqueue_procedure_call( Pid, RequestId, Options,ProcedureUrl,Arguments,Arguments
   end.
 
 dequeue_procedure_call(Pid,Id,_Options,Arguments,ArgumentsKw,#state{ets=Ets}=State) ->
-  Session = get_session_from_pid(Pid,State),
-  SessionId = Session#session.id,
   case ets:lookup(Ets,Id) of
     [] -> {error,not_found};
     [Invocation] ->
-      case Invocation#invocation.callee_id of
-       SessionId ->
-          #invocation{ref=From, request_id=RequestId} = Invocation,
+      case Invocation#invocation.callee_pid of
+       Pid ->
+          #invocation{caller_pid=CallerPid, request_id=RequestId} = Invocation,
           Details = [{}],
-          %[Caller] = ets:lookup(Sessions,CallerId),
-          %send_message_to_peers({result,RequestId,Details,Arguments,ArgumentsKw},[Caller#session.pid]),
-
-          send_message_to({result,RequestId,Details,Arguments,ArgumentsKw},Pid),
+          send_message_to({result,RequestId,Details,Arguments,ArgumentsKw},CallerPid),
           remove_invocation(Id,State),
           {ok};
         _ ->
@@ -471,15 +459,9 @@ create_invocation(Pid,Session,CalleeSession,RequestId,Procedure,Options,Argument
   Id = gen_id(),
   Invocation = #invocation{
         id = Id,
-        timestamp = undefined,
-        procedure_id = Procedure#procedure.id,
         request_id = RequestId,
-        caller_id = Session#session.id,
         caller_pid = Pid,
-        callee_id = CalleeSession#session.id,
-        options = Options,
-        arguments = Arguments,
-        argumentskw = ArgumentsKw },
+        callee_pid = CalleeSession#session.pid },
   case ets:insert_new(Ets,Invocation) of
     true ->
       {ok,Id};
