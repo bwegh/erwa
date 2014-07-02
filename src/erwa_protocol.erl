@@ -130,6 +130,13 @@ is_valid_dict(_) -> false.
 is_valid_list(List) when is_list(List) -> true;
 is_valid_list(_) -> false.
 
+is_valid_arguments(List) when is_list(List) -> true;
+is_valid_arguments(undefined)  -> true;
+is_valid_arguments(_)  -> false.
+
+is_valid_argumentskw(List) when is_list(List) -> true;
+is_valid_argumentskw(undefined)  -> true;
+is_valid_argumentskw(_)  -> false.
 
 -define(HELLO,1).
 -define(WELCOME,2).
@@ -215,8 +222,8 @@ to_erl([?ERROR,?CALL,RequestId,Details,Error,Arguments,ArgumentsKw]) ->
   true = is_valid_id(RequestId),
   true = is_valid_dict(Details),
   true = is_valid_uri(Error) or is_atom(Error),
-  true = is_valid_list(Arguments) or is_atom(Arguments),
-  true = is_valid_dict(ArgumentsKw) or is_atom(ArgumentsKw),
+  true = is_valid_arguments(Arguments),
+  true = is_valid_argumentskw(ArgumentsKw),
   {error,call,RequestId,Details,Error,Arguments,ArgumentsKw};
 
 to_erl([?PUBLISH,RequestId,Options,Topic]) ->
@@ -227,8 +234,8 @@ to_erl([?PUBLISH,RequestId,Options,Topic,Arguments,ArgumentsKw]) ->
   true = is_valid_id(RequestId),
   true = is_valid_dict(Options),
   true = is_valid_uri(Topic),
-  true = is_valid_list(Arguments) or is_atom(Arguments),
-  true = is_valid_dict(ArgumentsKw) or is_atom(ArgumentsKw),
+  true = is_valid_arguments(Arguments),
+  true = is_valid_argumentskw(ArgumentsKw),
   {publish,RequestId,Options,Topic,Arguments,ArgumentsKw};
 
 to_erl([?PUBLISHED,RequestId,PublicationId]) ->
@@ -264,8 +271,8 @@ to_erl([?EVENT,SubscriptionId,PublicationId,Details,Arguments,ArgumentsKw]) ->
   true = is_valid_id(SubscriptionId),
   true = is_valid_id(PublicationId),
   true = is_valid_dict(Details),
-  true = is_valid_list(Arguments) or is_atom(Arguments),
-  true = is_valid_dict(ArgumentsKw) or is_atom(ArgumentsKw),
+  true = is_valid_arguments(Arguments),
+  true = is_valid_argumentskw(ArgumentsKw),
   {event,SubscriptionId,PublicationId,Details,Arguments,ArgumentsKw};
 
 to_erl([?CALL,RequestId,Options,Procedure]) ->
@@ -276,8 +283,8 @@ to_erl([?CALL,RequestId,Options,Procedure,Arguments,ArgumentsKw]) ->
   true = is_valid_id(RequestId),
   true = is_valid_dict(Options),
   true = is_valid_uri(Procedure),
-  true = is_valid_list(Arguments) or is_atom(Arguments),
-  true = is_valid_dict(ArgumentsKw) or is_atom(ArgumentsKw),
+  true = is_valid_arguments(Arguments),
+  true = is_valid_argumentskw(ArgumentsKw),
   {call,RequestId,Options,Procedure,Arguments,ArgumentsKw};
 
 to_erl([?RESULT,RequestId,Details]) ->
@@ -287,8 +294,8 @@ to_erl([?RESULT,RequestId,Details,Arguments]) ->
 to_erl([?RESULT,RequestId,Details,Arguments,ArgumentsKw]) ->
   true = is_valid_id(RequestId),
   true = is_valid_dict(Details),
-  true = is_valid_list(Arguments) or is_atom(Arguments),
-  true = is_valid_dict(ArgumentsKw) or is_atom(ArgumentsKw),
+  true = is_valid_arguments(Arguments),
+  true = is_valid_argumentskw(ArgumentsKw),
   {result,RequestId,Details,Arguments,ArgumentsKw};
 
 to_erl([?REGISTER,RequestId,Options,Procedure]) ->
@@ -317,8 +324,8 @@ to_erl([?INVOCATION,RequestId, RegistrationId, Details, Arguments, ArgumentsKw])
   true = is_valid_id(RequestId),
   true = is_valid_id(RegistrationId),
   true = is_valid_dict(Details),
-  true = is_valid_list(Arguments) or is_atom(Arguments),
-  true = is_valid_dict(ArgumentsKw) or is_atom(ArgumentsKw),
+  true = is_valid_arguments(Arguments),
+  true = is_valid_argumentskw(ArgumentsKw),
   {invocation,RequestId, RegistrationId, Details, Arguments, ArgumentsKw};
 
 to_erl([?YIELD, RequestId, Options]) ->
@@ -328,8 +335,8 @@ to_erl([?YIELD, RequestId, Options, Arguments]) ->
 to_erl([?YIELD, RequestId, Options, Arguments, ArgumentsKw]) ->
   true = is_valid_id(RequestId),
   true = is_valid_dict(Options),
-  true = is_valid_list(Arguments) or is_atom(Arguments),
-  true = is_valid_dict(ArgumentsKw) or is_atom(ArgumentsKw),
+  true = is_valid_arguments(Arguments),
+  true = is_valid_argumentskw(ArgumentsKw),
   {yield,RequestId,Options, Arguments,ArgumentsKw}.
 
 
@@ -470,9 +477,7 @@ validation_test() ->
 hello_test() ->
   M = [?HELLO,<<"realm1">>,[{}]],
   S = serialize(M,json),
-  io:format("~p serialized to ~p~n",[M,S]),
   D = deserialize(S,json),
-  io:format("~p deserialized to ~p~n",[S,D]),
   D = {[{hello,<<"realm1">>,[{}]}],<<"">>}.
 
 roundtrip_test() ->
@@ -488,9 +493,7 @@ roundtrip_test() ->
 
                  Check = fun(Enc,Bool) ->
                            EncMsg = serialize(Message,Enc),
-                           io:format("serializing ~p to ~p when using ~p~n",[Message,EncMsg,Enc]),
                            DeEncMsg = deserialize(EncMsg,Enc) ,
-                           io:format("  and deserialize it back to ~p~n",[DeEncMsg]),
                            case DeEncMsg of
                              {[Message],<<"">>} -> Bool;
                              _ -> false

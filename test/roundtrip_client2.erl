@@ -29,7 +29,8 @@
   event_received = false,
   registration = undefined,
   been_called = false,
-  event_url = undefined
+  event_url = undefined,
+  remote_rpc = undefined
               }).
 
 -behaviour(gen_server).
@@ -49,6 +50,7 @@
 init(Args) ->
   {event_url,Event} = lists:keyfind(event_url,1,Args),
   {rpc_url,RPC} = lists:keyfind(rpc_url,1,Args),
+  {remote_rpc,RemoteRpc} = lists:keyfind(remote_rpc,1,Args),
   {realm,Realm} = lists:keyfind(realm,1,Args),
   Enc =
     case lists:keyfind(enc,1,Args) of
@@ -66,7 +68,7 @@ init(Args) ->
   {ok,SubscriptionId} = erwa:subscribe(Con,[{}],Event),
   {ok,RegistrationId} = erwa:register(Con,[{}],RPC),
   erwa:publish(Con,[{}],Event),
-  {ok,#state{con=Con,session=SessionId,subscription=SubscriptionId,registration=RegistrationId,event_url=Event}}.
+  {ok,#state{con=Con,session=SessionId,subscription=SubscriptionId,registration=RegistrationId,event_url=Event,remote_rpc=RemoteRpc}}.
 
 handle_call({test_passed},_From,State) ->
   {reply,test_passed(State),State}.
@@ -79,10 +81,10 @@ handle_info({erwa,{event,SubscriptionId,_PublicationId,_Details,_Arguments,_Argu
   ok = erwa:unsubscribe(Con,SubscriptionId),
   {noreply,State#state{event_received=true}};
 
-handle_info({erwa,{invocation,RequestId,RegistrationId,_Details,[A,B],_ArgumentsKw}},#state{registration=RegistrationId,con=Con}=State) ->
+handle_info({erwa,{invocation,RequestId,RegistrationId,_Details,[A,B],_ArgumentsKw}},#state{registration=RegistrationId,con=Con,remote_rpc=RPC}=State) ->
   io:format("invocation of roundtrip_client1~n"),
   ok = erwa:yield(Con,RequestId,[{}],[A-B]),
-  {ok,_Details,[14],_} = erwa:call(Con,[{}],<<"com.test.sum">>,[9,5]),
+  {ok,_Details,[14],_} = erwa:call(Con,[{}],RPC,[9,5]),
   erwa:unregister(Con,RegistrationId),
   {noreply,State#state{been_called=true}};
 

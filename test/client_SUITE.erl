@@ -73,15 +73,15 @@ client_test(_) ->
   ok = erwa_router:handle_wamp(Router,{hello,?REALM,[{}]}),
   ok =
     receive
-      {welcome,_SessionId,_Details} -> ok
+      {erwa,{welcome,_SessionId,_Details}} -> ok
      after 1000 ->
        timeout
     end,
-  ok = erwa_router:handle_wamp(Router,{publish,1,[{}],EventUrl}),
+  ok = erwa_router:handle_wamp(Router,{publish,1,[{}],EventUrl,undefined,undefined}),
   ok = erwa_router:handle_wamp(Router,{call,2,[{}],RpcUrl,[5,9],undefined}),
   ok =
     receive
-      {result,2,_,[14],_} -> ok
+      {erwa,{result,2,_,[14],_}} -> ok
      after 1000 ->
        timeout
     end,

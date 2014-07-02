@@ -511,8 +511,46 @@ gen_id() ->
 
 -ifdef(TEST).
 
+hello_test() ->
+  Realm = <<"realm1">>,
+  {ok,Pid} = start(Realm),
+  ok = handle_wamp(Pid,{hello,Realm,[{}]}),
+  {ok,Msg} =
+    receive
+      {erwa,M} -> {ok,M}
+    after 2000 ->
+      {ok,timeout}
+    end,
+  {welcome,_SessionId,_Details} = Msg,
+  shutdown(Pid),
+  ok.
 
 
+subscribe_test() ->
+  Realm = <<"realm2">>,
+  {ok,Pid} = start(Realm),
+  ok = handle_wamp(Pid,{hello,Realm,[{}]}),
+  ok = receive
+    {erwa,{welcome, _SessionId, _Details }} -> ok
+  after 2000 ->
+    timeout
+  end,
+
+  ok = handle_wamp(Pid,{subscribe,1,[{}],<<"test">>}),
+  {ok,SubscriptionId} = receive
+    {erwa,{subscribed, 1, SID }} -> {ok,SID}
+  after 2000 ->
+    timeout
+  end,
+
+  ok = handle_wamp(Pid,{unsubscribe,2,SubscriptionId}),
+  ok = receive
+    {erwa,{unsubscribed, 2 }} -> ok
+  after 2000 ->
+    timeout
+  end,
+  shutdown(Pid),
+  ok.
 
 -endif.
 

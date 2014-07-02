@@ -71,30 +71,36 @@ all_passed(C1,C2,TimeLeft) ->
   end.
 
 pubsub(_) ->
+  Realm = <<"realm1">>,
+  ok = erwa:start_realm(Realm),
   RpcUrl1 = <<"com.test.sum">>,
   RpcUrl2 = <<"com.test.diff">>,
   EventUrl = <<"com.test.event">>,
 
-  C1 = [{rpc_url,RpcUrl1},{event_url,EventUrl},{realm,?REALM}],
-  C2 = [{rpc_url,RpcUrl2},{event_url,EventUrl},{realm,?REALM}],
+  C1 = [{rpc_url,RpcUrl1},{remote_rpc,RpcUrl2},{event_url,EventUrl},{realm,?REALM}],
+  C2 = [{rpc_url,RpcUrl2},{remote_rpc,RpcUrl1},{event_url,EventUrl},{realm,?REALM}],
 
   {ok,Con1} = gen_server:start(roundtrip_client1,C1,[]),
   {ok,Con2} = gen_server:start(roundtrip_client2,C2,[]),
   true = all_passed(Con1,Con2,5000),
+  {ok,_} = erwa:stop_realm(Realm),
   ok.
 
 
 pubsub_tcp(_) ->
+  Realm = <<"realm2">>,
+  ok = erwa:start_realm(Realm),
   RpcUrl1 = <<"com.test.tcp.sum">>,
   RpcUrl2 = <<"com.test.tcp.diff">>,
   EventUrl = <<"com.test.tcp.event">>,
 
-  C1 = [{rpc_url,RpcUrl1},{event_url,EventUrl},{realm,?REALM},{tcp,true},{enc,raw_msgpack}],
-  C2 = [{rpc_url,RpcUrl2},{event_url,EventUrl},{realm,?REALM},{tcp,true},{enc,raw_msgpack}],
+  C1 = [{rpc_url,RpcUrl1},{remote_rpc,RpcUrl2},{event_url,EventUrl},{realm,?REALM},{tcp,true},{enc,raw_msgpack}],
+  C2 = [{rpc_url,RpcUrl2},{remote_rpc,RpcUrl1},{event_url,EventUrl},{realm,?REALM},{tcp,true},{enc,raw_msgpack}],
 
   {ok,Con1} = gen_server:start(roundtrip_client1,C1,[]),
   {ok,Con2} = gen_server:start(roundtrip_client2,C2,[]),
   true = all_passed(Con1,Con2,5000),
+  {ok,_} = erwa:stop_realm(Realm),
   ok.
 
 
