@@ -141,7 +141,6 @@ init([Realm]) ->
 
 handle_call({handle_wamp,Msg},{Pid,_Ref},State) ->
   try
-    io:format("got message ~p~n",[Msg]),
     ok = handle_wamp_message(Msg,Pid,State),
     {reply,ok,State}
   catch
@@ -483,7 +482,6 @@ send_message_to(Msg,Pid) when is_pid(Pid) ->
   send_message_to(Msg,[Pid]);
 send_message_to(Msg,Peers) when is_list(Peers) ->
   Send = fun(Pid) ->
-           io:format("send ~p to ~p~n",[Msg,Pid]),
            Pid ! {erwa,Msg} end,
   lists:foreach(Send,Peers),
   ok.
