@@ -88,8 +88,10 @@ init([]) ->
 -spec handle_call(Msg :: term(), From :: term(), #state{}) -> {reply,Msg :: term(), #state{}}.
 handle_call({connect,Host,Port,Realm,Encoding},From,#state{ets=Ets}=State) ->
   Enc = case Encoding of
-          json -> json;
-          _ -> msgpack
+          json -> raw_json;
+          raw_json -> raw_json;
+          msgpack -> raw_msgpack;
+          _ -> raw_msgpack
         end,
   {R,S} =
     case Host of
@@ -141,9 +143,8 @@ handle_call(_Msg,_From,State) ->
 handle_cast(_Request, State) ->
 	{noreply, State}.
 
-handle_info({tcp,Socket,Data},#state{buffer=Buffer,socket=Socket}=State) ->
-  Buf = <<Buffer/binary, Data/binary>>,
-  {Messages,NewBuffer} = get_messages_from_buffer(Buf,State),
+handle_info({tcp,Socket,Data},#state{buffer=Buffer,socket=Socket,enc=Enc}=State) ->
+  {Messages,NewBuffer} = erwa_protocol:deserialize(<<Buffer/binary, Data/binary>>,Enc),
   handle_messages(Messages,State),
   {noreply,State#state{buffer=NewBuffer}};
 handle_info({erwa,Msg}, State) ->
@@ -260,12 +261,12 @@ send(Msg,From,Args,#state{ets=Ets}=State) ->
   raw_send(Message,State).
 
 
-raw_send(Message,#state{router=R,socket=S}=State) ->
+raw_send(Message,#state{router=R,socket=S,enc=Enc}=State) ->
   case destination(State) of
     local ->
-      ok = erwa_router:handle_wamp_message(R,Message);
+      ok = erwa_router:handle_wamp(R,Message);
     remote ->
-      ok = gen_tcp:send(S,encode(erwa_protocol:to_wamp(Message),State))
+      ok = gen_tcp:send(S,erwa_protocol:serialize(Message,Enc))
   end.
 
 -spec destination(#state{}) -> local | remote.
@@ -279,7 +280,7 @@ destination(#state{socket=S}) ->
 
 -spec gen_id(#state{}) -> non_neg_integer().
 gen_id(#state{ets=Ets}=State) ->
-  Id = crypto:rand_uniform(0,9007199254740993),
+  Id = crypto:rand_uniform(0,9007199254740992),
   case ets:lookup(Ets,Id) of
     [] ->
       Id;
@@ -289,35 +290,5 @@ gen_id(#state{ets=Ets}=State) ->
 
 
 
-get_messages_from_buffer(Buffer,State)  ->
-  get_messages_from_buffer(Buffer,[],State).
-
-get_messages_from_buffer(<<Len:32/unsigned-integer-big,Data/binary>>=Buffer,Messages,State)  ->
-  case byte_size(Data) >= Len of
-    true ->
-      <<Enc:Len/binary,NewBuffer/binary>> = Data,
-      Wamp = decode(Enc,State),
-      get_messages_from_buffer(NewBuffer,[erwa_protocol:to_erl(Wamp)|Messages],State);
-    false ->
-      {lists:reverse(Messages),Buffer}
-  end;
-get_messages_from_buffer(Buffer,Messages,_State) ->
-  {lists:reverse(Messages),Buffer}.
-
-decode(Message,#state{enc=json}) ->
-  jsx:decode(Message);
-decode(Message,#state{enc=msgpack}) ->
-  {ok,Msg} = msgpack:unpack(Message,[jsx]),
-  Msg.
-
-
-encode(Message,#state{enc=json}) ->
-  Enc = jsx:encode(Message),
-  Len = byte_size(Enc),
-  <<Len:32/unsigned-integer-big,Enc/binary>>;
-encode(Message,#state{enc=msgpack}) ->
-  Enc = msgpack:pack(Message,[jsx]),
-  Len = byte_size(Enc),
-  <<Len:32/unsigned-integer-big,Enc/binary>>.
 
 

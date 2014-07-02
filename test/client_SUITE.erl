@@ -61,16 +61,30 @@ receive_result() ->
     timeout
   end.
 
+
+
 client_test(_) ->
   erwa:start_realm(?REALM),
   {ok,Router} = erwa:get_router_for_realm(?REALM),
   {ok,Pid} = gen_server:start(client_simple,?REALM,[]),
   EventUrl = client_simple:get_event_url(),
   RpcUrl = client_simple:get_rpc_url(),
-  {welcome,_SessionId,_Details} = erwa_router:hello(Router,[]),
-  erwa_router:publish(Router,1,[{}],EventUrl),
-  {result,2,_,[14],_} = erwa_router:call(Router,2,[{}],RpcUrl,[5,9],undefined),
-  %ok = receive_result(),
+  io:format("starting client test (pid: ~p)~n",[self()]),
+  ok = erwa_router:handle_wamp(Router,{hello,?REALM,[{}]}),
+  ok =
+    receive
+      {welcome,_SessionId,_Details} -> ok
+     after 1000 ->
+       timeout
+    end,
+  ok = erwa_router:handle_wamp(Router,{publish,1,[{}],EventUrl}),
+  ok = erwa_router:handle_wamp(Router,{call,2,[{}],RpcUrl,[5,9],undefined}),
+  ok =
+    receive
+      {result,2,_,[14],_} -> ok
+     after 1000 ->
+       timeout
+    end,
   true = gen_server:call(Pid,{all_done}),
   ok.
 

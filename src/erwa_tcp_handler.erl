@@ -67,7 +67,7 @@ init(Ref, Socket, Transport, _Opts = []) ->
 
 
 init(_Opts) ->
-  {error,dont_call}.
+  erlang:error("don't call").
 
 handle_call(_Request, _From, State) ->
   {reply, ignored, State}.

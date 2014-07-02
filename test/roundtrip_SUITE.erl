@@ -32,6 +32,7 @@
 
 %% Tests.
 -export([pubsub/1]).
+-export([pubsub_tcp/1]).
 
 %% ct.
 
@@ -39,12 +40,14 @@
 
 
 all() ->
-	[pubsub].
+	[pubsub,pubsub_tcp].
 
 
 init_per_suite(Config) ->
   {ok,_} = application:ensure_all_started(erwa),
+  {ok,_} = application:ensure_all_started(ranch),
   {ok,_} = application:ensure_all_started(sasl),
+  {ok,_} = ranch:start_listener(erwa_tcp, 5, ranch_tcp, [{port,5555}], erwa_tcp_handler, []),
   ok = erwa:start_realm(?REALM),
   Config.
 
@@ -79,5 +82,20 @@ pubsub(_) ->
   {ok,Con2} = gen_server:start(roundtrip_client2,C2,[]),
   true = all_passed(Con1,Con2,5000),
   ok.
+
+
+pubsub_tcp(_) ->
+  RpcUrl1 = <<"com.test.tcp.sum">>,
+  RpcUrl2 = <<"com.test.tcp.diff">>,
+  EventUrl = <<"com.test.tcp.event">>,
+
+  C1 = [{rpc_url,RpcUrl1},{event_url,EventUrl},{realm,?REALM},{tcp,true},{enc,raw_msgpack}],
+  C2 = [{rpc_url,RpcUrl2},{event_url,EventUrl},{realm,?REALM},{tcp,true},{enc,raw_msgpack}],
+
+  {ok,Con1} = gen_server:start(roundtrip_client1,C1,[]),
+  {ok,Con2} = gen_server:start(roundtrip_client2,C2,[]),
+  true = all_passed(Con1,Con2,5000),
+  ok.
+
 
 

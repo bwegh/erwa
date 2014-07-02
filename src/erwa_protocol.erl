@@ -90,10 +90,9 @@ serialize(Message,raw_json) ->
 -spec forward_messages(Messages :: list(), Router :: pid() | undefined) -> {ok,Router :: pid() | undefined} | {error,not_found}.
 forward_messages([],Router) ->
   {ok,Router};
-forward_messages([{hello,Realm,_}|T]=Messages,undefined) ->
+forward_messages([{hello,Realm,_}|_]=Messages,undefined) ->
   case erwa_realms:get_router(Realm) of
     {ok,Pid} ->
-      io:format("pid of router is ~p~n",[Pid]),
       forward_messages(Messages,Pid);
     {error,not_found} ->
       self() ! {erwa,{abort,[{}],no_such_realm}},
@@ -101,7 +100,6 @@ forward_messages([{hello,Realm,_}|T]=Messages,undefined) ->
       {error,undefined}
   end;
 forward_messages([Msg|T],Router) when is_pid(Router) ->
-  io:format("sending the message ~p to ~p~n",[Msg,Router]),
   ok = erwa_router:handle_wamp(Router,Msg),
   forward_messages(T,Router);
 forward_messages(_,undefined)  ->
@@ -471,9 +469,9 @@ validation_test() ->
 
 hello_test() ->
   M = [?HELLO,<<"realm1">>,[{}]],
-  S = serialize(M,ws_json),
+  S = serialize(M,json),
   io:format("~p serialized to ~p~n",[M,S]),
-  D = deserialize(S,ws_json),
+  D = deserialize(S,json),
   io:format("~p deserialized to ~p~n",[S,D]),
   D = {[{hello,<<"realm1">>,[{}]}],<<"">>}.
 
@@ -486,7 +484,7 @@ roundtrip_test() ->
 
   Serializer = fun(Message,Res) ->
 
-                 Encodings = [json,msgpack,ws_json,ws_msgpack,raw_json,raw_msgpack],
+                 Encodings = [json,msgpack,raw_json,raw_msgpack],
 
                  Check = fun(Enc,Bool) ->
                            EncMsg = serialize(Message,Enc),

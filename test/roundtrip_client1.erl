@@ -50,8 +50,19 @@ init(Args) ->
   {event_url,Event} = lists:keyfind(event_url,1,Args),
   {rpc_url,RPC} = lists:keyfind(rpc_url,1,Args),
   {realm,Realm} = lists:keyfind(realm,1,Args),
+  Enc =
+    case lists:keyfind(enc,1,Args) of
+      {enc,E} -> E;
+      _ -> json
+    end,
   {ok,Con} = erwa:start_client(),
-  {ok,SessionId,_RouterDetails} = erwa:connect(Con,Realm),
+  {ok,SessionId,_RouterDetails} =
+    case lists:keyfind(tcp,1,Args) of
+      {tcp,true} ->
+        erwa:connect(Con,"localhost",5555,Realm,Enc);
+       _ ->
+        erwa:connect(Con,Realm)
+    end,
   {ok,SubscriptionId} = erwa:subscribe(Con,[{}],Event),
   {ok,RegistrationId} = erwa:register(Con,[{}],RPC),
   {ok,#state{con=Con,session=SessionId,subscription=SubscriptionId,registration=RegistrationId,event_url=Event}}.

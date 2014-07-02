@@ -1,5 +1,5 @@
 PROJECT = erwa
-CT_SUITES = eunit
+CT_SUITES = eunit client roundtrip
 CT_OPTS = -cover test/cover.spec
 ERLC_OPTS = +debug_info
 

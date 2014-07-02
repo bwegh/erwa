@@ -140,9 +140,10 @@ init([Realm]) ->
 
 
 handle_call({handle_wamp,Msg},{Pid,_Ref},State) ->
-  try handle_wamp_message(Msg,Pid,State) of
-    ok -> {reply,ok,State};
-    Result -> {reply,{error,unknown_result,Result},State}
+  try
+    io:format("got message ~p~n",[Msg]),
+    ok = handle_wamp_message(Msg,Pid,State),
+    {reply,ok,State}
   catch
     Error:Reason -> {reply,{error,Error,Reason},State}
   end;
@@ -208,7 +209,7 @@ handle_wamp_message({call,RequestId,Options,Procedure,Arguments,ArgumentsKw},Pid
     true ->
       ok;
     false ->
-      send_message_to({error,call,RequestId,[{}],no_such_procedure},Pid)
+      send_message_to({error,call,RequestId,[{}],no_such_procedure,undefined,undefined},Pid)
   end;
 
 handle_wamp_message({register,RequestId,Options,Procedure},Pid,State) ->
@@ -216,7 +217,7 @@ handle_wamp_message({register,RequestId,Options,Procedure},Pid,State) ->
     {ok,RegistrationId} ->
       send_message_to({registered,RequestId,RegistrationId},Pid);
     {error,procedure_already_exists} ->
-      send_message_to({register,error,RequestId,[{}],procedure_already_exists},Pid)
+      send_message_to({register,error,RequestId,[{}],procedure_already_exists,undefined,undefined},Pid)
   end;
 
 handle_wamp_message({unregister,RequestId,RegistrationId},Pid,State) ->
@@ -224,14 +225,18 @@ handle_wamp_message({unregister,RequestId,RegistrationId},Pid,State) ->
     true ->
       send_message_to({unregistered,RequestId},Pid);
     false ->
-      send_message_to({error,unregister,RequestId,[{}],no_such_registration},Pid)
+      send_message_to({error,unregister,RequestId,[{}],no_such_registration,undefined,undefined},Pid)
   end;
 
 handle_wamp_message({error,invocation,_InvocationId,_Details,_Error,_Arguments,_ArgumentsKw},_Pid,_State) ->
   % TODO: implement
   ok;
 handle_wamp_message({yield,InvocationId,Options,Arguments,ArgumentsKw},Pid,State) ->
-  dequeue_procedure_call(Pid,InvocationId,Options,Arguments,ArgumentsKw,State),
+  case dequeue_procedure_call(Pid,InvocationId,Options,Arguments,ArgumentsKw,State) of
+    {ok} -> ok;
+    {error,not_found} -> ok;
+    {error,wrong_session} -> ok
+  end,
   ok;
 handle_wamp_message(Msg,_Pid,_State) ->
   io:format("unknown message ~p~n",[Msg]),
@@ -398,9 +403,7 @@ remove_session_with_ref(MonRef,#state{ets=Ets}=State) ->
   end.
 
 
--spec remove_given_session(Session :: #session{}|undefined, State :: #state{}) -> ok.
-remove_given_session(undefined,_) ->
-  ok;
+-spec remove_given_session(Session :: #session{}, State :: #state{}) -> ok.
 remove_given_session(Session,#state{ets=Ets}=State) ->
   Id = Session#session.id,
   MonRef = Session#session.monitor,
@@ -479,7 +482,9 @@ remove_invocation(InvocationId,#state{ets=Ets}) ->
 send_message_to(Msg,Pid) when is_pid(Pid) ->
   send_message_to(Msg,[Pid]);
 send_message_to(Msg,Peers) when is_list(Peers) ->
-  Send = fun(Pid) -> Pid ! {erwa,Msg} end,
+  Send = fun(Pid) ->
+           io:format("send ~p to ~p~n",[Msg,Pid]),
+           Pid ! {erwa,Msg} end,
   lists:foreach(Send,Peers),
   ok.
 
@@ -498,102 +503,9 @@ get_session_from_pid(Pid,#state{ets=Ets}) ->
 
 -spec gen_id() -> non_neg_integer().
 gen_id() ->
-  crypto:rand_uniform(0,9007199254740993).
+  crypto:rand_uniform(0,9007199254740992).
 
 
-
-%% handle_call({hello,Realm,Details}, From, #state{realm=Realm}=State) ->
-%%   handle_call({hello,Details}, From,State);
-%% handle_call({hello,Details}, {Pid,_Ref}, #state{sess=Sess}=State) ->
-%%    Reply =
-%%     case ets:member(Sess,Pid) of
-%%       true ->
-%%         %hello from an already connected client -> shutdown (as specified)
-%%         shutdown;
-%%       false ->
-%%         {ok,Id} = create_session(Pid,Details,State),
-%%         {welcome,Id,?ROUTER_DETAILS}
-%%     end,
-  %% {reply,Reply,State};
-%%
-%% handle_call({goodbye,_Details,_Reason},{Pid,_Ref},#state{sess=Sess}=State) ->
-  %% Session = get_session_from_pid(Pid,State),
-  %% SessionId = Session#session.id,
-  %% Reply =
-    %% case Session#session.goodbye_sent of
-      %% true -> shutdown;
-      %% _ ->
-%%         ets:update_element(Sess,SessionId,{#session.goodbye_sent,true}),
-%%         %TODO: send a message after a timeout to close the session
-%%         %send_message_to_peers({shutdown},[SessionId]),
-%%         {goodbye,[{}],goodbye_and_out}
-%%     end,
-%%   {reply,Reply,State};
-%%
-%% handle_call({subscribe,RequestId,Options,TopicUrl}, {Pid,_Ref}, State) ->
-%%   {ok,SubscriptionId} = subscribe_to_topic(Pid,Options,TopicUrl,State),
-%%   {reply,{subscribed,RequestId,SubscriptionId},State};
-%%
-%% handle_call({unsubscribe,RequestId,SubscriptionId}, {Pid,_Ref} , State) ->
-%%   Reply=
-%%   case unsubscribe_from_topic(Pid,SubscriptionId,State) of
-%%     {ok} -> {unsubscribed,RequestId};
-%%     {error,Details,Reason} -> {error,unsubscribe,RequestId,Details,Reason}
-%%   end,
-%%   {reply,Reply,State};
-%%
-%% handle_call({publish,RequestId,Options,Url,Arguments,ArgumentsKw}, {Pid,_Ref}, State) ->
-%%   {ok,PublicationId}= send_event_to_topic(Pid,Options,Url,Arguments,ArgumentsKw,State),
-%%   Reply =
-%%   case lists:member({acknowledge,true},Options) of
-%%     true -> {published,RequestId,PublicationId};
-%%     _ -> noreply
-%%   end,
-%%   {reply,Reply,State};
-%%
-%% handle_call({register,RequestId,Options,Procedure},{Pid,_Ref},State) ->
-%%   Reply =
-%%     case register_procedure(Pid,Options,Procedure,State) of
-%%       {ok,RegistrationId} -> {registered,RequestId,RegistrationId};
-%%       {error,Details,Reason} -> {error,register,RequestId,Details,Reason}
-%%     end,
-%%   {reply,Reply,State};
-%%
-%% handle_call({unregister,RequestId,RegistrationId},{Pid,_Ref},State) ->
-%%   Reply =
-%%     case unregister_procedure(Pid,RegistrationId,State) of
-%%       {ok} -> {unregistered,RequestId};
-%%       {error,Details,Reason} -> {error,unregister,RequestId,Details,Reason}
-%%     end,
-%%   {reply,Reply,State};
-%%
-%% handle_call({call,RequestId,Options,ProcedureUrl,Arguments,ArgumentsKw},{Pid,_Ref}=From,State) ->
-%%   case enqueue_procedure_call(From,Pid,RequestId,Options,ProcedureUrl,Arguments,ArgumentsKw,State) of
-%%     {ok} -> {noreply,State};
-%%     {error,Details,Reason} -> {reply,{error,call,RequestId,Details,Reason,Arguments,ArgumentsKw},State}
-%%   end;
-%%
-%% handle_call({yield,RequestId,Options,Arguments,ArgumentsKw},{Pid,_Ref},State) ->
-%%   Reply =
-%%     case dequeue_procedure_call(Pid,RequestId,Options,Arguments,ArgumentsKw,State) of
-%%       {error,not_found} ->
-%%         noreply;
-%%       {ok} ->
-%%         noreply;
-%%       _ ->
-%%         shutdown
-%%       end,
-%%   {reply,Reply,State};
-%%
-%% handle_call({remove_session,_Reason},{Pid,_Ref},State) ->
-%%   Session = get_session_from_pid(Pid,State),
-%%   remove_given_session(Session,State),
-%%   {reply,shutdown,State};
-%%
-%% handle_call({handle_wamp,Msg},{_,Pid},State) ->
-%%
-%% handle_call(_Msg,_From,State) ->
-%% {reply,shutdown,State}.
 
 
 
