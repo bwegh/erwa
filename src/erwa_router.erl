@@ -47,7 +47,7 @@
 
 
 shutdown(Router) ->
-  gen_server:call(Router,shutdown).
+  gen_server:cast(Router,shutdown).
 
 remove_session(Router,Reason) ->
   gen_server:call(Router,{remove_session,Reason}).
@@ -146,11 +146,11 @@ handle_call({handle_wamp,Msg},{Pid,_Ref},State) ->
   catch
     Error:Reason -> {reply,{error,Error,Reason},State}
   end;
-handle_call(shutdown, _From, State) ->
-  {stop, normal, State};
 handle_call(_Msg,_From,State) ->
    {reply,shutdown,State}.
 
+handle_cast(shutdown, State) ->
+  {stop, normal, State};
 handle_cast(_Request, State) ->
 	{noreply, State}.
 
@@ -172,7 +172,7 @@ code_change(_OldVsn, State, _Extra) ->
 -spec handle_wamp_message(Msg :: term(),Pid :: pid(), State :: #state{}) -> ok.
 handle_wamp_message({hello,Realm,Details},Pid,#state{realm=Realm}=State) ->
   {ok,SessionId} = create_session(Pid,Details,State),
-  send_message_to(Pid,{welcome,SessionId,?ROUTER_DETAILS});
+  send_message_to({welcome,SessionId,?ROUTER_DETAILS},Pid);
 
 handle_wamp_message({goodbye,_Details,_Reason},Pid,#state{ets=Ets}=State) ->
   Session = get_session_from_pid(Pid,State),
@@ -601,66 +601,6 @@ gen_id() ->
 
 -ifdef(TEST).
 
-hello_welcome_test() ->
-  {ok,Pid} = start(<<"some.realm">>),
-  {welcome,_,_} = hello(Pid,[]),
-  shutdown = hello(Pid,[]).
-
-
- subscribe_test() ->
-   {ok,Pid} = start(<<"some.realm">>),
-   {welcome,_,_} = hello(Pid,[]),
-   RequestId = crypto:rand_uniform(0,9007199254740993),
-   {subscribed,RequestId,_SubscriptionId} = subscribe(Pid,RequestId,[],<<"does.not.exist">>).
-
-
-resubscribe_test() ->
-  {ok,Pid} = start(<<"some.realm">>),
-  {welcome,_,_} = hello(Pid,[]),
-  RequestId = crypto:rand_uniform(0,9007199254740993),
-  {subscribed,RequestId,SubscriptionId} = subscribe(Pid,RequestId,[],<<"does.not.exist">>),
-  {unsubscribed,RequestId} = unsubscribe(Pid,RequestId,SubscriptionId),
-  {error,unsubscribe,RequestId,_Details,no_such_subscription} = unsubscribe(Pid,RequestId,SubscriptionId),
-  RequestId2 = crypto:rand_uniform(0,9007199254740993),
-  {subscribed,RequestId2,SubscriptionId} = subscribe(Pid,RequestId2,[],<<"does.not.exist">>).
-
-
-register_test() ->
-  {ok,Pid} = start(<<"some.realm">>),
-  {welcome,_,_} = hello(Pid,<<"blah">>),
-  RequestId = crypto:rand_uniform(0,9007199254740993),
-  {registered,RequestId,_RegistrationId} = register(Pid,RequestId,[],<<"nice_fun">>).
-
-unregister_test() ->
-  {ok,Pid} = start(<<"some.realm">>),
-  {welcome,_,_} = hello(Pid,<<"blah">>),
-  RequestId = crypto:rand_uniform(0,9007199254740993),
-  {registered,RequestId,RegistrationId} = register(Pid,RequestId,[],<<"nice_fun">>),
-  {unregistered,RequestId} = unregister(Pid,RequestId,RegistrationId),
-  {error,unregister,RequestId,_Details,no_such_registration} = unregister(Pid,RequestId,RegistrationId).
-
-
-disconnect_test() ->
-  {ok,Router} = start(<<"some.realm">>),
-  TesterPid = self(),
-  F = fun() ->
-        {welcome,_,_} = hello(Router,<<"blah">>),
-        RequestId = crypto:rand_uniform(0,9007199254740993),
-        {registered,RequestId,_RegistrationId} = register(Router,RequestId,[],<<"nice_fun">>),
-        TesterPid ! registered,
-        receive
-          go_on ->
-            ok
-        end
-  end,
-  ClientPid = spawn(F),
-  receive
-    registered ->
-      ok
-  end,
-
-  ClientPid ! go_on,
-  ok.
 
 
 

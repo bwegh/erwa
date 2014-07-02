@@ -22,6 +22,7 @@
 
 -module(erwa_protocol).
 
+-export([forward_messages/2]).
 -export([deserialize/2]).
 -export([serialize/2]).
 -export([to_wamp/1]).
@@ -39,11 +40,10 @@ deserialize(Buffer,Encoding) ->
 
 deserialize(Buffer,Messages,msgpack) ->
   case msgpack:unpack_stream(Buffer,[{format,jsx}]) of
-    {Msg,NewBuffer} when is_binary(Msg) ->
-      deserialize(NewBuffer,[Msg|Messages],msgpack);
     {error,incomplete} ->
-      {to_erl_reverse(Messages),Buffer}
-
+      {to_erl_reverse(Messages),Buffer};
+     {Msg,NewBuffer} ->
+      deserialize(NewBuffer,[Msg|Messages],msgpack)
   end;
 deserialize(Buffer,Messages,json) ->
   %% is it possible to check the data here ?
@@ -53,8 +53,16 @@ deserialize(<<Len:32/unsigned-integer-big,Data/binary>>  = Buffer,Messages,raw_m
   case byte_size(Data) >= Len of
     true ->
       <<Enc:Len/binary,NewBuffer/binary>> = Data,
-      {ok,Msg} = msgpack:unpack(Enc),
+      {ok,Msg} = msgpack:unpack(Enc,[{format,jsx}]),
       deserialize(NewBuffer,[Msg|Messages],raw_msgpack);
+    false ->
+      {to_erl_reverse(Messages),Buffer}
+  end;
+deserialize(<<Len:32/unsigned-integer-big,Data/binary>>  = Buffer,Messages,raw_json) ->
+  case byte_size(Data) >= Len of
+    true ->
+      <<Enc:Len/binary,NewBuffer/binary>> = Data,
+      deserialize(NewBuffer,[jsx:decode(Enc)|Messages],raw_json);
     false ->
       {to_erl_reverse(Messages),Buffer}
   end;
@@ -63,7 +71,7 @@ deserialize(Buffer,Messages,_) ->
 
 
 
-serialize({erwa,Erwa},Enc) ->
+serialize(Erwa,Enc) when is_tuple(Erwa) ->
   WAMP = to_wamp(Erwa),
   serialize(WAMP,Enc);
 serialize(Msg,msgpack)  ->
@@ -79,6 +87,31 @@ serialize(Message,raw_json) ->
   Len = byte_size(Enc),
   <<Len:32/unsigned-integer-big,Enc/binary>>.
 
+-spec forward_messages(Messages :: list(), Router :: pid() | undefined) -> {ok,Router :: pid() | undefined} | {error,not_found}.
+forward_messages([],Router) ->
+  {ok,Router};
+forward_messages([{hello,Realm,_}|T]=Messages,undefined) ->
+  case erwa_realms:get_router(Realm) of
+    {ok,Pid} ->
+      io:format("pid of router is ~p~n",[Pid]),
+      forward_messages(Messages,Pid);
+    {error,not_found} ->
+      self() ! {erwa,{abort,[{}],no_such_realm}},
+      self() ! {erwa, shutdown},
+      {error,undefined}
+  end;
+forward_messages([Msg|T],Router) when is_pid(Router) ->
+  io:format("sending the message ~p to ~p~n",[Msg,Router]),
+  ok = erwa_router:handle_wamp(Router,Msg),
+  forward_messages(T,Router);
+forward_messages(_,undefined)  ->
+  self() ! {erwa,{abort,[{}],no_such_realm}},
+  self() ! {erwa, shutdown},
+  {error,undefined}.
+
+
+
+
 to_erl_reverse(List)->
   to_erl_reverse(List,[]).
 
@@ -90,7 +123,7 @@ to_erl_reverse([H|T],Messages) ->
 is_valid_uri(Uri) when is_binary(Uri) -> true;
 is_valid_uri(_) -> false.
 
-is_valid_id(Id) when is_integer(Id), Id >= 0, Id =< 9007199254740992 -> true;
+is_valid_id(Id) when is_integer(Id), Id >= 0, Id < 9007199254740992 -> true;
 is_valid_id(_) -> false.
 
 is_valid_dict(Dict) when is_list(Dict) -> true;
@@ -419,4 +452,58 @@ to_wamp(shutdown)  ->
   shutdown.
 
 
+-ifdef(TEST).
+
+validation_test() ->
+  true = is_valid_id(0),
+  true = is_valid_id(9007199254740991),
+  false = is_valid_id(9007199254740992),
+  false = is_valid_id(-1),
+  false = is_valid_id(0.1),
+
+  true = is_valid_uri(<<"wamp.ws">>),
+
+  true = is_valid_list([]),
+
+  true = is_valid_dict([]),
+  ok.
+
+
+hello_test() ->
+  M = [?HELLO,<<"realm1">>,[{}]],
+  S = serialize(M,ws_json),
+  io:format("~p serialized to ~p~n",[M,S]),
+  D = deserialize(S,ws_json),
+  io:format("~p deserialized to ~p~n",[S,D]),
+  D = {[{hello,<<"realm1">>,[{}]}],<<"">>}.
+
+roundtrip_test() ->
+
+  Messages = [
+              {hello,<<"realm1">>,[{}]}
+              ],
+
+
+  Serializer = fun(Message,Res) ->
+
+                 Encodings = [json,msgpack,ws_json,ws_msgpack,raw_json,raw_msgpack],
+
+                 Check = fun(Enc,Bool) ->
+                           EncMsg = serialize(Message,Enc),
+                           io:format("serializing ~p to ~p when using ~p~n",[Message,EncMsg,Enc]),
+                           DeEncMsg = deserialize(EncMsg,Enc) ,
+                           io:format("  and deserialize it back to ~p~n",[DeEncMsg]),
+                           case DeEncMsg of
+                             {[Message],<<"">>} -> Bool;
+                             _ -> false
+                           end
+                         end,
+               Res and lists:foldl(Check,true,Encodings)
+               end,
+
+  true = lists:foldl(Serializer,true,Messages).
+
+
+
+-endif.
 

@@ -49,7 +49,7 @@
                closed,
                error,
                buffer = <<"">>,
-               prot_state = undefined
+               router = undefined
               }).
 
 -define(TIMEOUT,60000).
@@ -60,126 +60,53 @@ start_link(Ref, Socket, Transport, Opts) ->
 
 init(Ref, Socket, Transport, _Opts = []) ->
     ok = proc_lib:init_ack({ok, self()}),
-    %% Perform any required state initialization here.
-    ProtState = erwa_protocol:create(),
-
     ok = ranch:accept_ack(Ref),
     {Ok,Closed, Error} = Transport:messages(),
     ok = Transport:setopts(Socket, [{active, once}]),
-    gen_server:enter_loop(?MODULE, [], #state{socket=Socket,transport=Transport,ok=Ok,closed=Closed,error=Error,prot_state=ProtState}).
+    gen_server:enter_loop(?MODULE, [], #state{socket=Socket,transport=Transport,ok=Ok,closed=Closed,error=Error}).
 
 
 init(_Opts) ->
   {error,dont_call}.
 
-
 handle_call(_Request, _From, State) ->
-	{reply, ignored, State}.
-
+  {reply, ignored, State}.
 
 handle_cast(_Request, State) ->
-	{noreply, State}.
+  {noreply, State}.
 
 
-handle_info({OK,Socket,Data},  #state{ok=OK,socket=Socket,transport=Transport,buffer=Buf,prot_state=ProtState}=State) ->
-   Transport:setopts(Socket, [{active, once}]),
+handle_info({OK,Socket,Data},  #state{ok=OK,socket=Socket,transport=Transport,buffer=Buf,router=Router}=State) ->
+  Transport:setopts(Socket, [{active, once}]),
   Buffer = <<Buf/binary, Data/binary>>,
-  {NewBuffer,Messages} = get_messages_from_buffer(Buffer),
-  {ok,NewProtState} = handle_messages(Messages,Socket,Transport,ProtState),
-  {noreply, State#state{prot_state=NewProtState,buffer=NewBuffer}};
+  {Messages,NewBuffer} = erwa_protocol:deserialize(Buffer,raw_msgpack),
+  {ok,NewRouter} = erwa_protocol:forward_messages(Messages,Router),
+  {noreply, State#state{buffer=NewBuffer,router=NewRouter}};
 handle_info({Closed,Socket}, #state{closed=Closed,socket=Socket}=State) ->
   %erwa_protocol:close(connection_closed,ProtState),
-	{stop, normal, State};
-handle_info({Error,Socket,Reason}, #state{error=Error,socket=Socket}=State) ->
-	{stop, {error, Reason} , State};
-handle_info({erwar,shutdown}, State) ->
   {stop, normal, State};
-handle_info({erwa,Msg}, #state{socket=Socket,transport=Transport}=State) ->
-  Transport:send(Socket,encode(erwa_protocol:to_wamp(Msg))),
+handle_info({Error,Socket,Reason}, #state{error=Error,socket=Socket}=State) ->
+  {stop, {error, Reason} , State};
+handle_info({erwa,shutdown}, State) ->
+  {stop, normal, State};
+handle_info({erwa,Msg}, #state{socket=Socket,transport=Transport}=State) when is_tuple(Msg) ->
+  Transport:send(Socket,erwa_protocol:serialize(Msg,raw_msgpack)),
   {noreply, State};
 handle_info(_Info, State) ->
-	{noreply, State}.
+  {noreply, State}.
 
 
-terminate(Reason, #state{prot_state=ProtState}) ->
-  erwa_protocol:close(Reason,ProtState),
-	ok.
+terminate(_Reason, _State) ->
+  ok.
 
 code_change(_OldVsn, State, _Extra) ->
-	{ok, State}.
+  {ok, State}.
 
 
-
-get_messages_from_buffer(Data) ->
-  get_messages_from_buffer(Data,[]).
-
-get_messages_from_buffer(<<"">>,Messages) ->
-  {<<"">>,lists:reverse(Messages)};
-get_messages_from_buffer(<<Len:32/unsigned-integer-big,Data/binary>>=Buffer,Messages)  ->
-  case byte_size(Data) >= Len of
-    true ->
-      <<Enc:Len/binary,NewBuffer/binary>> = Data,
-      get_messages_from_buffer(NewBuffer,[decode(Enc)|Messages]);
-    false ->
-      {Buffer,lists:reverse(Messages)}
-  end;
-get_messages_from_buffer(Buffer,Messages)  ->
-  {Buffer,lists:reverse(Messages)}.
-
--spec handle_messages(Messages :: list(), Socket :: any(), Transport :: atom(), ProtState :: any()) -> {ok,any()} | {error,any()}.
-handle_messages([],_Socket,_Transport,ProtState) ->
-  {ok,ProtState};
-handle_messages([M | T ],Socket,Transport,ProtState) ->
-  {ok,NewProt} = handle_message(M,Socket,Transport,ProtState),
-  handle_messages(T,Socket,Transport,NewProt).
-
-handle_message(Message,Socket,Transport,ProtState)  ->
-  {ok,Reply,NewProt} = erwa_protocol:handle(Message,ProtState),
-  case Reply of
-    noreply ->
-      ok;
-    shutdown ->
-      Transport:close(Socket);
-    Reply ->
-      Transport:send(Socket,encode(Reply))
-  end,
-  {ok,NewProt}.
-
-
-
-decode(Message) ->
-  decode(Message,msgpack).
-decode(Message,json) ->
-  jsx:decode(Message);
-decode(Message,msgpack) ->
-  {ok,Msg} = msgpack:unpack(Message,[jsx]),
-  Msg.
-
-
-encode(Message) ->
-  encode(Message,msgpack).
-encode(Message,json) ->
-  Enc = jsx:encode(Message),
-  Len = byte_size(Enc),
-  <<Len:32/unsigned-integer-big,Enc/binary>>;
-encode(Message,msgpack) ->
-  Enc = msgpack:pack(Message,[jsx]),
-  Len = byte_size(Enc),
-  <<Len:32/unsigned-integer-big,Enc/binary>>.
 
 
 
 -ifdef(TEST).
-
-buffer_test() ->
-  Msg1 = [1,<<"my.test-realm.com">>,[{<<"message">>,<<"hope this works">>}]],
-  Enc1 = encode(Msg1),
-  Msg2 = [6,[{}],<<"wamp.error.system_shutdown">>],
-  Enc2 = encode(Msg2),
-  Data = <<Enc1/binary,Enc2/binary>>,
-  Result = get_messages_from_buffer(Data),
-  Expected = {<<"">>,[Msg1,Msg2]},
-  Result = Expected.
 
 -endif.
 

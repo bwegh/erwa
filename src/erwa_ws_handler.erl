@@ -45,65 +45,48 @@ init({tcp, http}, _Req, _Opts) ->
 websocket_init(_TransportName, Req, _Opts) ->
   % need to check for the wamp.2.json or wamp.2.msgpack
   {ok, Protocols, Req1} = cowboy_req:parse_header(?SUBPROTHEADER, Req),
-  Prot = erwa_protocol:create(),
   case lists:nth(1,Protocols) of
       ?WSMSGPACK ->
         Req2  = cowboy_req:set_resp_header(?SUBPROTHEADER,?WSMSGPACK,Req1),
-        {ok,Req2,#state{enc=msgpack,prot=Prot}};
+        {ok,Req2,#state{enc=msgpack}};
       ?WSJSON ->
         Req2  = cowboy_req:set_resp_header(?SUBPROTHEADER,?WSJSON,Req1),
-        {ok,Req2,#state{enc=json,prot=Prot}};
+        {ok,Req2,#state{enc=json}};
       _ ->
         {shutdown,Req1}
   end.
 
 
 websocket_handle({text, Data}, Req, #state{enc=json}=State) ->
-  handle_wamp(Data,Req,State);
-
+  {ok,NewState} = handle_wamp(Data,State),
+  {ok,Req,NewState};
 websocket_handle({binary, Data}, Req, #state{enc=msgpack}=State) ->
-  handle_wamp(Data,Req,State);
-
+  {ok,NewState} = handle_wamp(Data,State),
+  {ok,Req,NewState};
 websocket_handle(_Data, Req, State) ->
   {ok, Req, State}.
 
-websocket_info({erwar,shutdown}, Req, State) ->
+websocket_info({erwa,shutdown}, Req, State) ->
   {shutdown,Req,State};
-websocket_info({erwa,Msg}, Req, #state{enc=Enc}=State) ->
-	EncWamp = erwa_protocol:serialize(Msg,Enc),
-	Reply =
-	case Enc of
-		mspack -> {binary,EncWamp};
-		json -> {text,EncWamp}
-	end,
-	{reply,Reply,State};
+websocket_info({erwa,Msg}, Req, #state{enc=Enc}=State) when is_tuple(Msg)->
+	Rpl = erwa_protocol:serialize(Msg,Enc),
+  Reply =
+    case Enc of
+      json -> {text,Rpl};
+      msgpack -> {binary,Rpl}
+    end,
+	{reply,Reply,Req,State};
 websocket_info(_Data, Req, State) ->
   {ok,Req,State}.
 
-websocket_terminate(Reason, _Req, #state{prot=Prot}) ->
+websocket_terminate(_Reason, _Req, _State) ->
   ok.
 
 
-handle_wamp(Data,Req,#state{buffer=Buffer, enc=Enc}=State) ->
-  NewBuffer = <<Buffer/binary, Data/binary>>,
-  Messages = erwar_protocol:deserialize(NewBuffer,Enc);
-
-
-forward_message({hello,Realm,_} = Msg,#state{router=undefined}=State) ->
-  {ok,Pid} = erwa_realms:get_router(Realm),
-  forward_message(Msg,State#state{router=Pid});
-
-  {ok,Pid} = erwa_realms:get_router(Realm),
-
-  Msg = decode(Data,Enc),
-  {ok,Reply,NewProt} = erwa_protocol:handle(Msg,Prot),
-  NewState = State#state{prot=NewProt},
-  case Reply of
-    noreply -> {ok, Req, NewState};
-    shutdown -> {shutdown,Req,NewState};
-    Reply -> {reply, encode(Reply,Enc),Req,NewState}
-  end.
-
+handle_wamp(Data,#state{buffer=Buffer, enc=Enc, router=Router}=State) ->
+  {Messages,NewBuffer} = erwa_protocol:deserialize(<<Buffer/binary, Data/binary>>,Enc),
+  {ok,NewRouter} = erwa_protocol:forward_messages(Messages,Router),
+  {ok,State#state{router=NewRouter,buffer=NewBuffer}}.
 
 -ifdef(TEST).
 
