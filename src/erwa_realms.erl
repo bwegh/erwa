@@ -20,6 +20,7 @@
 %% SOFTWARE.
 %%
 
+%% @private
 -module(erwa_realms).
 -behaviour(gen_server).
 

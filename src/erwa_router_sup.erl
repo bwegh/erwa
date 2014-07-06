@@ -20,6 +20,8 @@
 %% SOFTWARE.
 %%
 
+
+%% @private
 -module(erwa_router_sup).
 -behaviour(supervisor).
 

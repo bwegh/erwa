@@ -20,6 +20,8 @@
 %% SOFTWARE.
 %%
 
+%% @private
+
 -module(erwa_con_sup).
 -behaviour(supervisor).
 

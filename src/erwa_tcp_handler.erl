@@ -20,6 +20,7 @@
 %% SOFTWARE.
 %%
 
+%% @private
 -module(erwa_tcp_handler).
 
 

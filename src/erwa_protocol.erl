@@ -20,6 +20,7 @@
 %% SOFTWARE.
 %%
 
+%% @private
 -module(erwa_protocol).
 
 -export([forward_messages/2]).

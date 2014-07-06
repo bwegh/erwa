@@ -20,6 +20,7 @@
 %% SOFTWARE.
 %%
 
+%% @private
 -module(erwa_ws_handler).
 -behaviour(cowboy_websocket_handler).
 

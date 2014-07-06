@@ -20,6 +20,7 @@
 %% SOFTWARE.
 %%
 
+
 -module(erwa_client).
 
 -export([is_valid_client_module/1]).
