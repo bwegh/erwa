@@ -14,7 +14,7 @@ Table of Contents
 * [Router](#router)
 * [Peer](#peer)
 * [Examples](#examples)
-* [Licencse](#license)
+* [License](#license)
 
 
 Description
@@ -152,7 +152,7 @@ In the exampes directory you can find three different examples:
 [Back to TOC](#table-of-contents)
 
 
-Licencse
+License
 ========
 The MIT License (MIT)
 
