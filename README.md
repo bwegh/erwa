@@ -1,4 +1,4 @@
-erwa
+Erwa
 ====
 
 Erwa is a [WAMP v2](http://wamp.ws/spec/) (Web Application Messaging Protocol) implementation in Erlang,
@@ -93,9 +93,11 @@ To connect to a realm you need to follow a few simple steps:
 %% first start a connection
 {ok,Con} = erwa:start_client(),
 %% then connect to either a local or remote router
-%% local would be {ok,SessionId,RouterDetails} = erwa:connect(Con,Realm,Encoding),
+%% local would be
+{ok,SessionId,RouterDetails} = erwa:connect(Con,Realm),
 %% the following is a remote router
 {ok,SessionId,RouterDetails} = erwa:connect(Con,Host,Port,Realm,Encoding),
+
 
 %% now the connection 'Con' is connected to the router and handles everything for you
 %% sending an event to a certain topic is just as easy:

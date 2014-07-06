@@ -1,4 +1,5 @@
 ebin/
+doc/
 deps/
 logs/
 _rel/
