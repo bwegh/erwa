@@ -140,7 +140,9 @@ handle_call(_Msg,_From,State) ->
   {noreply,State}.
 
 
-
+handle_cast(shutdown, State) ->
+  %% TODO: implement
+	{noreply, State}.
 handle_cast(_Request, State) ->
 	{noreply, State}.
 
