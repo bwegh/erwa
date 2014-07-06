@@ -128,9 +128,6 @@ is_valid_id(_) -> false.
 is_valid_dict(Dict) when is_list(Dict) -> true;
 is_valid_dict(_) -> false.
 
-is_valid_list(List) when is_list(List) -> true;
-is_valid_list(_) -> false.
-
 is_valid_arguments(List) when is_list(List) -> true;
 is_valid_arguments(undefined)  -> true;
 is_valid_arguments(_)  -> false.
