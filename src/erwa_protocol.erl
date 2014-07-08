@@ -465,10 +465,10 @@ validation_test() ->
   false = is_valid_id(0.1),
 
   true = is_valid_uri(<<"wamp.ws">>),
-
-  true = is_valid_list([]),
-
   true = is_valid_dict([]),
+
+  true = is_valid_arguments([]),
+  true = is_valid_argumentskw([]),
   ok.
 
 

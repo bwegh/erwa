@@ -47,13 +47,9 @@
     buffer = <<"">>,
     sess = undefined,
     ets = undefined,
-    enc = undefined
+    enc = undefined,
+    goodbye_sent = false
   }).
-
--record(subscription,{
-  id = undefined,
-  mfa = undefined,
-  pid=undefined}).
 
 -record(ref, {
   req = undefined,
@@ -61,6 +57,11 @@
   ref=undefined,
   args = []
               }).
+
+-record(subscription,{
+  id = undefined,
+  mfa = undefined,
+  pid=undefined}).
 
 -record(registration,{
   id = undefined,
@@ -140,9 +141,15 @@ handle_call(_Msg,_From,State) ->
   {noreply,State}.
 
 
-handle_cast(shutdown, State) ->
-  %% TODO: implement
-	{noreply, State}.
+handle_cast({shutdown,Details,Reason}, #state{goodbye_sent=GS}=State) ->
+  case GS of
+    true ->
+      ok;
+    false ->
+      ok = raw_send({goodbye,Details,Reason},State)
+  end,
+  {noreply,State#state{goodbye_sent=true}};
+
 handle_cast(_Request, State) ->
 	{noreply, State}.
 
@@ -150,6 +157,10 @@ handle_info({tcp,Socket,Data},#state{buffer=Buffer,socket=Socket,enc=Enc}=State)
   {Messages,NewBuffer} = erwa_protocol:deserialize(<<Buffer/binary, Data/binary>>,Enc),
   handle_messages(Messages,State),
   {noreply,State#state{buffer=NewBuffer}};
+handle_info(terminate,State) ->
+  {stop,normal,State};
+handle_info({erwa,shutdown}, State) ->
+  {stop,normal,State};
 handle_info({erwa,Msg}, State) ->
   handle_message(Msg,State),
 	{noreply, State};
@@ -172,7 +183,15 @@ handle_message({welcome,SessionId,RouterDetails},#state{ets=Ets}) ->
 
 %handle_message({abort,},#state{ets=Ets}) ->
 
-%handle_message({goodbye,},#state{ets=Ets}) ->
+handle_message({goodbye,_Details,_Reason},#state{goodbye_sent=GS}=State) ->
+  case GS of
+    true ->
+      ok;
+    false ->
+      raw_send({goodbye,[{}],goodbye_and_out},State)
+  end,
+  close_connection(State),
+  terminate();
 
 %handle_message({error,},#state{ets=Ets}) ->
 
@@ -255,6 +274,14 @@ handle_messages([Message|Messages],State) ->
   handle_messages(Messages,State).
 
 
+close_connection(#state{socket=S}=State) ->
+  case destination(State) of
+    local ->
+      ok;
+    remote ->
+      ok = gen_tcp:close(S)
+  end.
+
 
 send(Msg,From,Args,#state{ets=Ets}=State) ->
   RequestId = gen_id(State),
@@ -292,6 +319,7 @@ gen_id(#state{ets=Ets}=State) ->
   end.
 
 
-
+terminate() ->
+  self() ! terminate.
 
 

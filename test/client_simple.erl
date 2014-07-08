@@ -41,7 +41,8 @@
   subscription = undefined,
   event_received = false,
   registration = undefined,
-  been_called = false
+  been_called = false,
+  disconnected = false
               }).
 
 init(Realm) ->
@@ -63,7 +64,8 @@ handle_info({erwa,{event,SubscriptionId,_PublicationId,_Details,_Arguments,_Argu
 
 handle_info({erwa,{invocation,RequestId,RegistrationId,_Details,[A,B],_ArgumentsKw}},#state{registration=RegistrationId,con=Con}=State) ->
   ok = erwa:yield(Con,RequestId,[{}],[A+B]),
-  {noreply,State#state{been_called=true}};
+  ok = erwa:stop_client(Con),
+  {noreply,State#state{been_called=true,disconnected=true}};
 handle_info(Msg,State) ->
   io:format("received message: ~p~n",[Msg]),
   {noreply,State}.
@@ -82,7 +84,7 @@ get_event_url() ->
 get_rpc_url() ->
   <<"com.test.sum">>.
 
-all_done(#state{event_received=true,been_called=true}) ->
+all_done(#state{event_received=true,been_called=true,disconnected=true}) ->
   true;
 all_done(_) ->
   false.

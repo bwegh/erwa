@@ -144,7 +144,9 @@ handle_call({handle_wamp,Msg},{Pid,_Ref},State) ->
     ok = handle_wamp_message(Msg,Pid,State),
     {reply,ok,State}
   catch
-    Error:Reason -> {reply,{error,Error,Reason},State}
+    Error:Reason ->
+       io:format("~nerror in router:~n~p~n",[erlang:get_stacktrace()]),
+      {reply,{error,Error,Reason},State}
   end;
 handle_call(_Msg,_From,State) ->
    {reply,shutdown,State}.
@@ -179,12 +181,12 @@ handle_wamp_message({goodbye,_Details,_Reason},Pid,#state{ets=Ets}=State) ->
   SessionId = Session#session.id,
   case Session#session.goodbye_sent of
     true ->
-      send_message_to({shutdown},Pid);
+      ok;
     _ ->
       ets:update_element(Ets,SessionId,{#session.goodbye_sent,true}),
-      send_message_to({goodbye,[{}],goodbye_and_out},SessionId)
-
-  end;
+      send_message_to({goodbye,[{}],goodbye_and_out},Pid)
+  end,
+  send_message_to(shutdown,Pid);
 
 handle_wamp_message({publish,_RequestId,Options,Topic,Arguments,ArgumentsKw},Pid,State) ->
   {ok,_PublicationId} = send_event_to_topic(Pid,Options,Topic,Arguments,ArgumentsKw,State),

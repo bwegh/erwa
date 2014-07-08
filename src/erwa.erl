@@ -35,7 +35,7 @@
 
 %% API for connecting to a router (either local or remote)
 -export([start_client/0]).
--export([stop_client/1]).
+-export([stop_client/1,stop_client/3]).
 
 -export([connect/2]).
 -export([connect/5]).
@@ -71,16 +71,20 @@ get_router_for_realm(Realm) ->
 %% connecting to a (remote) router (for peer)
 
 %% @doc start a connection server to handle a connection to a router.
-%% this can be either remote or local within the VM.
+%% The connection can be either remote or local within the VM.
 -spec start_client() -> {ok,Con :: pid()}.
 start_client() ->
   supervisor:start_child(erwa_con_sup,[[]]).
 
 %% @doc stop the given connection
 %% TODO: implement
+-spec stop_client(ConPid :: pid(),Details :: list(),Reason :: binary()) -> ok.
+stop_client(ConPid,Details,Reason) ->
+  gen_server:cast(ConPid,{shutdown,Details,Reason}).
+
 -spec stop_client(ConPid :: pid()) -> ok.
 stop_client(ConPid) ->
-  gen_server:cast(ConPid,shutdown).
+  gen_server:cast(ConPid,{shutdown,[{}],close_realm}).
 
 %% @doc Connect to a router in the VM.
 %% The connection will be established to the local router in the VM.
@@ -95,6 +99,8 @@ connect(ConPid,Realm) ->
 -spec connect(ConPid :: pid(), Host :: string(), Port :: non_neg_integer(), Realm :: binary(), Encoding :: raw_json | raw_msgpack) -> {ok,SessionId :: non_neg_integer() ,RouterDetails :: list()}.
 connect(ConPid,Host,Port,Realm,Encoding) ->
   gen_server:call(ConPid,{connect,Host,Port,Realm,Encoding}).
+
+
 
 %% @doc Subscribe to an event.
 %% subscribe to the event Topic.

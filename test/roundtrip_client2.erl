@@ -68,6 +68,7 @@ init(Args) ->
   {ok,SubscriptionId} = erwa:subscribe(Con,[{}],Event),
   {ok,RegistrationId} = erwa:register(Con,[{}],RPC),
   erwa:publish(Con,[{}],Event),
+  io:format("init of ~p done~n",[?MODULE]),
   {ok,#state{con=Con,session=SessionId,subscription=SubscriptionId,registration=RegistrationId,event_url=Event,remote_rpc=RemoteRpc}}.
 
 handle_call({test_passed},_From,State) ->
@@ -78,11 +79,13 @@ handle_cast(_Msg,State) ->
 
 
 handle_info({erwa,{event,SubscriptionId,_PublicationId,_Details,_Arguments,_ArgumentsKw}},#state{con=Con,subscription=SubscriptionId}=State) ->
+  io:format("event at ~p~n",[?MODULE]),
   ok = erwa:unsubscribe(Con,SubscriptionId),
+  ok = erwa:stop_client(Con),
   {noreply,State#state{event_received=true}};
 
 handle_info({erwa,{invocation,RequestId,RegistrationId,_Details,[A,B],_ArgumentsKw}},#state{registration=RegistrationId,con=Con,remote_rpc=RPC}=State) ->
-  io:format("invocation of roundtrip_client1~n"),
+  io:format("invocation of ~p~n",[?MODULE]),
   ok = erwa:yield(Con,RequestId,[{}],[A-B]),
   {ok,_Details,[14],_} = erwa:call(Con,[{}],RPC,[9,5]),
   erwa:unregister(Con,RegistrationId),
