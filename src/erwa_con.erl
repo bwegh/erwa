@@ -221,7 +221,12 @@ handle_message({event,SubscriptionId,_PublicationId,Details,Arguments,ArgumentsK
     undefined ->
       Pid ! {erwa,Msg};
     {M,F,S}  ->
-      erlang:apply(M,F,[Details,Arguments,ArgumentsKw,S])
+      try
+        erlang:apply(M,F,[Details,Arguments,ArgumentsKw,S])
+      catch
+        Error:Reason ->
+          io:format("error ~p:~p with event: ~n~p~n",[Error,Reason,erlang:get_stacktrace()])
+      end
   end;
 handle_message({result,RequestId,Details,Arguments,ArgumentsKw},#state{ets=Ets}) ->
   [#ref{method=call,ref=From}] = ets:lookup(Ets,RequestId),
@@ -255,11 +260,13 @@ handle_message({invocation,RequestId,RegistrationId,Details,Arguments,ArgumentsK
        try erlang:apply(M,F,[Details,Arguments,ArgumentsKw,S]) of
          {ok,Options,ResA,ResAKw} ->
            ok = raw_send({yield,RequestId,Options,ResA,ResAKw},State);
+         {error,Details,Uri,Arguments,ArgumentsKw} ->
+           ok = raw_send({error,invocation,RequestId,Details,Uri,Arguments,ArgumentsKw},State);
          Other ->
-           ok = raw_send({error,invocation,RequestId,[{<<"result">>,Other}],invalid_argument},State)
+           ok = raw_send({error,invocation,RequestId,[{<<"result">>,Other}],invalid_argument,undefined,undefined},State)
       catch
          Error:Reason ->
-           ok = raw_send({error,invocation,RequestId,[{<<"reason">>,io_lib:format("~p:~p",[Error,Reason])}],invalid_argument},State)
+           ok = raw_send({error,invocation,RequestId,[{<<"reason">>,io_lib:format("~p:~p",[Error,Reason])}],invalid_argument,undefined,undefined},State)
        end
   end;
 
