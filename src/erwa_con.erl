@@ -252,8 +252,15 @@ handle_message({invocation,RequestId,RegistrationId,Details,Arguments,ArgumentsK
     undefined ->
       Pid ! {erwa,Msg};
     {M,F,S}  ->
-       {ok,Options,ResA,ResAKw} = erlang:apply(M,F,[Details,Arguments,ArgumentsKw,S]),
-       ok = raw_send({yield,RequestId,Options,ResA,ResAKw},State)
+       try erlang:apply(M,F,[Details,Arguments,ArgumentsKw,S]) of
+         {ok,Options,ResA,ResAKw} ->
+           ok = raw_send({yield,RequestId,Options,ResA,ResAKw},State);
+         Other ->
+           ok = raw_send({error,invocation,RequestId,[{<<"result">>,Other}],invalid_argument},State)
+      catch
+         Error:Reason ->
+           ok = raw_send({error,invocation,RequestId,[{<<"reason">>,io_lib:format("~p:~p",[Error,Reason])}],invalid_argument},State)
+       end
   end;
 
 handle_message({error,call,RequestId,Details,Error,Arguments,ArgumentsKw},#state{ets=Ets}) ->

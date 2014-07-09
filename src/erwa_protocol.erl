@@ -366,18 +366,29 @@ to_wamp({goodbye,Details,invalid_argument}) ->
 to_wamp({goodbye,Details,goodbye_and_out}) ->
   [?GOODBYE,Details,?ERROR_AND_OUT];
 
-to_wamp({error,unsubscribe,RequestId,Details,no_such_subscription}) ->
-  [?ERROR,?SUBSCRIBE,RequestId,Details,?ERROR_NO_SUCH_SUBSCRIPTION];
-to_wamp({error,register,RequestId,Details,procedure_already_exists}) ->
-  [?ERROR,?SUBSCRIBE,RequestId,Details,?ERROR_PROCEDURE_ALREADY_EXISTS];
-to_wamp({error,unregister,RequestId,Details,no_such_registration}) ->
-  [?ERROR,?SUBSCRIBE,RequestId,Details,?ERROR_NO_SUCH_REGISTRATION];
-to_wamp({error,call,RequestId,Details,no_such_procedure,undefined,undefined}) ->
-  [?ERROR,?CALL,RequestId,Details,?ERROR_NO_SUCH_PROCEDURE];
-to_wamp({error,call,RequestId,Details,no_such_procedure,Arguments,undefined}) ->
-  [?ERROR,?CALL,RequestId,Details,?ERROR_NO_SUCH_PROCEDURE,Arguments];
+
+to_wamp({error,unsubscribe,RequestId,Details,no_such_subscription,Arguments,ArgumentsKw}) ->
+  to_wamp({error,?UNSUBSCRIBE,RequestId,Details,?ERROR_NO_SUCH_SUBSCRIPTION,Arguments,ArgumentsKw});
+to_wamp({error,register,RequestId,Details,procedure_already_exists,Arguments,ArgumentsKw}) ->
+  to_wamp({error,?REGISTER,RequestId,Details,?ERROR_PROCEDURE_ALREADY_EXISTS,Arguments,ArgumentsKw});
+to_wamp({error,unregister,RequestId,Details,no_such_registration,Arguments,ArgumentsKw}) ->
+  to_wamp({error,?UNREGISTER,RequestId,Details,?ERROR_NO_SUCH_REGISTRATION,Arguments,ArgumentsKw});
+
 to_wamp({error,call,RequestId,Details,no_such_procedure,Arguments,ArgumentsKw}) ->
-  [?ERROR,?CALL,RequestId,Details,?ERROR_NO_SUCH_PROCEDURE,Arguments,ArgumentsKw];
+  to_wamp({error,?CALL,RequestId,Details,?ERROR_NO_SUCH_PROCEDURE,Arguments,ArgumentsKw});
+to_wamp({error,call,RequestId,Details,invalid_argument,Arguments,ArgumentsKw}) ->
+  to_wamp({error,?CALL,RequestId,Details,?ERROR_INVALID_ARGUMENT,Arguments,ArgumentsKw});
+
+to_wamp({error,invocation,RequestId,Details,invalid_argument,Arguments,ArgumentsKw}) ->
+  to_wamp({error,?INVOCATION,RequestId,Details,?ERROR_INVALID_ARGUMENT,Arguments,ArgumentsKw});
+
+
+to_wamp({error,Origin,RequestId,Details,Reason,undefined,undefined}) ->
+  [?ERROR,Origin,RequestId,Details,Reason];
+to_wamp({error,Origin,RequestId,Details,Reason,Arguments,undefined}) ->
+  [?ERROR,Origin,RequestId,Details,Reason,Arguments];
+to_wamp({error,Origin,RequestId,Details,Reason,Arguments,ArgumentsKw}) ->
+  [?ERROR,Origin,RequestId,Details,Reason,Arguments,ArgumentsKw];
 
 to_wamp({publish,RequestId,Options,Topic,undefined,undefined}) ->
   [?PUBLISH,RequestId,Options,Topic];
@@ -453,6 +464,8 @@ to_wamp(noreply)  ->
   noreply;
 to_wamp(shutdown)  ->
   shutdown.
+
+%% TODO: add check for outgoing values ... most important disallow atoms
 
 
 -ifdef(TEST).

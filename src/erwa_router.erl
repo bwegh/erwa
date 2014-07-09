@@ -229,16 +229,18 @@ handle_wamp_message({unregister,RequestId,RegistrationId},Pid,State) ->
       send_message_to({error,unregister,RequestId,[{}],no_such_registration,undefined,undefined},Pid)
   end;
 
-handle_wamp_message({error,invocation,_InvocationId,_Details,_Error,_Arguments,_ArgumentsKw},_Pid,_State) ->
-  % TODO: implement
-  ok;
-handle_wamp_message({yield,InvocationId,Options,Arguments,ArgumentsKw},Pid,State) ->
-  case dequeue_procedure_call(Pid,InvocationId,Options,Arguments,ArgumentsKw,State) of
+handle_wamp_message({error,invocation,InvocationId,Details,Error,Arguments,ArgumentsKw},Pid,State) ->
+  case dequeue_procedure_call(Pid,InvocationId,Details,Arguments,ArgumentsKw,Error,State) of
     {ok} -> ok;
     {error,not_found} -> ok;
     {error,wrong_session} -> ok
-  end,
-  ok;
+  end;
+handle_wamp_message({yield,InvocationId,Options,Arguments,ArgumentsKw},Pid,State) ->
+  case dequeue_procedure_call(Pid,InvocationId,Options,Arguments,ArgumentsKw,undefined,State) of
+    {ok} -> ok;
+    {error,not_found} -> ok;
+    {error,wrong_session} -> ok
+  end;
 handle_wamp_message(Msg,_Pid,_State) ->
   io:format("unknown message ~p~n",[Msg]),
   ok.
@@ -374,7 +376,8 @@ enqueue_procedure_call( Pid, RequestId, Options,ProcedureUrl,Arguments,Arguments
       true
   end.
 
-dequeue_procedure_call(Pid,Id,_Options,Arguments,ArgumentsKw,#state{ets=Ets}=State) ->
+
+dequeue_procedure_call(Pid,Id,Options,Arguments,ArgumentsKw,Error,#state{ets=Ets}=State) ->
   case ets:lookup(Ets,Id) of
     [] -> {error,not_found};
     [Invocation] ->
@@ -382,7 +385,13 @@ dequeue_procedure_call(Pid,Id,_Options,Arguments,ArgumentsKw,#state{ets=Ets}=Sta
        Pid ->
           #invocation{caller_pid=CallerPid, request_id=RequestId} = Invocation,
           Details = [{}],
-          send_message_to({result,RequestId,Details,Arguments,ArgumentsKw},CallerPid),
+          Msg = case Error of
+                  undefined ->
+                    {result,RequestId,Details,Arguments,ArgumentsKw};
+                  Uri ->
+                    {error,call,RequestId,Options,Uri,Arguments,ArgumentsKw}
+                end,
+          send_message_to(Msg,CallerPid),
           remove_invocation(Id,State),
           {ok};
         _ ->
