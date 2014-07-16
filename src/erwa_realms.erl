@@ -73,7 +73,11 @@ stop() ->
   %% gen_server.
 
 init([]) ->
-  AutoCreate = application:get_env(erwa,realm_autocreate,false),
+  AutoCreate =
+    case application:get_env(erwa, realm_autocreate) of
+	undefined -> false;
+	{ok, Value} -> Value
+    end,
   Ets = ets:new(realms,[set]),
 	{ok, #state{ets=Ets, autocreate_realm=AutoCreate}}.
 
