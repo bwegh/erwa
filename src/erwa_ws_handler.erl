@@ -40,7 +40,7 @@
   buffer = <<"">>
                }).
 
-init({tcp, http}, _Req, _Opts) ->
+init({Transport, http}, _Req, _Opts) when Transport == tcp; Transport == ssl ->
   {upgrade, protocol, cowboy_websocket}.
 
 websocket_init(_TransportName, Req, _Opts) ->
