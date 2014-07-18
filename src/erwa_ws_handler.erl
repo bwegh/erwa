@@ -33,6 +33,8 @@
 -define(SUBPROTHEADER,<<"sec-websocket-protocol">>).
 -define(WSMSGPACK,<<"wamp.2.msgpack">>).
 -define(WSJSON,<<"wamp.2.json">>).
+-define(WSMSGPACK_BATCHED,<<"wamp.2.msgpack.batched">>).
+-define(WSJSON_BATCHED,<<"wamp.2.json.batched">>).
 
 -record(state,{
   enc = undefined,
@@ -50,9 +52,15 @@ websocket_init(_TransportName, Req, _Opts) ->
       ?WSMSGPACK ->
         Req2  = cowboy_req:set_resp_header(?SUBPROTHEADER,?WSMSGPACK,Req1),
         {ok,Req2,#state{enc=msgpack}};
+      ?WSMSGPACK_BATCHED ->
+        Req2  = cowboy_req:set_resp_header(?SUBPROTHEADER,?WSMSGPACK_BATCHED,Req1),
+        {ok,Req2,#state{enc=msgpack_batched}};
       ?WSJSON ->
         Req2  = cowboy_req:set_resp_header(?SUBPROTHEADER,?WSJSON,Req1),
         {ok,Req2,#state{enc=json}};
+      ?WSJSON_BATCHED ->
+        Req2  = cowboy_req:set_resp_header(?SUBPROTHEADER,?WSJSON_BATCHED,Req1),
+        {ok,Req2,#state{enc=json_batched}};
       _ ->
         {shutdown,Req1}
   end.
