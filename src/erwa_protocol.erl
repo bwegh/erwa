@@ -506,10 +506,21 @@ dict_to_wamp(Dict) ->
                       {partitioned_pubsub,<<"partitioned_pubsub">>,false},
                       {subscriber_metaevents,<<"subscriber_metaevents">>,false},
                       {subscriber_list,<<"subscriber_list">>,false},
-                      {event_history,<<"event_history">>,false}
+                      {event_history,<<"event_history">>,false},
+                      {callee_blackwhite_listing,<<"callee_blackwhite_listing">>,false},
+                      {caller_exclusion,<<"caller_exclusion">>,false},
+                      {caller_identification,<<"caller_identification">>,false},
+                      {call_trustlevels,<<"call_trustlevels">>,false},
+                      {pattern_based_registration,<<"pattern_based_registration">>,false},
+                      {partitioned_rpc,<<"partitioned_rpc">>,false},
+                      {call_timeout,<<"call_timeout">>,false},
+                      {call_canceling,<<"call_canceling">>,false},
+                      {progressive_call_results,<<"progressive_call_results">>,false}
                       ]).
 
 
+convert_dict(_Direction,[{}],[]) ->
+  lists:reverse([{}]);
 convert_dict(_Direction,[],Converted) ->
   lists:reverse(Converted);
 convert_dict(Direction,[{Key,Value}|T],Converted) ->
