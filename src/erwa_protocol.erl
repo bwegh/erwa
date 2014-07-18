@@ -46,10 +46,15 @@ deserialize(Buffer,Messages,msgpack) ->
      {Msg,NewBuffer} ->
       deserialize(NewBuffer,[Msg|Messages],msgpack)
   end;
+deserialize(Buffer,Messages,msgpack_batched) ->
+  deserialize(Buffer,Messages,raw_msgpack);
 deserialize(Buffer,Messages,json) ->
   %% is it possible to check the data here ?
   %% length and stuff, yet should not be needed
   {[to_erl(jsx:decode(Buffer))|Messages],<<"">>};
+deserialize(Buffer,_Messages,json_batched) ->
+  Wamps = binary:split(Buffer,[<<30>>],[global,trim]),
+  {to_erl_reverse(lists:foldl(fun(M,List) -> [jsx:decode(M)|List] end,[],Wamps)),<<"">>};
 deserialize(<<Len:32/unsigned-integer-big,Data/binary>>  = Buffer,Messages,raw_msgpack) ->
   case byte_size(Data) >= Len of
     true ->
@@ -77,8 +82,14 @@ serialize(Erwa,Enc) when is_tuple(Erwa) ->
   serialize(WAMP,Enc);
 serialize(Msg,msgpack)  ->
   msgpack:pack(Msg,[{format,jsx}]);
+serialize(Msg,msgpack_batched) ->
+  serialize(Msg,raw_msgpack);
 serialize(Msg,json)  ->
   jsx:encode(Msg);
+serialize(Msg,json_batched) ->
+  Enc = jsx:encode(Msg),
+  Char = <<30>>,
+  <<Enc/binary,Char:8/binary>>;
 serialize(Message,raw_msgpack) ->
   Enc = msgpack:pack(Message,[jsx]),
   Len = byte_size(Enc),
@@ -178,20 +189,22 @@ is_valid_argumentskw(_)  -> false.
 -define(ERROR_INVALID_TOPIC,<<"wamp.error.invalid_topic">>).
 -define(ERROR_PROCEDURE_ALREADY_EXISTS,<<"wamp.error.procedure_already_exists">>).
 
+
+
 to_erl([?HELLO,Realm,Details]) ->
   true = is_valid_uri(Realm),
   true = is_valid_dict(Details),
-  {hello,Realm,Details};
+  {hello,Realm,dict_to_erl(Details)};
 
 to_erl([?WELCOME,SessionId,Details]) ->
   true = is_valid_id(SessionId),
   true = is_valid_dict(Details),
-  {welcome,SessionId,Details};
+  {welcome,SessionId,dict_to_erl(Details)};
 
 to_erl([?ABORT,Details,Reason]) ->
   true = is_valid_dict(Details),
   true = is_valid_uri(Reason),
-  {abort,Details,Reason};
+  {abort,dict_to_erl(Details),Reason};
 
 to_erl([?GOODBYE,Details,?ERROR_NOT_AUTHORIZED]) ->
   to_erl([?GOODBYE,Details,not_authorized]);
@@ -206,7 +219,7 @@ to_erl([?GOODBYE,Details,?ERROR_AND_OUT]) ->
 to_erl([?GOODBYE,Details,Reason]) ->
   true = is_valid_dict(Details),
   true = is_valid_uri(Reason) or is_atom(Reason),
-  {goodbye,Details,Reason};
+  {goodbye,dict_to_erl(Details),Reason};
 
 to_erl([?ERROR,RequestType,RequestId,Details,Error]) ->
   to_erl([?ERROR,RequestType,RequestId,Details,Error,undefined,undefined]);
@@ -222,7 +235,7 @@ to_erl([?ERROR,?CALL,RequestId,Details,Error,Arguments,ArgumentsKw]) ->
   true = is_valid_uri(Error) or is_atom(Error),
   true = is_valid_arguments(Arguments),
   true = is_valid_argumentskw(ArgumentsKw),
-  {error,call,RequestId,Details,Error,Arguments,ArgumentsKw};
+  {error,call,RequestId,dict_to_erl(Details),Error,Arguments,ArgumentsKw};
 
 to_erl([?PUBLISH,RequestId,Options,Topic]) ->
   to_erl([?PUBLISH,RequestId,Options,Topic,undefined,undefined]);
@@ -234,7 +247,7 @@ to_erl([?PUBLISH,RequestId,Options,Topic,Arguments,ArgumentsKw]) ->
   true = is_valid_uri(Topic),
   true = is_valid_arguments(Arguments),
   true = is_valid_argumentskw(ArgumentsKw),
-  {publish,RequestId,Options,Topic,Arguments,ArgumentsKw};
+  {publish,RequestId,dict_to_erl(Options),Topic,Arguments,ArgumentsKw};
 
 to_erl([?PUBLISHED,RequestId,PublicationId]) ->
   true = is_valid_id(RequestId),
@@ -245,7 +258,7 @@ to_erl([?SUBSCRIBE,RequestId,Options,Topic]) ->
   true = is_valid_id(RequestId),
   true = is_valid_dict(Options),
   true = is_valid_uri(Topic),
-  {subscribe,RequestId,Options,Topic};
+  {subscribe,RequestId,dict_to_erl(Options),Topic};
 
 to_erl([?SUBSCRIBED,RequestId,SubscriptionId]) ->
   true = is_valid_id(RequestId),
@@ -271,7 +284,7 @@ to_erl([?EVENT,SubscriptionId,PublicationId,Details,Arguments,ArgumentsKw]) ->
   true = is_valid_dict(Details),
   true = is_valid_arguments(Arguments),
   true = is_valid_argumentskw(ArgumentsKw),
-  {event,SubscriptionId,PublicationId,Details,Arguments,ArgumentsKw};
+  {event,SubscriptionId,PublicationId,dict_to_erl(Details),Arguments,ArgumentsKw};
 
 to_erl([?CALL,RequestId,Options,Procedure]) ->
   to_erl([?CALL,RequestId,Options,Procedure,undefined,undefined]);
@@ -283,7 +296,7 @@ to_erl([?CALL,RequestId,Options,Procedure,Arguments,ArgumentsKw]) ->
   true = is_valid_uri(Procedure),
   true = is_valid_arguments(Arguments),
   true = is_valid_argumentskw(ArgumentsKw),
-  {call,RequestId,Options,Procedure,Arguments,ArgumentsKw};
+  {call,RequestId,dict_to_erl(Options),Procedure,Arguments,ArgumentsKw};
 
 to_erl([?RESULT,RequestId,Details]) ->
   to_erl([?RESULT,RequestId,Details,undefined,undefined]);
@@ -294,13 +307,13 @@ to_erl([?RESULT,RequestId,Details,Arguments,ArgumentsKw]) ->
   true = is_valid_dict(Details),
   true = is_valid_arguments(Arguments),
   true = is_valid_argumentskw(ArgumentsKw),
-  {result,RequestId,Details,Arguments,ArgumentsKw};
+  {result,RequestId,dict_to_erl(Details),Arguments,ArgumentsKw};
 
 to_erl([?REGISTER,RequestId,Options,Procedure]) ->
   true = is_valid_id(RequestId),
   true = is_valid_dict(Options),
   true = is_valid_uri(Procedure),
-  {register,RequestId,Options,Procedure};
+  {register,RequestId,dict_to_erl(Options),Procedure};
 
 to_erl([?REGISTERED,RequestId,RegistrationId]) ->
   true = is_valid_id(RequestId),
@@ -324,7 +337,7 @@ to_erl([?INVOCATION,RequestId, RegistrationId, Details, Arguments, ArgumentsKw])
   true = is_valid_dict(Details),
   true = is_valid_arguments(Arguments),
   true = is_valid_argumentskw(ArgumentsKw),
-  {invocation,RequestId, RegistrationId, Details, Arguments, ArgumentsKw};
+  {invocation,RequestId, RegistrationId, dict_to_erl(Details), Arguments, ArgumentsKw};
 
 to_erl([?YIELD, RequestId, Options]) ->
   to_erl([?YIELD, RequestId, Options, undefined, undefined]);
@@ -335,7 +348,7 @@ to_erl([?YIELD, RequestId, Options, Arguments, ArgumentsKw]) ->
   true = is_valid_dict(Options),
   true = is_valid_arguments(Arguments),
   true = is_valid_argumentskw(ArgumentsKw),
-  {yield,RequestId,Options, Arguments,ArgumentsKw}.
+  {yield,RequestId,dict_to_erl(Options), Arguments,ArgumentsKw}.
 
 
 
@@ -343,28 +356,33 @@ to_erl([?YIELD, RequestId, Options, Arguments, ArgumentsKw]) ->
 
 
 to_wamp({hello,Realm,Details}) ->
-  [?HELLO,Realm,Details];
+  [?HELLO,Realm,dict_to_wamp(Details)];
 
 to_wamp({welcome,SessionId,Details}) ->
-  [?WELCOME,SessionId,Details];
+  [?WELCOME,SessionId,dict_to_wamp(Details)];
 
 to_wamp({abort,Details,not_authorized}) ->
-  [?ABORT,Details,?ERROR_NOT_AUTHORIZED];
+  to_wamp({abort,Details,?ERROR_NOT_AUTHORIZED});
 to_wamp({abort,Details,no_such_realm}) ->
-  [?ABORT,Details,?ERROR_NO_SUCH_REALM];
+  to_wamp({abort,Details,?ERROR_NO_SUCH_REALM});
 to_wamp({abort,Details,close_realm}) ->
-  [?ABORT,Details,?ERROR_CLOSE_REALM];
+  to_wamp({abort,Details,?ERROR_CLOSE_REALM});
 to_wamp({abort,Details,system_shutdown}) ->
-  [?ABORT,Details,?ERROR_SHUTDOWN];
+  to_wamp({abort,Details,?ERROR_SHUTDOWN});
+to_wamp({abort,Details,Reason}) ->
+  [?ABORT,dict_to_wamp(Details),Reason];
+
 
 to_wamp({goodbye,Details,close_realm}) ->
-  [?GOODBYE,Details,?ERROR_CLOSE_REALM];
+  to_wamp({goodbye,Details,?ERROR_CLOSE_REALM});
 to_wamp({goodbye,Details,system_shutdown}) ->
-  [?GOODBYE,Details,?ERROR_SHUTDOWN];
+  to_wamp({goodbye,Details,?ERROR_SHUTDOWN});
 to_wamp({goodbye,Details,invalid_argument}) ->
-  [?GOODBYE,Details,?ERROR_INVALID_ARGUMENT];
+  to_wamp({goodbye,Details,?ERROR_INVALID_ARGUMENT});
 to_wamp({goodbye,Details,goodbye_and_out}) ->
-  [?GOODBYE,Details,?ERROR_AND_OUT];
+  to_wamp({goodbye,Details,?ERROR_AND_OUT});
+to_wamp({goodbye,Details,Reason}) ->
+  [?GOODBYE,dict_to_wamp(Details),Reason];
 
 
 to_wamp({error,unsubscribe,RequestId,Details,no_such_subscription,Arguments,ArgumentsKw}) ->
@@ -384,24 +402,24 @@ to_wamp({error,invocation,RequestId,Details,invalid_argument,Arguments,Arguments
 
 
 to_wamp({error,Origin,RequestId,Details,Reason,undefined,undefined}) ->
-  [?ERROR,Origin,RequestId,Details,Reason];
+  [?ERROR,Origin,RequestId,dict_to_wamp(Details),Reason];
 to_wamp({error,Origin,RequestId,Details,Reason,Arguments,undefined}) ->
-  [?ERROR,Origin,RequestId,Details,Reason,Arguments];
+  [?ERROR,Origin,RequestId,dict_to_wamp(Details),Reason,Arguments];
 to_wamp({error,Origin,RequestId,Details,Reason,Arguments,ArgumentsKw}) ->
-  [?ERROR,Origin,RequestId,Details,Reason,Arguments,ArgumentsKw];
+  [?ERROR,Origin,RequestId,dict_to_wamp(Details),Reason,Arguments,ArgumentsKw];
 
 to_wamp({publish,RequestId,Options,Topic,undefined,undefined}) ->
-  [?PUBLISH,RequestId,Options,Topic];
+  [?PUBLISH,RequestId,dict_to_wamp(Options),Topic];
 to_wamp({publish,RequestId,Options,Topic,Arguments,undefined}) ->
-  [?PUBLISH,RequestId,Options,Topic,Arguments];
+  [?PUBLISH,RequestId,dict_to_wamp(Options),Topic,Arguments];
 to_wamp({publish,RequestId,Options,Topic,Arguments,ArgumentsKw}) ->
-  [?PUBLISH,RequestId,Options,Topic,Arguments,ArgumentsKw];
+  [?PUBLISH,RequestId,dict_to_wamp(Options),Topic,Arguments,ArgumentsKw];
 
 to_wamp({published,RequestId,PublicationId}) ->
   [?PUBLISHED,RequestId,PublicationId];
 
 to_wamp({subscribe,RequestId,Options,Topic}) ->
-  [?SUBSCRIBE,RequestId,Options,Topic];
+  [?SUBSCRIBE,RequestId,dict_to_wamp(Options),Topic];
 
 to_wamp({subscribed,RequestId,SubscriptionId}) ->
   [?SUBSCRIBED,RequestId,SubscriptionId];
@@ -413,29 +431,29 @@ to_wamp({unsubscribed,RequestId}) ->
   [?UNSUBSCRIBED,RequestId];
 
 to_wamp({event,SubscriptionId,PublicationId,Details,undefined,undefined}) ->
-  [?EVENT,SubscriptionId,PublicationId,Details];
+  [?EVENT,SubscriptionId,PublicationId,dict_to_wamp(Details)];
 to_wamp({event,SubscriptionId,PublicationId,Details,Arguments,undefined}) ->
-  [?EVENT,SubscriptionId,PublicationId,Details,Arguments];
+  [?EVENT,SubscriptionId,PublicationId,dict_to_wamp(Details),Arguments];
 to_wamp({event,SubscriptionId,PublicationId,Details,Arguments,ArgumentsKw}) ->
-  [?EVENT,SubscriptionId,PublicationId,Details,Arguments,ArgumentsKw];
+  [?EVENT,SubscriptionId,PublicationId,dict_to_wamp(Details),Arguments,ArgumentsKw];
 
 to_wamp({call,RequestId,Options,Procedure,undefined,undefined}) ->
-  [?CALL,RequestId,Options,Procedure];
+  [?CALL,RequestId,dict_to_wamp(Options),Procedure];
 to_wamp({call,RequestId,Options,Procedure,Arguments,undefined}) ->
-  [?CALL,RequestId,Options,Procedure,Arguments];
+  [?CALL,RequestId,dict_to_wamp(Options),Procedure,Arguments];
 to_wamp({call,RequestId,Options,Procedure,Arguments,ArgumentsKw}) ->
-  [?CALL,RequestId,Options,Procedure,Arguments,ArgumentsKw];
+  [?CALL,RequestId,dict_to_wamp(Options),Procedure,Arguments,ArgumentsKw];
 
 
 to_wamp({result,RequestId,Details,undefined,undefined}) ->
-  [?RESULT,RequestId,Details];
+  [?RESULT,RequestId,dict_to_wamp(Details)];
 to_wamp({result,RequestId,Details,Arguments,undefined}) ->
-  [?RESULT,RequestId,Details,Arguments];
+  [?RESULT,RequestId,dict_to_wamp(Details),Arguments];
 to_wamp({result,RequestId,Details,Arguments,ArgumentsKw}) ->
-  [?RESULT,RequestId,Details,Arguments,ArgumentsKw];
+  [?RESULT,RequestId,dict_to_wamp(Details),Arguments,ArgumentsKw];
 
 to_wamp({register,RequestId,Options,Procedure}) ->
-  [?REGISTER,RequestId,Options,Procedure];
+  [?REGISTER,RequestId,dict_to_wamp(Options),Procedure];
 
 to_wamp({registered,RequestId,RegistrationId}) ->
   [?REGISTERED,RequestId,RegistrationId];
@@ -447,25 +465,78 @@ to_wamp({unregistered,RequestId}) ->
   [?UNREGISTERED,RequestId];
 
 to_wamp({invocation,RequestId,RegistrationId,Details,undefined,undefined}) ->
-  [?INVOCATION,RequestId,RegistrationId,Details];
+  [?INVOCATION,RequestId,RegistrationId,dict_to_wamp(Details)];
 to_wamp({invocation,RequestId,RegistrationId,Details,Arguments,undefined}) ->
-  [?INVOCATION,RequestId,RegistrationId,Details,Arguments];
+  [?INVOCATION,RequestId,RegistrationId,dict_to_wamp(Details),Arguments];
 to_wamp({invocation,RequestId,RegistrationId,Details,Arguments,ArgumentsKw}) ->
-  [?INVOCATION,RequestId,RegistrationId,Details,Arguments,ArgumentsKw];
+  [?INVOCATION,RequestId,RegistrationId,dict_to_wamp(Details),Arguments,ArgumentsKw];
 
 to_wamp({yield,RequestId,Options,undefined,undefined}) ->
-  [?YIELD,RequestId,Options];
+  [?YIELD,RequestId,dict_to_wamp(Options)];
 to_wamp({yield,RequestId,Options,Arguments,undefined}) ->
-  [?YIELD,RequestId,Options,Arguments];
+  [?YIELD,RequestId,dict_to_wamp(Options),Arguments];
 to_wamp({yield,RequestId,Options,Arguments,ArgumentsKw}) ->
-  [?YIELD,RequestId,Options,Arguments,ArgumentsKw];
+  [?YIELD,RequestId,dict_to_wamp(Options),Arguments,ArgumentsKw];
 
 to_wamp(noreply)  ->
   noreply;
 to_wamp(shutdown)  ->
   shutdown.
 
-%% TODO: add check for outgoing values ... most important disallow atoms
+
+dict_to_erl(Dict) ->
+  convert_dict(to_erl,Dict,[]).
+
+dict_to_wamp(Dict) ->
+  convert_dict(to_wamp,Dict,[]).
+
+-define(DICT_MAPPING,[
+                      {agent,<<"agent">>,false},
+                      {roles,<<"roles">>,true},
+                      {broker,<<"broker">>,true},
+                      {dealer,<<"dealer">>,true},
+                      {publisher,<<"publisher">>,true},
+                      {subscriber,<<"subscriber">>,true},
+                      {features,<<"features">>,true},
+                      {subscriber_blackwhite_listing,<<"subscriber_blackwhite_listing">>,false},
+                      {publisher_exclusion,<<"publisher_exclusion">>,false},
+                      {publisher_identification,<<"publisher_identification">>,false},
+                      {publication_trustlevels,<<"publication_trustlevels">>,false},
+                      {pattern_based_subscription,<<"pattern_based_subscription">>,false},
+                      {partitioned_pubsub,<<"partitioned_pubsub">>,false},
+                      {subscriber_metaevents,<<"subscriber_metaevents">>,false},
+                      {subscriber_list,<<"subscriber_list">>,false},
+                      {event_history,<<"event_history">>,false}
+                      ]).
+
+
+convert_dict(_Direction,[],Converted) ->
+  lists:reverse(Converted);
+convert_dict(Direction,[{Key,Value}|T],Converted) ->
+  KeyPos =
+    case Direction of
+      to_erl -> 2;
+      to_wamp -> 1
+    end,
+
+  {ErlKey,WampKey,Deep} =
+    case lists:keyfind(Key,KeyPos,?DICT_MAPPING) of
+      {Ek,Wk,D} -> {Ek,Wk,D};
+      false -> {Key,Key,false}
+    end,
+  ConvValue =
+    case Deep of
+      true -> convert_dict(Direction,Value,[]);
+      _ -> Value
+    end,
+  ConvKey =
+    case Direction of
+      to_erl -> ErlKey;
+      to_wamp -> WampKey
+    end,
+  convert_dict(Direction,T,[{ConvKey,ConvValue}|Converted]).
+
+
 
 
 -ifdef(TEST).

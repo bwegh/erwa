@@ -62,7 +62,33 @@ start_link(Args) ->
   gen_server:start_link(?MODULE, [Args], []).
 
 
--define(ROUTER_DETAILS,[{<<"roles">>,[{<<"broker">>,[{}]},{<<"dealer">>,[{}]}]}]).
+-define(ROUTER_DETAILS,[
+                        {agent,<<"Erwa-0.0.1">>},
+                        {roles,[
+                                {broker,[{features,[
+                                                    {subscriber_blackwhite_listing,false},
+                                                    {publisher_exclusion,false},
+                                                    {publisher_identification,false},
+                                                    {publication_trustlevels,false},
+                                                    {pattern_based_subscription,false},
+                                                    {partitioned_pubsub,false},
+                                                    {subscriber_metaevents,false},
+                                                    {subscriber_list,false},
+                                                    {event_history,false}
+                                                    ]} ]},
+                                {dealer,[{features,[
+                                                    {callee_blackwhite_listing,false},
+                                                    {caller_exclusion,false},
+                                                    {caller_identification,false},
+                                                    {call_trustlevels,false},
+                                                    {pattern_based_registration,false},
+                                                    {partitioned_rpc,false},
+                                                    {call_timeout,false},
+                                                    {call_canceling,false},
+                                                    {progressive_call_results,false}
+                                                    ]}]}]}]).
+
+
 
 
 -record(state, {
@@ -77,6 +103,7 @@ start_link(Args) ->
   details = undefined,
   requestId = 1,
   goodbye_sent = false,
+  subscriber_blackwhite_listing,
   subscriptions = [],
   registrations = []
 }).
