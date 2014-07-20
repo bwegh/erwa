@@ -206,6 +206,14 @@ to_erl([?ABORT,Details,Reason]) ->
   true = is_valid_uri(Reason),
   {abort,dict_to_erl(Details),Reason};
 
+to_erl([?CHALLENGE,AuthMethod,Extra]) ->
+  true = is_valid_dict(Extra),
+  {challenge,AuthMethod,dict_to_erl(Extra)};
+
+to_erl([?AUTHENTICATE,Signature,Extra]) ->
+  true = is_valid_dict(Extra),
+  {authenticate,Signature,dict_to_erl(Extra)};
+
 to_erl([?GOODBYE,Details,?ERROR_NOT_AUTHORIZED]) ->
   to_erl([?GOODBYE,Details,not_authorized]);
 to_erl([?GOODBYE,Details,?ERROR_NO_SUCH_REALM]) ->
@@ -220,6 +228,11 @@ to_erl([?GOODBYE,Details,Reason]) ->
   true = is_valid_dict(Details),
   true = is_valid_uri(Reason) or is_atom(Reason),
   {goodbye,dict_to_erl(Details),Reason};
+
+to_erl([?HEARTBEAT,IncomingSeq,OutgoingSeq,_Discard]) ->
+  to_erl([?HEARTBEAT,IncomingSeq,OutgoingSeq]);
+to_erl([?HEARTBEAT,IncomingSeq,OutgoingSeq]) ->
+  {heartbeat,IncomingSeq,OutgoingSeq};
 
 to_erl([?ERROR,RequestType,RequestId,Details,Error]) ->
   to_erl([?ERROR,RequestType,RequestId,Details,Error,undefined,undefined]);
@@ -298,6 +311,10 @@ to_erl([?CALL,RequestId,Options,Procedure,Arguments,ArgumentsKw]) ->
   true = is_valid_argumentskw(ArgumentsKw),
   {call,RequestId,dict_to_erl(Options),Procedure,Arguments,ArgumentsKw};
 
+to_erl([?CANCEL,RequestId,Options]) ->
+  true = is_valid_dict(Options),
+  {cancel,RequestId,dict_to_erl(Options)};
+
 to_erl([?RESULT,RequestId,Details]) ->
   to_erl([?RESULT,RequestId,Details,undefined,undefined]);
 to_erl([?RESULT,RequestId,Details,Arguments]) ->
@@ -339,6 +356,10 @@ to_erl([?INVOCATION,RequestId, RegistrationId, Details, Arguments, ArgumentsKw])
   true = is_valid_argumentskw(ArgumentsKw),
   {invocation,RequestId, RegistrationId, dict_to_erl(Details), Arguments, ArgumentsKw};
 
+to_erl([?INTERRUPT,RequestId,Options]) ->
+  true = is_valid_dict(Options),
+  {interrupt,RequestId,dict_to_erl(Options)};
+
 to_erl([?YIELD, RequestId, Options]) ->
   to_erl([?YIELD, RequestId, Options, undefined, undefined]);
 to_erl([?YIELD, RequestId, Options, Arguments]) ->
@@ -358,8 +379,17 @@ to_erl([?YIELD, RequestId, Options, Arguments, ArgumentsKw]) ->
 to_wamp({hello,Realm,Details}) ->
   [?HELLO,Realm,dict_to_wamp(Details)];
 
+to_wamp({challenge,AuthMethod,Extra}) ->
+  [?CHALLENGE,AuthMethod,dict_to_wamp(Extra)];
+
+to_wamp({authenticate,Signature,Extra}) ->
+  [?AUTHENTICATE,Signature,dict_to_wamp(Extra)];
+
 to_wamp({welcome,SessionId,Details}) ->
   [?WELCOME,SessionId,dict_to_wamp(Details)];
+
+to_wamp({heartbeat,IncomingSeq,OutgoingSeq}) ->
+  [?HEARTBEAT,IncomingSeq,OutgoingSeq];
 
 to_wamp({abort,Details,not_authorized}) ->
   to_wamp({abort,Details,?ERROR_NOT_AUTHORIZED});
@@ -444,6 +474,8 @@ to_wamp({call,RequestId,Options,Procedure,Arguments,undefined}) ->
 to_wamp({call,RequestId,Options,Procedure,Arguments,ArgumentsKw}) ->
   [?CALL,RequestId,dict_to_wamp(Options),Procedure,Arguments,ArgumentsKw];
 
+to_wamp({cancel,RequestId,Options}) ->
+  [?CANCEL,RequestId,dict_to_wamp(Options)];
 
 to_wamp({result,RequestId,Details,undefined,undefined}) ->
   [?RESULT,RequestId,dict_to_wamp(Details)];
@@ -470,6 +502,9 @@ to_wamp({invocation,RequestId,RegistrationId,Details,Arguments,undefined}) ->
   [?INVOCATION,RequestId,RegistrationId,dict_to_wamp(Details),Arguments];
 to_wamp({invocation,RequestId,RegistrationId,Details,Arguments,ArgumentsKw}) ->
   [?INVOCATION,RequestId,RegistrationId,dict_to_wamp(Details),Arguments,ArgumentsKw];
+
+to_wamp({interrupt,RequestId,Options}) ->
+  [?INTERRUPT,RequestId,dict_to_wamp(Options)];
 
 to_wamp({yield,RequestId,Options,undefined,undefined}) ->
   [?YIELD,RequestId,dict_to_wamp(Options)];
@@ -515,7 +550,15 @@ dict_to_wamp(Dict) ->
                       {partitioned_rpc,<<"partitioned_rpc">>,false},
                       {call_timeout,<<"call_timeout">>,false},
                       {call_canceling,<<"call_canceling">>,false},
-                      {progressive_call_results,<<"progressive_call_results">>,false}
+                      {progressive_call_results,<<"progressive_call_results">>,false},
+                      {exclude,<<"exclude">>,false},
+                      {eligible,<<"eligible">>,false},
+                      {exclude_me,<<"exclude_me">>,false},
+                      {disclose_me,<<"disclose_me">>,false},
+                      {publisher,<<"publisher">>,false},
+                      {caller,<<"caller">>,false},
+                      {receive_progress,<<"receive_progress">>,false},
+                      {progress,<<"progress">>,false}
                       ]).
 
 

@@ -1,9 +1,8 @@
 Erwa
 ====
 
-Erwa is a [WAMP v2](http://wamp.ws/spec/) (Web Application Messaging Protocol) implementation in Erlang,
+Erwa is a implementation of [WAMP (Web Application Messaging Protocol)](http://wamp.ws/spec/) in Erlang,
 both peer and router.
-
 
 
 
@@ -178,3 +177,5 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 [Back to TOC](#table-of-contents)
+
+#wampws

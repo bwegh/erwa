@@ -67,8 +67,8 @@ start_link(Args) ->
                         {roles,[
                                 {broker,[{features,[
                                                     {subscriber_blackwhite_listing,false},
-                                                    {publisher_exclusion,false},
-                                                    {publisher_identification,false},
+                                                    {publisher_exclusion,true},
+                                                    {publisher_identification,true},
                                                     {publication_trustlevels,false},
                                                     {pattern_based_subscription,false},
                                                     {partitioned_pubsub,false},
@@ -79,13 +79,13 @@ start_link(Args) ->
                                 {dealer,[{features,[
                                                     {callee_blackwhite_listing,false},
                                                     {caller_exclusion,false},
-                                                    {caller_identification,false},
+                                                    {caller_identification,true},
                                                     {call_trustlevels,false},
                                                     {pattern_based_registration,false},
                                                     {partitioned_rpc,false},
                                                     {call_timeout,false},
                                                     {call_canceling,false},
-                                                    {progressive_call_results,false}
+                                                    {progressive_call_results,true}
                                                     ]}]}]}]).
 
 
@@ -153,7 +153,8 @@ start_link(Args) ->
   id = undefined,
   callee_pid = undefined,
   request_id = undefined,
-  caller_pid = undefined
+  caller_pid = undefined,
+  progressive = false
 }).
 
 %% gen_server.
@@ -288,7 +289,7 @@ create_session(Pid,Details,#state{ets=Ets}=State) ->
   end.
 
 -spec send_event_to_topic(FromPid :: pid(), Options :: list(), Url :: binary(), Arguments :: list()|undefined, ArgumentsKw :: list()|undefined, State :: #state{} ) -> {ok,non_neg_integer()}.
-send_event_to_topic(FromPid,_Options,Url,Arguments,ArgumentsKw,#state{ets=Ets}) ->
+send_event_to_topic(FromPid,Options,Url,Arguments,ArgumentsKw,#state{ets=Ets}=State) ->
   PublicationId =
     case ets:lookup(Ets,Url) of
       [] ->
@@ -297,11 +298,21 @@ send_event_to_topic(FromPid,_Options,Url,Arguments,ArgumentsKw,#state{ets=Ets}) 
         TopicId = UrlTopic#url_topic.topic_id,
         [Topic] = ets:lookup(Ets,TopicId),
         IdToPid = fun(Id,Pids) -> [#session{pid=Pid}] = ets:lookup(Ets,Id), [Pid|Pids] end,
-        Peers = lists:delete(FromPid,lists:foldl(IdToPid,[],Topic#topic.subscribers)),
+        Session = get_session_from_pid(FromPid,State),
+        Peers =
+          case lists:keyfind(exclude_me,1,Options) of
+            {exclude_me,false} ->
+                lists:foldl(IdToPid,[],Topic#topic.subscribers);
+            _ -> lists:delete(FromPid,lists:foldl(IdToPid,[],Topic#topic.subscribers))
+          end,
         SubscriptionId = Topic#topic.id,
         PublishId = gen_id(),
-        Details = [{}],
-        Message = {event,SubscriptionId,PublishId,Details,Arguments,ArgumentsKw},
+        Details1 =
+          case lists:keyfind(disclose_me,1,Options) of
+            {disclose_me,true} -> [{publisher,Session#session.id}];
+            _ -> [{}]
+          end,
+        Message = {event,SubscriptionId,PublishId,Details1,Arguments,ArgumentsKw},
         send_message_to(Message,Peers),
         PublishId
     end,
@@ -385,7 +396,7 @@ unregister_procedure(Pid,ProcedureId,State) ->
 
 enqueue_procedure_call( Pid, RequestId, Options,ProcedureUrl,Arguments,ArgumentsKw,#state{ets=Ets}=State) ->
   Session = get_session_from_pid(Pid,State),
-  %SessionId = Session#session.id,
+  CallerId = Session#session.id,
 
   case ets:lookup(Ets,ProcedureUrl) of
     [] ->
@@ -397,9 +408,20 @@ enqueue_procedure_call( Pid, RequestId, Options,ProcedureUrl,Arguments,Arguments
       [CalleeSession] = ets:lookup(Ets,CalleeId),
       CalleePid = CalleeSession#session.pid,
 
-      Details = [{}],
+      Details1 =
+        case lists:keyfind(disclose_me,1,Options) of
+          {disclose_me,true} -> [{caller,CallerId}];
+          _ -> [{}]
+        end,
+
+      Details2 =
+        case lists:keyfind(receive_progress,1,Options) of
+          {receive_progress,true} -> [{receive_progress,true}|Details1];
+          _ -> Details1
+        end,
+
       {ok,InvocationId} = create_invocation(Pid,Session,CalleeSession,RequestId,Procedure,Options,Arguments,ArgumentsKw,State),
-      send_message_to({invocation,InvocationId,ProcedureId,Details,Arguments,ArgumentsKw},CalleePid),
+      send_message_to({invocation,InvocationId,ProcedureId,Details2,Arguments,ArgumentsKw},CalleePid),
       true
   end.
 
@@ -410,7 +432,7 @@ dequeue_procedure_call(Pid,Id,Options,Arguments,ArgumentsKw,Error,#state{ets=Ets
     [Invocation] ->
       case Invocation#invocation.callee_pid of
        Pid ->
-          #invocation{caller_pid=CallerPid, request_id=RequestId} = Invocation,
+          #invocation{caller_pid=CallerPid, request_id=RequestId, progressive=Progressive} = Invocation,
           Details = [{}],
           Msg = case Error of
                   undefined ->
@@ -419,7 +441,17 @@ dequeue_procedure_call(Pid,Id,Options,Arguments,ArgumentsKw,Error,#state{ets=Ets
                     {error,call,RequestId,Options,Uri,Arguments,ArgumentsKw}
                 end,
           send_message_to(Msg,CallerPid),
-          remove_invocation(Id,State),
+          Progress
+           = case lists:keyfind(progress,1,Options) of
+               {progress, true} -> true;
+               _ -> false
+             end,
+
+          case {Progressive,Progress} of
+            {false,_} -> remove_invocation(Id,State);
+            {true,false} -> remove_invocation(Id,State);
+            _ -> ok
+          end,
           {ok};
         _ ->
           {error,wrong_session}
@@ -497,11 +529,19 @@ remove_session_from_procedure(Session,ProcedureId,#state{ets=Ets}) ->
 -spec create_invocation(Pid :: pid(), Session :: #session{}, CalleeSession :: #session{}, RequestId :: non_neg_integer(), Procedure :: #procedure{}, Options :: list(), Arguments :: list(), ArgumentsKw :: list(), State :: #state{}) -> {ok, non_neg_integer()}.
 create_invocation(Pid,Session,CalleeSession,RequestId,Procedure,Options,Arguments,ArgumentsKw,#state{ets=Ets}=State) ->
   Id = gen_id(),
+
+  Progressive =
+    case lists:keyfind(receive_progress,1,Options) of
+      {receive_progress,true} -> true;
+      _ -> false
+    end,
+
   Invocation = #invocation{
         id = Id,
         request_id = RequestId,
         caller_pid = Pid,
-        callee_pid = CalleeSession#session.pid },
+        callee_pid = CalleeSession#session.pid,
+        progressive = Progressive },
   case ets:insert_new(Ets,Invocation) of
     true ->
       {ok,Id};
