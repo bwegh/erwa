@@ -426,32 +426,45 @@ enqueue_procedure_call( Pid, RequestId, Options,ProcedureUrl,Arguments,Arguments
   end.
 
 
-dequeue_procedure_call(Pid,Id,Options,Arguments,ArgumentsKw,Error,#state{ets=Ets}=State) ->
+dequeue_procedure_call(Pid,Id,InOptions,Arguments,ArgumentsKw,Error,#state{ets=Ets}=State) ->
   case ets:lookup(Ets,Id) of
     [] -> {error,not_found};
     [Invocation] ->
       case Invocation#invocation.callee_pid of
        Pid ->
           #invocation{caller_pid=CallerPid, request_id=RequestId, progressive=Progressive} = Invocation,
-          Details = [{}],
-          Msg = case Error of
-                  undefined ->
-                    {result,RequestId,Details,Arguments,ArgumentsKw};
-                  Uri ->
-                    {error,call,RequestId,Options,Uri,Arguments,ArgumentsKw}
-                end,
-          send_message_to(Msg,CallerPid),
-          Progress
-           = case lists:keyfind(progress,1,Options) of
+
+         Progress
+           = case lists:keyfind(progress,1,InOptions) of
                {progress, true} -> true;
                _ -> false
-             end,
+            end,
 
-          case {Progressive,Progress} of
-            {false,_} -> remove_invocation(Id,State);
-            {true,false} -> remove_invocation(Id,State);
+          BoolError
+             = case Error of
+                 undefined -> false;
+                 _ -> true
+               end,
+
+          case {Progressive,Progress,BoolError} of
+            {_,_,true} -> remove_invocation(Id,State);
+            {false,_,_} -> remove_invocation(Id,State);
+            {true,false,_} -> remove_invocation(Id,State);
             _ -> ok
           end,
+         OutDetails =
+           case {Progress,BoolError} of
+             {true,false} -> [{progress,true}];
+             _ -> [{}]
+           end,
+         Msg = case Error of
+                  undefined ->
+                    {result,RequestId,OutDetails,Arguments,ArgumentsKw};
+                  Uri ->
+                    {error,call,RequestId,OutDetails,Uri,Arguments,ArgumentsKw}
+                end,
+
+         send_message_to(Msg,CallerPid),
           {ok};
         _ ->
           {error,wrong_session}
