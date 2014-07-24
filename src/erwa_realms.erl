@@ -73,7 +73,7 @@ stop() ->
   %% gen_server.
 
 init([]) ->
-  AutoCreate = application:get_env(erwa,realm_autocreate,false),
+  AutoCreate = get_env(erwa,realm_autocreate,false),
   Ets = ets:new(realms,[set]),
 	{ok, #state{ets=Ets, autocreate_realm=AutoCreate}}.
 
@@ -150,6 +150,14 @@ remove_router(Ref,#state{ets=Ets}) ->
       ets:delete(Ets,Name),
       ok
   end.
+
+
+get_env(Application, Par, Def) when is_atom(Application), is_atom(Par) ->
+  case application:get_env(Application,Par) of
+    undefined -> Def;
+    {ok, Value} -> Value
+  end.
+
 
 
 -ifdef(TEST).
