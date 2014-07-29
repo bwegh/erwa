@@ -532,6 +532,8 @@ dict_to_wamp(Dict) ->
                       {dealer,<<"dealer">>,true},
                       {publisher,<<"publisher">>,true},
                       {subscriber,<<"subscriber">>,true},
+                      {caller,<<"caller">>,false},
+                      {callee,<<"callee">>,false},
                       {features,<<"features">>,true},
                       {subscriber_blackwhite_listing,<<"subscriber_blackwhite_listing">>,false},
                       {publisher_exclusion,<<"publisher_exclusion">>,false},
@@ -555,8 +557,6 @@ dict_to_wamp(Dict) ->
                       {eligible,<<"eligible">>,false},
                       {exclude_me,<<"exclude_me">>,false},
                       {disclose_me,<<"disclose_me">>,false},
-                      {publisher,<<"publisher">>,false},
-                      {caller,<<"caller">>,false},
                       {receive_progress,<<"receive_progress">>,false},
                       {progress,<<"progress">>,false}
                       ]).
@@ -620,12 +620,12 @@ hello_test() ->
   M = [?HELLO,<<"realm1">>,[{}]],
   S = serialize(M,json),
   D = deserialize(S,json),
-  D = {[{hello,<<"realm1">>,[{}]}],<<"">>}.
+  D = {[{hello,<<"realm1">>,[]}],<<"">>}.
 
 roundtrip_test() ->
 
   Messages = [
-              {hello,<<"realm1">>,[{}]}
+              {hello,<<"realm1">>,[]}
               ],
 
 
