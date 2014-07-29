@@ -562,8 +562,14 @@ dict_to_wamp(Dict) ->
                       ]).
 
 
-convert_dict(_Direction,[{}],[]) ->
-  lists:reverse([{}]);
+convert_dict(to_wamp,[],[]) ->
+  [{}];
+convert_dict(to_wamp,[{}],[]) ->
+  [{}];
+convert_dict(to_erl,[{}],[]) ->
+  [];
+convert_dict(to_erl,[],[]) ->
+  [];
 convert_dict(_Direction,[],Converted) ->
   lists:reverse(Converted);
 convert_dict(Direction,[{Key,Value}|T],Converted) ->

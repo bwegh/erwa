@@ -37,7 +37,14 @@
 
 
 -define(DEFAULT_PORT,5555).
--define(CLIENT_ROLES,{<<"roles">>,[{<<"publisher">>,[{}]},{<<"subscriber">>,[{}]},{<<"caller">>,[{}]},{<<"callee">>,[{}]}]}).
+-define(CLIENT_DETAILS,[{agent,<<"Erwa-0.0.1">>},
+                        {roles,[
+                                {publisher,[]},
+                                {subscriber,[]},
+                                {caller,[]},
+                                {callee,[]}
+                                ]}
+                        ]).
 
 
 -record(state,{
@@ -105,7 +112,7 @@ handle_call({connect,Host,Port,Realm,Encoding},From,#state{ets=Ets}=State) ->
         {undefined,Socket}
     end,
   State1 = State#state{enc=Enc,router=R,socket=S,realm=Realm},
-  ok = raw_send({hello,Realm,[?CLIENT_ROLES]},State1),
+  ok = raw_send({hello,Realm,?CLIENT_DETAILS},State1),
   true = ets:insert_new(Ets,#ref{req=hello,method=hello,ref=From}),
   {noreply,State1};
 
@@ -188,7 +195,7 @@ handle_message({goodbye,_Details,_Reason},#state{goodbye_sent=GS}=State) ->
     true ->
       ok;
     false ->
-      raw_send({goodbye,[{}],goodbye_and_out},State)
+      raw_send({goodbye,[],goodbye_and_out},State)
   end,
   close_connection(State),
   terminate();

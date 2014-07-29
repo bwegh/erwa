@@ -212,7 +212,7 @@ handle_wamp_message({goodbye,_Details,_Reason},Pid,#state{ets=Ets}=State) ->
       ok;
     _ ->
       ets:update_element(Ets,SessionId,{#session.goodbye_sent,true}),
-      send_message_to({goodbye,[{}],goodbye_and_out},Pid)
+      send_message_to({goodbye,[],goodbye_and_out},Pid)
   end,
   send_message_to(shutdown,Pid);
 
@@ -230,7 +230,7 @@ handle_wamp_message({unsubscribe,RequestId,SubscriptionId},Pid,State) ->
     true ->
       send_message_to({unsubscribed,RequestId},Pid);
     false ->
-      send_message_to({error,unsubscribe,RequestId,[{}],no_such_subscription},Pid)
+      send_message_to({error,unsubscribe,RequestId,[],no_such_subscription},Pid)
   end;
 
 handle_wamp_message({call,RequestId,Options,Procedure,Arguments,ArgumentsKw},Pid,State) ->
@@ -238,7 +238,7 @@ handle_wamp_message({call,RequestId,Options,Procedure,Arguments,ArgumentsKw},Pid
     true ->
       ok;
     false ->
-      send_message_to({error,call,RequestId,[{}],no_such_procedure,undefined,undefined},Pid)
+      send_message_to({error,call,RequestId,[],no_such_procedure,undefined,undefined},Pid)
   end;
 
 handle_wamp_message({register,RequestId,Options,Procedure},Pid,State) ->
@@ -246,7 +246,7 @@ handle_wamp_message({register,RequestId,Options,Procedure},Pid,State) ->
     {ok,RegistrationId} ->
       send_message_to({registered,RequestId,RegistrationId},Pid);
     {error,procedure_already_exists} ->
-      send_message_to({register,error,RequestId,[{}],procedure_already_exists,undefined,undefined},Pid)
+      send_message_to({register,error,RequestId,[],procedure_already_exists,undefined,undefined},Pid)
   end;
 
 handle_wamp_message({unregister,RequestId,RegistrationId},Pid,State) ->
@@ -254,7 +254,7 @@ handle_wamp_message({unregister,RequestId,RegistrationId},Pid,State) ->
     true ->
       send_message_to({unregistered,RequestId},Pid);
     false ->
-      send_message_to({error,unregister,RequestId,[{}],no_such_registration,undefined,undefined},Pid)
+      send_message_to({error,unregister,RequestId,[],no_such_registration,undefined,undefined},Pid)
   end;
 
 handle_wamp_message({error,invocation,InvocationId,Details,Error,Arguments,ArgumentsKw},Pid,State) ->
@@ -310,7 +310,7 @@ send_event_to_topic(FromPid,Options,Url,Arguments,ArgumentsKw,#state{ets=Ets}=St
         Details1 =
           case lists:keyfind(disclose_me,1,Options) of
             {disclose_me,true} -> [{publisher,Session#session.id}];
-            _ -> [{}]
+            _ -> []
           end,
         Message = {event,SubscriptionId,PublishId,Details1,Arguments,ArgumentsKw},
         send_message_to(Message,Peers),
@@ -411,7 +411,7 @@ enqueue_procedure_call( Pid, RequestId, Options,ProcedureUrl,Arguments,Arguments
       Details1 =
         case lists:keyfind(disclose_me,1,Options) of
           {disclose_me,true} -> [{caller,CallerId}];
-          _ -> [{}]
+          _ -> []
         end,
 
       Details2 =
@@ -455,7 +455,7 @@ dequeue_procedure_call(Pid,Id,InOptions,Arguments,ArgumentsKw,Error,#state{ets=E
          OutDetails =
            case {Progress,BoolError} of
              {true,false} -> [{progress,true}];
-             _ -> [{}]
+             _ -> []
            end,
          Msg = case Error of
                   undefined ->
@@ -605,7 +605,7 @@ gen_id() ->
 hello_test() ->
   Realm = <<"realm1">>,
   {ok,Pid} = start(Realm),
-  ok = handle_wamp(Pid,{hello,Realm,[{}]}),
+  ok = handle_wamp(Pid,{hello,Realm,[]}),
   {ok,Msg} =
     receive
       {erwa,M} -> {ok,M}
@@ -620,14 +620,14 @@ hello_test() ->
 subscribe_test() ->
   Realm = <<"realm2">>,
   {ok,Pid} = start(Realm),
-  ok = handle_wamp(Pid,{hello,Realm,[{}]}),
+  ok = handle_wamp(Pid,{hello,Realm,[]}),
   ok = receive
     {erwa,{welcome, _SessionId, _Details }} -> ok
   after 2000 ->
     timeout
   end,
 
-  ok = handle_wamp(Pid,{subscribe,1,[{}],<<"test">>}),
+  ok = handle_wamp(Pid,{subscribe,1,[],<<"test">>}),
   {ok,SubscriptionId} = receive
     {erwa,{subscribed, 1, SID }} -> {ok,SID}
   after 2000 ->
