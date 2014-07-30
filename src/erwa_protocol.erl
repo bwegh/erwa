@@ -186,7 +186,7 @@ is_valid_argumentskw(_)  -> false.
 -define(ERROR_NO_SUCH_SUBSCRIPTION,<<"wamp.error.no_such_subscription">>).
 -define(ERROR_NO_SUCH_REGISTRATION,<<"wamp.error.no_such_registration">>).
 -define(ERROR_INVALID_ARGUMENT,<<"wamp.error.invalid_argument">>).
--define(ERROR_INVALID_TOPIC,<<"wamp.error.invalid_topic">>).
+-define(ERROR_INVALID_URI,<<"wamp.error.invalid_uri">>).
 -define(ERROR_PROCEDURE_ALREADY_EXISTS,<<"wamp.error.procedure_already_exists">>).
 
 
@@ -206,6 +206,9 @@ to_erl([?ABORT,Details,Reason]) ->
   true = is_valid_uri(Reason),
   {abort,dict_to_erl(Details),Reason};
 
+
+to_erl([?CHALLENGE,<<"wampcra">>,Extra]) ->
+  to_erl([?CHALLENGE,wampcra,Extra]);
 to_erl([?CHALLENGE,AuthMethod,Extra]) ->
   true = is_valid_dict(Extra),
   {challenge,AuthMethod,dict_to_erl(Extra)};
@@ -379,6 +382,8 @@ to_erl([?YIELD, RequestId, Options, Arguments, ArgumentsKw]) ->
 to_wamp({hello,Realm,Details}) ->
   [?HELLO,Realm,dict_to_wamp(Details)];
 
+to_wamp({challenge,wampcra,Extra}) ->
+   to_wamp({challenge,<<"wampcra">>,Extra});
 to_wamp({challenge,AuthMethod,Extra}) ->
   [?CHALLENGE,AuthMethod,dict_to_wamp(Extra)];
 
@@ -527,14 +532,14 @@ dict_to_wamp(Dict) ->
 
 -define(DICT_MAPPING,[
                       {agent,<<"agent">>,false},
-                      {roles,<<"roles">>,true},
-                      {broker,<<"broker">>,true},
-                      {dealer,<<"dealer">>,true},
-                      {publisher,<<"publisher">>,true},
-                      {subscriber,<<"subscriber">>,true},
+                      {roles,<<"roles">>,dict},
+                      {broker,<<"broker">>,dict},
+                      {dealer,<<"dealer">>,dict},
+                      {publisher,<<"publisher">>,dict},
+                      {subscriber,<<"subscriber">>,dict},
                       {caller,<<"caller">>,false},
                       {callee,<<"callee">>,false},
-                      {features,<<"features">>,true},
+                      {features,<<"features">>,dict},
                       {subscriber_blackwhite_listing,<<"subscriber_blackwhite_listing">>,false},
                       {publisher_exclusion,<<"publisher_exclusion">>,false},
                       {publisher_identification,<<"publisher_identification">>,false},
@@ -558,7 +563,15 @@ dict_to_wamp(Dict) ->
                       {exclude_me,<<"exclude_me">>,false},
                       {disclose_me,<<"disclose_me">>,false},
                       {receive_progress,<<"receive_progress">>,false},
-                      {progress,<<"progress">>,false}
+                      {progress,<<"progress">>,false},
+                      {authmethods,<<"authmethods">>,list},
+                      {wampcra,<<"wampcra">>,false},
+                      {anonymous,<<"anonymous">>,false},
+                      {authid,<<"authid">>,false},
+                      {authrole,<<"authrole">>,false},
+                      {authmethod,<<"authmethod">>,false},
+                      {authprovider,<<"authprovider">>,false},
+                      {challenge,<<"challenge">>,false}
                       ]).
 
 
@@ -586,7 +599,8 @@ convert_dict(Direction,[{Key,Value}|T],Converted) ->
     end,
   ConvValue =
     case Deep of
-      true -> convert_dict(Direction,Value,[]);
+      dict -> convert_dict(Direction,Value,[]);
+      list -> convert_list(Direction,Value,[]);
       _ -> Value
     end,
   ConvKey =
@@ -597,6 +611,27 @@ convert_dict(Direction,[{Key,Value}|T],Converted) ->
   convert_dict(Direction,T,[{ConvKey,ConvValue}|Converted]).
 
 
+convert_list(_,[],[]) ->
+  [];
+convert_list(_,[],Converted) ->
+  lists:reverse(Converted);
+convert_list(Direction,[Key|T],Converted) ->
+  KeyPos =
+    case Direction of
+      to_erl -> 2;
+      to_wamp -> 1
+    end,
+  {ErlKey,WampKey} =
+    case lists:keyfind(Key,KeyPos,?DICT_MAPPING) of
+      {Ek,Wk,_} -> {Ek,Wk};
+      false -> {Key,Key}
+    end,
+  ConvKey =
+    case Direction of
+      to_erl -> ErlKey;
+      to_wamp -> WampKey
+    end,
+  convert_list(Direction,T,[ConvKey|Converted]).
 
 
 -ifdef(TEST).

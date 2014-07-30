@@ -108,6 +108,12 @@ start_link(Args) ->
   registrations = []
 }).
 
+%-record(challenge, {
+%  authenticate = undefined,
+%  session_id = undefined,
+%  expires = never
+%}).
+
 -record(pid_session, {
   pid = undefined,
   session_id = undefined
@@ -203,6 +209,10 @@ code_change(_OldVsn, State, _Extra) ->
 handle_wamp_message({hello,Realm,Details},Pid,#state{realm=Realm}=State) ->
   {ok,SessionId} = create_session(Pid,Details,State),
   send_message_to({welcome,SessionId,?ROUTER_DETAILS},Pid);
+  %send_message_to({challenge,wampcra,[{challenge,JSON-Data}]},Pid);
+
+handle_wamp_message({authenticate,_Signature,_Extra},Pid,_State) ->
+  send_message_to({abort,[],not_authorized},Pid);
 
 handle_wamp_message({goodbye,_Details,_Reason},Pid,#state{ets=Ets}=State) ->
   Session = get_session_from_pid(Pid,State),
