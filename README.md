@@ -1,6 +1,8 @@
 Erwa
 ====
 ![passing or failing?](https://travis-ci.org/bwegh/erwa.svg?branch=master)
+
+
 Erwa is a implementation of [WAMP (Web Application Messaging Protocol)](http://wamp.ws/spec/) in Erlang,
 both peer and router.
 
