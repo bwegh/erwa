@@ -4,5 +4,4 @@ notifications:
 otp_release:
    - 17.1
    - 17.0
-   - R15B03
 script: "make tests"
