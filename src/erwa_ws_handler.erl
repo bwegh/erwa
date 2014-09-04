@@ -69,10 +69,17 @@ websocket_init(_TransportName, Req, _Opts) ->
 websocket_handle({text, Data}, Req, #state{enc=json}=State) ->
   {ok,NewState} = handle_wamp(Data,State),
   {ok,Req,NewState};
+websocket_handle({text, Data}, Req, #state{enc=json_batched}=State) ->
+  {ok,NewState} = handle_wamp(Data,State),
+  {ok,Req,NewState};
 websocket_handle({binary, Data}, Req, #state{enc=msgpack}=State) ->
   {ok,NewState} = handle_wamp(Data,State),
   {ok,Req,NewState};
-websocket_handle(_Data, Req, State) ->
+websocket_handle({binary, Data}, Req, #state{enc=msgpack_batched}=State) ->
+  {ok,NewState} = handle_wamp(Data,State),
+  {ok,Req,NewState};
+websocket_handle(Data, Req, State) ->
+  io:format("error: unsupported Data ~p with encoding ~p~n",[Data,State#state.enc]),
   {ok, Req, State}.
 
 websocket_info({erwa,shutdown}, Req, State) ->
@@ -82,7 +89,9 @@ websocket_info({erwa,Msg}, Req, #state{enc=Enc}=State) when is_tuple(Msg)->
   Reply =
     case Enc of
       json -> {text,Rpl};
-      msgpack -> {binary,Rpl}
+      json_batched -> {text,Rpl};
+      msgpack -> {binary,Rpl};
+      msgpack_batched -> {binary,Rpl}
     end,
 	{reply,Reply,Req,State};
 websocket_info(_Data, Req, State) ->
