@@ -48,34 +48,19 @@ init({Transport, http}, _Req, _Opts) when Transport == tcp; Transport == ssl ->
 websocket_init(_TransportName, Req, _Opts) ->
   % need to check for the wamp.2.json or wamp.2.msgpack
   {ok, Protocols, Req1} = cowboy_req:parse_header(?SUBPROTHEADER, Req),
-  case lists:nth(1,Protocols) of
-      ?WSMSGPACK ->
+  case find_supported_protocol(Protocols) of
+      unsupported ->
+        {shutdown,Req1};
+      Enc ->
         Req2  = cowboy_req:set_resp_header(?SUBPROTHEADER,?WSMSGPACK,Req1),
-        {ok,Req2,#state{enc=msgpack}};
-      ?WSMSGPACK_BATCHED ->
-        Req2  = cowboy_req:set_resp_header(?SUBPROTHEADER,?WSMSGPACK_BATCHED,Req1),
-        {ok,Req2,#state{enc=msgpack_batched}};
-      ?WSJSON ->
-        Req2  = cowboy_req:set_resp_header(?SUBPROTHEADER,?WSJSON,Req1),
-        {ok,Req2,#state{enc=json}};
-      ?WSJSON_BATCHED ->
-        Req2  = cowboy_req:set_resp_header(?SUBPROTHEADER,?WSJSON_BATCHED,Req1),
-        {ok,Req2,#state{enc=json_batched}};
-      _ ->
-        {shutdown,Req1}
+        {ok,Req2,#state{enc=Enc}}
   end.
 
 
 websocket_handle({text, Data}, Req, #state{enc=json}=State) ->
   {ok,NewState} = handle_wamp(Data,State),
   {ok,Req,NewState};
-websocket_handle({text, Data}, Req, #state{enc=json_batched}=State) ->
-  {ok,NewState} = handle_wamp(Data,State),
-  {ok,Req,NewState};
 websocket_handle({binary, Data}, Req, #state{enc=msgpack}=State) ->
-  {ok,NewState} = handle_wamp(Data,State),
-  {ok,Req,NewState};
-websocket_handle({binary, Data}, Req, #state{enc=msgpack_batched}=State) ->
   {ok,NewState} = handle_wamp(Data,State),
   {ok,Req,NewState};
 websocket_handle(Data, Req, State) ->
@@ -89,9 +74,7 @@ websocket_info({erwa,Msg}, Req, #state{enc=Enc}=State) when is_tuple(Msg)->
   Reply =
     case Enc of
       json -> {text,Rpl};
-      json_batched -> {text,Rpl};
-      msgpack -> {binary,Rpl};
-      msgpack_batched -> {binary,Rpl}
+      msgpack -> {binary,Rpl}
     end,
 	{reply,Reply,Req,State};
 websocket_info(_Data, Req, State) ->
@@ -106,9 +89,24 @@ handle_wamp(Data,#state{buffer=Buffer, enc=Enc, router=Router}=State) ->
   {ok,NewRouter} = erwa_protocol:forward_messages(Messages,Router),
   {ok,State#state{router=NewRouter,buffer=NewBuffer}}.
 
+
+find_supported_protocol([]) ->
+  unsupported;
+find_supported_protocol([?WSJSON|_T]) ->
+  json;
+find_supported_protocol([?WSMSGPACK|_T]) ->
+  msgpack;
+find_supported_protocol([_|T]) ->
+  find_supported_protocol(T).
+
+
+
+
+
 -ifdef(TEST).
 
-
+header_find_test() ->
+  json = find_supported_protocol([?WSJSON_BATCHED,?WSJSON]).
 
 
 -endif.
