@@ -97,8 +97,8 @@ find_supported_protocol([]) ->
   unsupported;
 find_supported_protocol([?WSJSON|_T]) ->
   json;
-%find_supported_protocol([?WSMSGPACK|_T]) ->
-%  msgpack;
+find_supported_protocol([?WSMSGPACK|_T]) ->
+  msgpack;
 find_supported_protocol([_|T]) ->
   find_supported_protocol(T).
 
