@@ -51,9 +51,12 @@ websocket_init(_TransportName, Req, _Opts) ->
   case find_supported_protocol(Protocols) of
       unsupported ->
         {shutdown,Req1};
-      Enc ->
+      json ->
+        Req2  = cowboy_req:set_resp_header(?SUBPROTHEADER,?WSJSON,Req1),
+        {ok,Req2,#state{enc=json}};
+      msgpack ->
         Req2  = cowboy_req:set_resp_header(?SUBPROTHEADER,?WSMSGPACK,Req1),
-        {ok,Req2,#state{enc=Enc}}
+        {ok,Req2,#state{enc=msgpack}}
   end.
 
 
@@ -64,7 +67,7 @@ websocket_handle({binary, Data}, Req, #state{enc=msgpack}=State) ->
   {ok,NewState} = handle_wamp(Data,State),
   {ok,Req,NewState};
 websocket_handle(Data, Req, State) ->
-  io:format("error: unsupported Data ~p with encoding ~p~n",[Data,State#state.enc]),
+  erlang:error(unsupported,[Data,Req,State]),
   {ok, Req, State}.
 
 websocket_info({erwa,shutdown}, Req, State) ->
@@ -94,8 +97,8 @@ find_supported_protocol([]) ->
   unsupported;
 find_supported_protocol([?WSJSON|_T]) ->
   json;
-find_supported_protocol([?WSMSGPACK|_T]) ->
-  msgpack;
+%find_supported_protocol([?WSMSGPACK|_T]) ->
+%  msgpack;
 find_supported_protocol([_|T]) ->
   find_supported_protocol(T).
 

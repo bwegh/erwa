@@ -13,8 +13,6 @@
     ranch,
     cowboy,
     erwa
-
-     ,debugger,  tv, runtime_tools
 	]},
 	{mod, {simple_router_app, []}},
 	{env, []}
