@@ -49,14 +49,12 @@ websocket_init(_TransportName, Req, _Opts) ->
   % need to check for the wamp.2.json or wamp.2.msgpack
   {ok, Protocols, Req1} = cowboy_req:parse_header(?SUBPROTHEADER, Req),
   case find_supported_protocol(Protocols) of
-      unsupported ->
-        {shutdown,Req1};
-      json ->
-        Req2  = cowboy_req:set_resp_header(?SUBPROTHEADER,?WSJSON,Req1),
-        {ok,Req2,#state{enc=json}};
-      msgpack ->
-        Req2  = cowboy_req:set_resp_header(?SUBPROTHEADER,?WSMSGPACK,Req1),
-        {ok,Req2,#state{enc=msgpack}}
+      {Enc,Header} ->
+        Req2  = cowboy_req:set_resp_header(?SUBPROTHEADER,Header,Req1),
+        {ok,Req2,#state{enc=Enc}};
+      _ ->
+        % unsupported
+        {shutdown,Req1}
   end.
 
 
@@ -93,12 +91,13 @@ handle_wamp(Data,#state{buffer=Buffer, enc=Enc, router=Router}=State) ->
   {ok,State#state{router=NewRouter,buffer=NewBuffer}}.
 
 
+-spec find_supported_protocol([binary()]) -> atom() | {atom(),binary()}.
 find_supported_protocol([]) ->
-  unsupported;
+  none;
 find_supported_protocol([?WSJSON|_T]) ->
-  json;
+  {json,?WSJSON};
 find_supported_protocol([?WSMSGPACK|_T]) ->
-  msgpack;
+  {msgpack,?WSMSGPACK};
 find_supported_protocol([_|T]) ->
   find_supported_protocol(T).
 
@@ -109,7 +108,7 @@ find_supported_protocol([_|T]) ->
 -ifdef(TEST).
 
 header_find_test() ->
-  json = find_supported_protocol([?WSJSON_BATCHED,?WSJSON]).
+  {json,?WSJSON} = find_supported_protocol([?WSJSON_BATCHED,?WSJSON]).
 
 
 -endif.
