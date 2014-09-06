@@ -51,17 +51,6 @@ end_per_suite(Config) ->
   {ok,_} = erwa:stop_realm(?REALM),
   Config.
 
-receive_result() ->
-  receive
-    {erwa,{result,2,_Details,[14],_ArgumentsKw}} ->
-      ok;
-    _ ->
-      receive_result()
-  after 1000 ->
-    timeout
-  end.
-
-
 
 client_test(_) ->
   erwa:start_realm(?REALM),
