@@ -88,8 +88,7 @@ serialize(Msg,json)  ->
   jsx:encode(Msg);
 serialize(Msg,json_batched) ->
   Enc = jsx:encode(Msg),
-  Char = <<30>>,
-  <<Enc/binary,Char:8/binary>>;
+  <<Enc/binary,30>>;
 serialize(Message,raw_msgpack) ->
   Enc = msgpack:pack(Message,[jsx]),
   Len = byte_size(Enc),
@@ -658,11 +657,25 @@ hello_json_test() ->
   D = deserialize(S,json),
   D = {[{hello,<<"realm1">>,[]}],<<"">>}.
 
+hello_json_batched_test() ->
+  M = [?HELLO,<<"realm1">>,[{}]],
+  S = serialize(M,json_batched),
+  D = deserialize(S,json_batched),
+  D = {[{hello,<<"realm1">>,[]}],<<"">>}.
+
 hello_msgpack_test() ->
   M = [?HELLO,<<"realm1">>,[{}]],
   S = serialize(M,msgpack),
   D = deserialize(S,msgpack),
   D = {[{hello,<<"realm1">>,[]}],<<"">>}.
+
+hello_msgpack_batched_test() ->
+  M = [?HELLO,<<"realm1">>,[{}]],
+  S = serialize(M,msgpack_batched),
+  D = deserialize(S,msgpack_batched),
+  D = {[{hello,<<"realm1">>,[]}],<<"">>}.
+
+
 
 
 hello_msgpack_deserialize_test() ->
@@ -696,7 +709,7 @@ roundtrip_test() ->
 
   Serializer = fun(Message,Res) ->
 
-                 Encodings = [json,msgpack,raw_json,raw_msgpack],
+                 Encodings = [json,msgpack,raw_json,raw_msgpack,json_batched,msgpack_batched],
 
                  Check = fun(Enc,Bool) ->
                            EncMsg = serialize(Message,Enc),
