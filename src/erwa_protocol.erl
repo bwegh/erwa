@@ -176,18 +176,21 @@ is_valid_argumentskw(_)  -> false.
 -define(INTERRUPT,69).
 -define(YIELD,70).
 
--define(ERROR_NOT_AUTHORIZED,<<"wamp.error.not_authorized">>).
--define(ERROR_NO_SUCH_REALM,<<"wamp.error.no_such_realm">>).
+
+
+-define(ERROR_INVALID_URI,<<"wamp.error.invalid_uri">>).
+-define(ERROR_NO_SUCH_PROCEDURE,<<"wamp.error.no_such_procedure">>).
+-define(ERROR_PROCEDURE_ALREADY_EXISTS,<<"wamp.error.procedure_already_exists">>).
+-define(ERROR_NO_SUCH_REGISTRATION,<<"wamp.error.no_such_registration">>).
+-define(ERROR_NO_SUCH_SUBSCRIPTION,<<"wamp.error.no_such_subscription">>).
+-define(ERROR_INVALID_ARGUMENT,<<"wamp.error.invalid_argument">>).
 -define(ERROR_SHUTDOWN,<<"wamp.error.system_shutdown">>).
 -define(ERROR_CLOSE_REALM,<<"wamp.error.close_realm">>).
 -define(ERROR_AND_OUT,<<"wamp.error.goodbye_and_out">>).
--define(ERROR_NO_SUCH_PROCEDURE,<<"wamp.error.no_such_procedure">>).
--define(ERROR_NO_SUCH_SUBSCRIPTION,<<"wamp.error.no_such_subscription">>).
--define(ERROR_NO_SUCH_REGISTRATION,<<"wamp.error.no_such_registration">>).
--define(ERROR_INVALID_ARGUMENT,<<"wamp.error.invalid_argument">>).
--define(ERROR_INVALID_URI,<<"wamp.error.invalid_uri">>).
--define(ERROR_PROCEDURE_ALREADY_EXISTS,<<"wamp.error.procedure_already_exists">>).
-
+-define(ERROR_NOT_AUTHORIZED,<<"wamp.error.not_authorized">>).
+-define(ERROR_AUTHORIZATION_FAILED,<<"wamp.error.authorization_failed">>).
+-define(ERROR_NO_SUCH_REALM,<<"wamp.error.no_such_realm">>).
+-define(ERROR_NO_SUCH_ROLE,<<"wamp.error.no_such_role">>).
 
 
 to_erl([?HELLO,Realm,Details]) ->
