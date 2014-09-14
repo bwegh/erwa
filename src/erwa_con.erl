@@ -55,6 +55,7 @@
     sess = undefined,
     ets = undefined,
     enc = undefined,
+    max_length = undefined,
     goodbye_sent = false
   }).
 
@@ -106,13 +107,21 @@ handle_call({connect,Host,Port,Realm,Encoding},From,#state{ets=Ets}=State) ->
     case Host of
       undefined ->
         {ok, Router} =  erwa:get_router_for_realm(Realm),
+        ok = raw_send({hello,Realm,?CLIENT_DETAILS},State#state{socket=undefined,router=Router}),
         {Router,undefined};
       _ ->
         {ok, Socket} = gen_tcp:connect(Host,Port,[binary,{packet,0}]),
+        % need to send the new TCP packet
+        SerNum = case Enc of
+                   raw_json -> 1;
+                   raw_msgpack -> 2;
+                   _ -> 0
+                 end,
+        Byte = (15 bsl 4) bor (SerNum),
+        gen_tcp:send(Socket,<<127,Byte,0,0>>),
         {undefined,Socket}
     end,
   State1 = State#state{enc=Enc,router=R,socket=S,realm=Realm},
-  ok = raw_send({hello,Realm,?CLIENT_DETAILS},State1),
   true = ets:insert_new(Ets,#ref{req=hello,method=hello,ref=From}),
   {noreply,State1};
 
@@ -160,6 +169,18 @@ handle_cast({shutdown,Details,Reason}, #state{goodbye_sent=GS}=State) ->
 handle_cast(_Request, State) ->
 	{noreply, State}.
 
+
+handle_info({tcp,Socket,<<127,L:4,S:4,0,0>>},#state{socket=Socket,enc=Enc,realm=Realm}=State) ->
+  %% the new reply
+  true =
+    case {Enc,S} of
+      {raw_json,1} -> true;
+      {raw_msgpack,2} -> true;
+      _ -> false
+    end,
+  State1 = State#state{max_length=math:pow(2,9+L)},
+  ok = raw_send({hello,Realm,?CLIENT_DETAILS},State1),
+  {noreply,State1};
 handle_info({tcp,Socket,Data},#state{buffer=Buffer,socket=Socket,enc=Enc}=State) ->
   {Messages,NewBuffer} = erwa_protocol:deserialize(<<Buffer/binary, Data/binary>>,Enc),
   handle_messages(Messages,State),
@@ -312,12 +333,18 @@ send(Msg,From,Args,#state{ets=Ets}=State) ->
   raw_send(Message,State).
 
 
-raw_send(Message,#state{router=R,socket=S,enc=Enc}=State) ->
+raw_send(Message,#state{router=R,socket=S,enc=Enc,max_length=MaxLength}=State) ->
   case destination(State) of
     local ->
       ok = erwa_router:handle_wamp(R,Message);
     remote ->
-      ok = gen_tcp:send(S,erwa_protocol:serialize(Message,Enc))
+      SerMessage = erwa_protocol:serialize(Message,Enc),
+      case byte_size(SerMessage) > MaxLength of
+        true ->
+          ok;
+        false ->
+          ok = gen_tcp:send(S,SerMessage)
+      end
   end.
 
 -spec destination(#state{}) -> local | remote.

@@ -49,7 +49,7 @@
                ok,
                closed,
                error,
-               enc = raw_msgpack,
+               enc = undefined,
                length = infitity,
                buffer = <<"">>,
                router = undefined
