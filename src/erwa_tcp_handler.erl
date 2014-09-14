@@ -49,6 +49,8 @@
                ok,
                closed,
                error,
+               enc = raw_msgpack,
+               length = infitity,
                buffer = <<"">>,
                router = undefined
               }).
@@ -77,10 +79,35 @@ handle_cast(_Request, State) ->
   {noreply, State}.
 
 
-handle_info({OK,Socket,Data},  #state{ok=OK,socket=Socket,transport=Transport,buffer=Buf,router=Router}=State) ->
+handle_info({OK,Socket,<<127,L:4,S:4,0,0>>},  #state{ok=OK,socket=Socket,transport=Transport,enc=undefined}=State) ->
+  Transport:setopts(Socket, [{active, once}]),
+  MaxLength = math:pow(2,9+L),
+  % 15 is the max receive length possible ~ 16M
+  Byte = (15 bsl 4)  bor S,
+  {Enc,Reply} = case S of
+                  0 ->
+                    {illegal,<<127,0,0,0>>};
+                  1 ->
+                    {raw_json,<<127,Byte,0,0>>};
+                  2 ->
+                    {raw_msgpack,<<127,Byte,0,0>>};
+                  _ ->
+                    {undefined,<<127,0,0,0>>}
+                end,
+  Transport:send(Socket,Reply),
+  case Enc of
+    illegal -> {stop,normal,State};
+    undefined -> {stop,normal,State};
+    _ -> {noreply,State#state{enc=Enc,length=MaxLength}}
+  end;
+handle_info({OK,Socket,<<127,_L:4,_S:4,_Bits:16>>},  #state{ok=OK,socket=Socket,transport=Transport,enc=undefined}=State) ->
+  Byte = 2 bsl 4,
+  Transport:send(Socket,<<127,Byte,0,0>>),
+  {stop,normal,State};
+handle_info({OK,Socket,Data},  #state{ok=OK,enc=Enc,socket=Socket,transport=Transport,buffer=Buf,router=Router}=State) ->
   Transport:setopts(Socket, [{active, once}]),
   Buffer = <<Buf/binary, Data/binary>>,
-  {Messages,NewBuffer} = erwa_protocol:deserialize(Buffer,raw_msgpack),
+  {Messages,NewBuffer} = erwa_protocol:deserialize(Buffer,Enc),
   {ok,NewRouter} = erwa_protocol:forward_messages(Messages,Router),
   {noreply, State#state{buffer=NewBuffer,router=NewRouter}};
 handle_info({Closed,Socket}, #state{closed=Closed,socket=Socket}=State) ->
@@ -108,6 +135,11 @@ code_change(_OldVsn, State, _Extra) ->
 
 
 -ifdef(TEST).
+
+raw_init_test() ->
+  <<127,Length:4,Serializer:4,0,0>> = <<127,242,0,0>>,
+  Length = 15,
+  Serializer = 2.
 
 -endif.
 
