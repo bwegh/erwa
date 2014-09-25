@@ -23,7 +23,6 @@
 %% @private
 -module(erwa_protocol).
 
--export([forward_messages/2]).
 -export([deserialize/2]).
 -export([serialize/2]).
 -export([to_wamp/1]).
@@ -98,25 +97,6 @@ serialize(Message,raw_json) ->
   Len = byte_size(Enc),
   <<Len:32/unsigned-integer-big,Enc/binary>>.
 
--spec forward_messages(Messages :: list(), Router :: pid() | undefined) -> {ok,Router :: pid() | undefined} | {error,not_found}.
-forward_messages([],Router) ->
-  {ok,Router};
-forward_messages([{hello,Realm,_}|_]=Messages,undefined) ->
-  case erwa_realms:get_router(Realm) of
-    {ok,Pid} ->
-      forward_messages(Messages,Pid);
-    {error,not_found} ->
-      self() ! {erwa,{abort,[{}],no_such_realm}},
-      self() ! {erwa, shutdown},
-      {error,undefined}
-  end;
-forward_messages([Msg|T],Router) when is_pid(Router) ->
-  ok = erwa_router:handle_wamp(Router,Msg),
-  forward_messages(T,Router);
-forward_messages(_,undefined)  ->
-  self() ! {erwa,{abort,[{}],no_such_realm}},
-  self() ! {erwa, shutdown},
-  {error,undefined}.
 
 
 

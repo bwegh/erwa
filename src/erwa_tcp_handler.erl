@@ -108,7 +108,7 @@ handle_info({OK,Socket,Data},  #state{ok=OK,enc=Enc,socket=Socket,transport=Tran
   Transport:setopts(Socket, [{active, once}]),
   Buffer = <<Buf/binary, Data/binary>>,
   {Messages,NewBuffer} = erwa_protocol:deserialize(Buffer,Enc),
-  {ok,NewRouter} = erwa_protocol:forward_messages(Messages,Router),
+  {ok,NewRouter} = erwa_router:forward_messages(Messages,Router),
   {noreply, State#state{buffer=NewBuffer,router=NewRouter}};
 handle_info({Closed,Socket}, #state{closed=Closed,socket=Socket}=State) ->
   %erwa_protocol:close(connection_closed,ProtState),

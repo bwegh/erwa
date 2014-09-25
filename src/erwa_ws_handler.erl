@@ -80,7 +80,7 @@ websocket_terminate(_Reason, _Req, _State) ->
 
 handle_wamp(Data,#state{buffer=Buffer, enc=Enc, router=Router}=State) ->
   {Messages,NewBuffer} = erwa_protocol:deserialize(<<Buffer/binary, Data/binary>>,Enc),
-  {ok,NewRouter} = erwa_protocol:forward_messages(Messages,Router),
+  {ok,NewRouter} = erwa_router:forward_messages(Messages,Router),
   {ok,State#state{router=NewRouter,buffer=NewBuffer}}.
 
 
