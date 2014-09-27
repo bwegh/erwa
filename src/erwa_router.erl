@@ -43,6 +43,7 @@
 -export([handle_info/2]).
 -export([terminate/2]).
 -export([code_change/3]).
+-export([forward_messages/2]).
 
 
 
@@ -604,6 +605,25 @@ get_session_from_pid(Pid,#state{ets=Ets}) ->
 gen_id() ->
   crypto:rand_uniform(0,9007199254740992).
 
+-spec forward_messages(Messages :: list(), Router :: pid() | undefined) -> {ok,Router :: pid() | undefined} | {error,not_found}.
+forward_messages([],Router) ->
+  {ok,Router};
+forward_messages([{hello,Realm,_}|_]=Messages,undefined) ->
+  case erwa_realms:get_router(Realm) of
+    {ok,Pid} ->
+      forward_messages(Messages,Pid);
+    {error,not_found} ->
+      self() ! {erwa,{abort,[{}],no_such_realm}},
+      self() ! {erwa, shutdown},
+      {error,undefined}
+  end;
+forward_messages([Msg|T],Router) when is_pid(Router) ->
+  ok = erwa_router:handle_wamp(Router,Msg),
+  forward_messages(T,Router);
+forward_messages(_,undefined)  ->
+  self() ! {erwa,{abort,[{}],no_such_realm}},
+  self() ! {erwa, shutdown},
+  {error,undefined}.
 
 
 
