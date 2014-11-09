@@ -11,8 +11,6 @@
 		stdlib,
 		crypto,
     erwa
-
-     ,debugger,  tv, runtime_tools
 	]},
 	{mod, {crossbar_client_app, []}},
 	{env, []}
