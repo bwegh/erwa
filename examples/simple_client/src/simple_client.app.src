@@ -7,10 +7,10 @@
 	{registered, []},
 	{applications, [
 		kernel,
-	        sasl,
+		sasl,
 		stdlib,
 		crypto,
-    		erwa
+		erwa
 	]},
 	{mod, {simple_client_app, []}},
 	{env, []}
