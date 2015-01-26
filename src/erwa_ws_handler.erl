@@ -1,5 +1,5 @@
 %%
-%% Copyright (c) 2014 Bas Wegh
+%% Copyright (c) 2014-2015 Bas Wegh
 %%
 %% Permission is hereby granted, free of charge, to any person obtaining a copy
 %% of this software and associated documentation files (the "Software"), to deal
@@ -89,14 +89,12 @@ find_supported_protocol([]) ->
   none;
 find_supported_protocol([?WSJSON|_T]) ->
   {json,text,?WSJSON};
-find_supported_protocol([?WSJSON_BATCHED|T]) ->
-%  {json_batched,text,?WSJSON_BATCHED};
-  find_supported_protocol(T);
+find_supported_protocol([?WSJSON_BATCHED|_T]) ->
+  {json_batched,text,?WSJSON_BATCHED};
 find_supported_protocol([?WSMSGPACK|_T]) ->
   {msgpack,binary,?WSMSGPACK};
-find_supported_protocol([?WSMSGPACK_BATCHED|T]) ->
-%  {msgpack_batched,binary,?WSMSGPACK_BATCHED};
-  find_supported_protocol(T);
+find_supported_protocol([?WSMSGPACK_BATCHED|_T]) ->
+  {msgpack_batched,binary,?WSMSGPACK_BATCHED};
 find_supported_protocol([_|T]) ->
   find_supported_protocol(T).
 
