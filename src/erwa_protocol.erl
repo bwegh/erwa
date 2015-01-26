@@ -1,5 +1,5 @@
 %%
-%% Copyright (c) 2014 Bas Wegh
+%% Copyright (c) 2014-2015 Bas Wegh
 %%
 %% Permission is hereby granted, free of charge, to any person obtaining a copy
 %% of this software and associated documentation files (the "Software"), to deal
@@ -52,7 +52,7 @@ deserialize(Buffer,Messages,json) ->
   %% length and stuff, yet should not be needed
   {[to_erl(jsx:decode(Buffer))|Messages],<<"">>};
 deserialize(Buffer,_Messages,json_batched) ->
-  Wamps = binary:split(Buffer,[<<30>>],[global,trim]),
+  Wamps = binary:split(Buffer,[<<24>>],[global,trim]),
   {to_erl_reverse(lists:foldl(fun(M,List) -> [jsx:decode(M)|List] end,[],Wamps)),<<"">>};
 deserialize(<<Len:32/unsigned-integer-big,Data/binary>>  = Buffer,Messages,raw_msgpack) ->
   case byte_size(Data) >= Len of
@@ -87,7 +87,7 @@ serialize(Msg,json)  ->
   jsx:encode(Msg);
 serialize(Msg,json_batched) ->
   Enc = jsx:encode(Msg),
-  <<Enc/binary,30>>;
+  <<Enc/binary,24>>;
 serialize(Message,raw_msgpack) ->
   Enc = msgpack:pack(Message,[jsx]),
   Len = byte_size(Enc),
