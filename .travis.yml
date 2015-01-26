@@ -2,9 +2,7 @@ language: erlang
 notifications:
   email: false
 otp_release:
-   - 17.4
    - 17.3
-   - 17.2
    - 17.1
    - 17.0
 script: "make tests"
