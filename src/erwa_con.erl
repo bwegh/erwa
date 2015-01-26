@@ -1,5 +1,5 @@
 %%
-%% Copyright (c) 2014 Bas Wegh
+%% Copyright (c) 2014-2015 Bas Wegh
 %%
 %% Permission is hereby granted, free of charge, to any person obtaining a copy
 %% of this software and associated documentation files (the "Software"), to deal
@@ -39,10 +39,10 @@
 -define(DEFAULT_PORT,5555).
 -define(CLIENT_DETAILS,[{agent,<<"Erwa-0.0.1">>},
                         {roles,[
-                                {publisher,[]},
-                                {subscriber,[]},
+                                {callee,[]},
                                 {caller,[]},
-                                {callee,[]}
+                                {publisher,[]},
+                                {subscriber,[]}
                                 ]}
                         ]).
 
@@ -203,6 +203,13 @@ code_change(_OldVsn, State, _Extra) ->
 
 
 
+handle_messages([],_State) ->
+  ok;
+handle_messages([Message|Messages],State) ->
+  handle_message(Message,State),
+  handle_messages(Messages,State).
+
+
 
 handle_message({welcome,SessionId,RouterDetails},#state{ets=Ets}) ->
   [#ref{method=hello,ref=From}] = ets:lookup(Ets,hello),
@@ -218,8 +225,7 @@ handle_message({goodbye,_Details,_Reason},#state{goodbye_sent=GS}=State) ->
     false ->
       raw_send({goodbye,[],goodbye_and_out},State)
   end,
-  close_connection(State),
-  terminate();
+  close_connection(State);
 
 %handle_message({error,},#state{ets=Ets}) ->
 
@@ -309,11 +315,7 @@ handle_message(Msg,_State) ->
 
 
 
-handle_messages([],_State) ->
-  ok;
-handle_messages([Message|Messages],State) ->
-  handle_message(Message,State),
-  handle_messages(Messages,State).
+
 
 
 close_connection(#state{socket=S}=State) ->
@@ -322,7 +324,9 @@ close_connection(#state{socket=S}=State) ->
       ok;
     remote ->
       ok = gen_tcp:close(S)
-  end.
+  end,
+  self() ! terminate.
+
 
 
 send(Msg,From,Args,#state{ets=Ets}=State) ->
@@ -366,8 +370,5 @@ gen_id(#state{ets=Ets}=State) ->
       gen_id(State)
   end.
 
-
-terminate() ->
-  self() ! terminate.
 
 
