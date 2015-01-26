@@ -105,7 +105,7 @@ find_supported_protocol([_|T]) ->
 -ifdef(TEST).
 
 header_find_test() ->
-  {json,text,?WSJSON} = find_supported_protocol([?WSJSON_BATCHED,?WSJSON]).
+  {json_batched,text,?WSJSON_BATCHED} = find_supported_protocol([?WSJSON_BATCHED,?WSJSON]).
 
 
 -endif.
