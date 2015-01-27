@@ -1,5 +1,5 @@
 %%
-%% Copyright (c) 2014 Bas Wegh
+%% Copyright (c) 2014-2015 Bas Wegh
 %%
 %% Permission is hereby granted, free of charge, to any person obtaining a copy
 %% of this software and associated documentation files (the "Software"), to deal
@@ -49,7 +49,24 @@
 -export([call/3,call/4,call/5]).
 -export([yield/3,yield/4,yield/5]).
 
+-export([get_version/0]).
+
+
+
+%% @doc returns the version string for the application, used as agent description
+-spec get_version() -> Version::binary().
+get_version() ->
+  Ver = case application:get_key(vsn) of
+    {ok, V} -> list_to_binary(V);
+    _ -> <<"UNKNOWN">>
+  end,
+  << <<"Erwa-">>/binary, Ver/binary >>.
+
+
+
+
 %% for router
+
 
 %% @doc Start a router for a realm.
 -spec start_realm(Name :: binary() ) -> ok.

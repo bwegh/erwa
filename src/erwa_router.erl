@@ -171,9 +171,7 @@ start_link(Args) ->
 -spec init(Params :: list() ) -> {ok,#state{}}.
 init([Realm]) ->
   Ets = ets:new(erwa_router,[?TABLE_ACCESS,set,{keypos,2}]),
-  {ok,Ver} = application:get_key(erwa,vsn),
-  BinVer = list_to_binary(Ver),
-  Version = << <<"Erwa-">>/binary, BinVer/binary >>,
+  Version = erwa:get_version(),
   {ok,#state{realm=Realm,ets=Ets,version=Version}}.
 
 

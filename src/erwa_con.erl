@@ -91,9 +91,7 @@ start_link(Args) ->
 -spec init(Params :: list() ) -> {ok,#state{}}.
 init([]) ->
   Ets = ets:new(con_data,[bag,protected,{keypos,2}]),
-  {ok,Ver} = application:get_key(erwa,vsn),
-  BinVer = list_to_binary(Ver),
-  Version = << <<"Erwa-">>/binary, BinVer/binary >>,
+  Version = erwa:get_version(),
   {ok,#state{ets=Ets,version=Version}}.
 
 
