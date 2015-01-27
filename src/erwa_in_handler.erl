@@ -1,5 +1,5 @@
 %%
-%% Copyright (c) 2014 Bas Wegh
+%% Copyright (c) 2015 Bas Wegh
 %%
 %% Permission is hereby granted, free of charge, to any person obtaining a copy
 %% of this software and associated documentation files (the "Software"), to deal
@@ -21,16 +21,25 @@
 %%
 
 %% @private
--module(erwa_tcp_handler).
+-module(erwa_in_handler).
 
 
+-behaviour(cowboy_websocket_handler).
 -behaviour(ranch_protocol).
 -behaviour(gen_server).
 
 
+%% for tcp
 -export([start_link/4]).
 -export([init/4]).
 
+
+%% for websocket
+-export([init/3]).
+-export([websocket_init/3]).
+-export([websocket_handle/3]).
+-export([websocket_info/3]).
+-export([websocket_terminate/3]).
 
 %% gen_server.
 -export([init/1]).
@@ -41,6 +50,14 @@
 -export([code_change/3]).
 
 
+-define(TIMEOUT,60000).
+
+-define(SUBPROTHEADER,<<"sec-websocket-protocol">>).
+-define(WSMSGPACK,<<"wamp.2.msgpack">>).
+-define(WSJSON,<<"wamp.2.json">>).
+-define(WSMSGPACK_BATCHED,<<"wamp.2.msgpack.batched">>).
+-define(WSJSON_BATCHED,<<"wamp.2.json.batched">>).
+
 
 -record(state,{
                socket,
@@ -50,13 +67,14 @@
                closed,
                error,
                enc = undefined,
+               ws_enc = undefined,
                length = infitity,
                buffer = <<"">>,
                router = undefined
               }).
 
--define(TIMEOUT,60000).
 
+%%% for TCP
 
 start_link(Ref, Socket, Transport, Opts) ->
     proc_lib:start_link(?MODULE, init, [Ref, Socket, Transport, Opts]).
@@ -68,6 +86,68 @@ init(Ref, Socket, Transport, _Opts = []) ->
     ok = Transport:setopts(Socket, [{active, once}]),
     gen_server:enter_loop(?MODULE, [], #state{socket=Socket,transport=Transport,ok=Ok,closed=Closed,error=Error}).
 
+
+%%% for websocket
+
+init({Transport, http}, _Req, _Opts) when Transport == tcp; Transport == ssl ->
+  {upgrade, protocol, cowboy_websocket}.
+
+websocket_init(_TransportName, Req, _Opts) ->
+  % need to check for the wamp.2.json or wamp.2.msgpack
+  {ok, Protocols, Req1} = cowboy_req:parse_header(?SUBPROTHEADER, Req),
+  case find_supported_protocol(Protocols) of
+      {Enc,WsEncoding,Header} ->
+        Req2  = cowboy_req:set_resp_header(?SUBPROTHEADER,Header,Req1),
+        {ok,Req2,#state{enc=Enc,ws_enc=WsEncoding}};
+      _ ->
+        % unsupported
+        {shutdown,Req1}
+  end.
+
+
+websocket_handle({WsEnc, Data}, Req, #state{ws_enc=WsEnc}=State) ->
+  {ok,NewState} = handle_wamp(Data,State),
+  {ok,Req,NewState};
+websocket_handle(Data, Req, State) ->
+  erlang:error(unsupported,[Data,Req,State]),
+  {ok, Req, State}.
+
+websocket_info({erwa,shutdown}, Req, State) ->
+  {shutdown,Req,State};
+websocket_info({erwa,Msg}, Req, #state{enc=Enc,ws_enc=WsEnc}=State) when is_tuple(Msg)->
+	Reply = erwa_protocol:serialize(Msg,Enc),
+	{reply,{WsEnc,Reply},Req,State};
+websocket_info(_Data, Req, State) ->
+  {ok,Req,State}.
+
+websocket_terminate(_Reason, _Req, _State) ->
+  ok.
+
+
+handle_wamp(Data,#state{buffer=Buffer, enc=Enc, router=Router}=State) ->
+  {Messages,NewBuffer} = erwa_protocol:deserialize(<<Buffer/binary, Data/binary>>,Enc),
+  {ok,NewRouter} = erwa_router:forward_messages(Messages,Router),
+  {ok,State#state{router=NewRouter,buffer=NewBuffer}}.
+
+
+-spec find_supported_protocol([binary()]) -> atom() | {json|json_batched|msgpack|msgpack_batched,text|binary,binary()}.
+find_supported_protocol([]) ->
+  none;
+find_supported_protocol([?WSJSON|_T]) ->
+  {json,text,?WSJSON};
+find_supported_protocol([?WSJSON_BATCHED|_T]) ->
+  {json_batched,text,?WSJSON_BATCHED};
+find_supported_protocol([?WSMSGPACK|_T]) ->
+  {msgpack,binary,?WSMSGPACK};
+find_supported_protocol([?WSMSGPACK_BATCHED|_T]) ->
+  {msgpack_batched,binary,?WSMSGPACK_BATCHED};
+find_supported_protocol([_|T]) ->
+  find_supported_protocol(T).
+
+
+
+
+%%%% TCP - gen_server
 
 init(_Opts) ->
   erlang:error("don't call").
@@ -132,8 +212,6 @@ code_change(_OldVsn, State, _Extra) ->
 
 
 
-
-
 -ifdef(TEST).
 
 raw_init_test() ->
@@ -142,4 +220,3 @@ raw_init_test() ->
   Serializer = 2.
 
 -endif.
-
