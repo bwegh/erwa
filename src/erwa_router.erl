@@ -64,7 +64,6 @@ start_link(Args) ->
 
 
 -define(ROUTER_DETAILS,[
-                        {agent,<<"Erwa-0.0.1">>},
                         {roles,[
                                 {broker,[{features,[
                                                     {event_history,false},
@@ -94,7 +93,8 @@ start_link(Args) ->
 
 -record(state, {
 	realm = undefined,
-  ets = undefined
+  ets = undefined,
+  version = undefined
 }).
 
 -record(session, {
@@ -171,7 +171,10 @@ start_link(Args) ->
 -spec init(Params :: list() ) -> {ok,#state{}}.
 init([Realm]) ->
   Ets = ets:new(erwa_router,[?TABLE_ACCESS,set,{keypos,2}]),
-  {ok,#state{realm=Realm,ets=Ets}}.
+  {ok,Ver} = application:get_key(erwa,vsn),
+  BinVer = list_to_binary(Ver),
+  Version = << <<"Erwa-">>/binary, BinVer/binary >>,
+  {ok,#state{realm=Realm,ets=Ets,version=Version}}.
 
 
 handle_call({handle_wamp,Msg},{Pid,_Ref},State) ->
@@ -207,9 +210,9 @@ code_change(_OldVsn, State, _Extra) ->
 
 
 -spec handle_wamp_message(Msg :: term(),Pid :: pid(), State :: #state{}) -> ok.
-handle_wamp_message({hello,Realm,Details},Pid,#state{realm=Realm}=State) ->
+handle_wamp_message({hello,Realm,Details},Pid,#state{realm=Realm,version=Version}=State) ->
   {ok,SessionId} = create_session(Pid,Details,State),
-  send_message_to({welcome,SessionId,?ROUTER_DETAILS},Pid);
+  send_message_to({welcome,SessionId,[{agent,Version}|?ROUTER_DETAILS]},Pid);
   %send_message_to({challenge,wampcra,[{challenge,JSON-Data}]},Pid);
 
 handle_wamp_message({authenticate,_Signature,_Extra},Pid,_State) ->

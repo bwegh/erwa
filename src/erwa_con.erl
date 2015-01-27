@@ -37,8 +37,7 @@
 
 
 -define(DEFAULT_PORT,5555).
--define(CLIENT_DETAILS,[{agent,<<"Erwa-0.0.1">>},
-                        {roles,[
+-define(CLIENT_DETAILS,[{roles,[
                                 {callee,[]},
                                 {caller,[]},
                                 {publisher,[]},
@@ -48,6 +47,7 @@
 
 
 -record(state,{
+    version = undefined,
     realm = unknown,
     router=undefined,
     socket=undefined,
@@ -91,12 +91,15 @@ start_link(Args) ->
 -spec init(Params :: list() ) -> {ok,#state{}}.
 init([]) ->
   Ets = ets:new(con_data,[bag,protected,{keypos,2}]),
-  {ok,#state{ets=Ets}}.
+  {ok,Ver} = application:get_key(erwa,vsn),
+  BinVer = list_to_binary(Ver),
+  Version = << <<"Erwa-">>/binary, BinVer/binary >>,
+  {ok,#state{ets=Ets,version=Version}}.
 
 
 
 -spec handle_call(Msg :: term(), From :: term(), #state{}) -> {reply,Msg :: term(), #state{}}.
-handle_call({connect,Host,Port,Realm,Encoding},From,#state{ets=Ets}=State) ->
+handle_call({connect,Host,Port,Realm,Encoding},From,#state{ets=Ets,version=Version}=State) ->
   Enc = case Encoding of
           json -> raw_json;
           raw_json -> raw_json;
@@ -107,7 +110,7 @@ handle_call({connect,Host,Port,Realm,Encoding},From,#state{ets=Ets}=State) ->
     case Host of
       undefined ->
         {ok, Router} =  erwa:get_router_for_realm(Realm),
-        ok = raw_send({hello,Realm,?CLIENT_DETAILS},State#state{socket=undefined,router=Router}),
+        ok = raw_send({hello,Realm,[{agent,Version}|?CLIENT_DETAILS]},State#state{socket=undefined,router=Router}),
         {Router,undefined};
       _ ->
         {ok, Socket} = gen_tcp:connect(Host,Port,[binary,{packet,0}]),
@@ -170,7 +173,7 @@ handle_cast(_Request, State) ->
 	{noreply, State}.
 
 
-handle_info({tcp,Socket,<<127,L:4,S:4,0,0>>},#state{socket=Socket,enc=Enc,realm=Realm}=State) ->
+handle_info({tcp,Socket,<<127,L:4,S:4,0,0>>},#state{socket=Socket,enc=Enc,realm=Realm,version=Version}=State) ->
   %% the new reply
   true =
     case {Enc,S} of
@@ -179,7 +182,7 @@ handle_info({tcp,Socket,<<127,L:4,S:4,0,0>>},#state{socket=Socket,enc=Enc,realm=
       _ -> false
     end,
   State1 = State#state{max_length=math:pow(2,9+L)},
-  ok = raw_send({hello,Realm,?CLIENT_DETAILS},State1),
+  ok = raw_send({hello,Realm,[{agent,Version}|?CLIENT_DETAILS]},State1),
   {noreply,State1};
 handle_info({tcp,Socket,Data},#state{buffer=Buffer,socket=Socket,enc=Enc}=State) ->
   {Messages,NewBuffer} = erwa_protocol:deserialize(<<Buffer/binary, Data/binary>>,Enc),
