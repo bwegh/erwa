@@ -1,5 +1,5 @@
 %%
-%% Copyright (c) 2014 Bas Wegh
+%% Copyright (c) 2014-2015 Bas Wegh
 %%
 %% Permission is hereby granted, free of charge, to any person obtaining a copy
 %% of this software and associated documentation files (the "Software"), to deal
@@ -47,7 +47,7 @@ init_per_suite(Config) ->
   {ok,_} = application:ensure_all_started(erwa),
   {ok,_} = application:ensure_all_started(ranch),
   {ok,_} = application:ensure_all_started(sasl),
-  {ok,_} = ranch:start_listener(erwa_tcp, 5, ranch_tcp, [{port,5555}], erwa_tcp_handler, []),
+  {ok,_} = ranch:start_listener(erwa_tcp, 5, ranch_tcp, [{port,5555}], erwa_in_handler, []),
   ok = erwa:start_realm(?REALM),
   Config.
 
