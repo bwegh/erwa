@@ -23,10 +23,10 @@ init([]) ->
   Dispatch = cowboy_router:compile([
                                     {'_', [
                                            {"/", cowboy_static, {priv_file, simple_router, "index.html"}},
-                                           {"/wamp", erwa_ws_handler, []},
+                                           {"/wamp", erwa_in_handler, []},
                                            {"/static/[...]", cowboy_static, {priv_dir, simple_router, "static"}}
                                            ]}
                                     ]),
   {ok, _} = cowboy:start_http(http, 100, [{port, 8080}],[{env, [{dispatch, Dispatch}]}]),
-  {ok,_} = ranch:start_listener(erwa_tcp, 5, ranch_tcp, [{port,5555}], erwa_tcp_handler, []),
+  {ok,_} = ranch:start_listener(erwa_tcp, 5, ranch_tcp, [{port,5555}], erwa_in_handler, []),
   {ok, {{one_for_one, 10, 10}, []}}.
