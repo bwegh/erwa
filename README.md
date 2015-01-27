@@ -48,11 +48,11 @@ All you need to do to get a simple WAMP router up and running is to add a dispat
 ranch and/or cowboy:
 
 A WAMP router on websockets:
-* using erwa_ws_handler as the websocket handler, by dispatching a certain path to conditions
+* using erwa_in_handler as the websocket handler, by dispatching a certain path to conditions
 * starting cowboy on a certain port (here 8080) and add the dispatch rule
 ```Erlang
-%% a rule to dispatch incomming connections to any host with the path /wamp to the erwa_ws_handler
-Dispatch = cowboy_router:compile([ {'_', [ {"/wamp", erwa_ws_handler, []}, ]} ]),
+%% a rule to dispatch incomming connections to any host with the path /wamp to the erwa_in_handler
+Dispatch = cowboy_router:compile([ {'_', [ {"/wamp", erwa_in_handler, []}, ]} ]),
 %% fire up cowboy with the dispatch rule for the wamp connection
 {ok, _} = cowboy:start_http(http, 100, [{port, 8080}],[{env, [{dispatch, Dispatch}]}]),
 ```
@@ -61,12 +61,12 @@ and starts a WAMP router, including a simple javascript client,
 using [wampy.js](https://github.com/KSDaemon/wampy.js).
 
 The other possibility is to start Erwa as a TCP router:
-Erwa implements a protocol for ranch in the erwa_tcp_handler modules.
+Erwa implements a protocol for ranch in the erwa_in_handler modules.
 So starting and tcp router is done by starting ranch with
-erwa_tcp_handler as the protocol:
+erwa_in_handler as the protocol:
 ```Erlang
-%% start ranch with the wamp protocol by using erwa_tcp_handler on port 555
-{ok,_} = ranch:start_listener(erwa_tcp, 5, ranch_tcp, [{port,5555}], erwa_tcp_handler, []),
+%% start ranch with the wamp protocol by using erwa_in_handler on port 555
+{ok,_} = ranch:start_listener(erwa_tcp, 5, ranch_tcp, [{port,5555}], erwa_in_handler, []),
 ```
 This is also included in the simple_router example in the examples directory.
 
