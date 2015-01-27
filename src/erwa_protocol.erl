@@ -158,19 +158,20 @@ is_valid_argumentskw(_)  -> false.
 
 
 
+-define(ERROR_AND_OUT,<<"wamp.error.goodbye_and_out">>).
+-define(ERROR_AUTHORIZATION_FAILED,<<"wamp.error.authorization_failed">>).
+-define(ERROR_CLOSE_REALM,<<"wamp.error.close_realm">>).
+-define(ERROR_INVALID_ARGUMENT,<<"wamp.error.invalid_argument">>).
 -define(ERROR_INVALID_URI,<<"wamp.error.invalid_uri">>).
 -define(ERROR_NO_SUCH_PROCEDURE,<<"wamp.error.no_such_procedure">>).
--define(ERROR_PROCEDURE_ALREADY_EXISTS,<<"wamp.error.procedure_already_exists">>).
--define(ERROR_NO_SUCH_REGISTRATION,<<"wamp.error.no_such_registration">>).
--define(ERROR_NO_SUCH_SUBSCRIPTION,<<"wamp.error.no_such_subscription">>).
--define(ERROR_INVALID_ARGUMENT,<<"wamp.error.invalid_argument">>).
--define(ERROR_SHUTDOWN,<<"wamp.error.system_shutdown">>).
--define(ERROR_CLOSE_REALM,<<"wamp.error.close_realm">>).
--define(ERROR_AND_OUT,<<"wamp.error.goodbye_and_out">>).
--define(ERROR_NOT_AUTHORIZED,<<"wamp.error.not_authorized">>).
--define(ERROR_AUTHORIZATION_FAILED,<<"wamp.error.authorization_failed">>).
 -define(ERROR_NO_SUCH_REALM,<<"wamp.error.no_such_realm">>).
+-define(ERROR_NO_SUCH_REGISTRATION,<<"wamp.error.no_such_registration">>).
 -define(ERROR_NO_SUCH_ROLE,<<"wamp.error.no_such_role">>).
+-define(ERROR_NO_SUCH_SUBSCRIPTION,<<"wamp.error.no_such_subscription">>).
+-define(ERROR_NOT_AUTHORIZED,<<"wamp.error.not_authorized">>).
+-define(ERROR_PROCEDURE_ALREADY_EXISTS,<<"wamp.error.procedure_already_exists">>).
+-define(ERROR_SHUTDOWN,<<"wamp.error.system_shutdown">>).
+
 
 
 to_erl([?HELLO,Realm,Details]) ->
@@ -683,13 +684,12 @@ hello_msgpack_deserialize_test() ->
                       110,116,105,102,105,99,97,116,105,111,110,195>>,
   {[{hello,<<"realm1">>,_}],_} = deserialize(Data,msgpack).
 
-roundtrip_test() ->
 
+
+roundtrip_test() ->
   Messages = [
               {hello,<<"realm1">>,[]}
               ],
-
-
   Serializer = fun(Message,Res) ->
 
                  Encodings = [json,msgpack,raw_json,raw_msgpack,json_batched,msgpack_batched],
