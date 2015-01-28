@@ -265,8 +265,7 @@ handle_wamp_message({authenticate,Signature,Extra},Pid,#state{mw=MW,version=Vers
   end;
 
 handle_wamp_message({goodbye,_Details,_Reason},Pid,#state{ets=Ets}=State) ->
-  disconnect_unauth(Pid, State),
-  Session = get_session_from_pid(Pid,State),
+  Session = disconnect_unauth(Pid, State),
   SessionId = Session#session.id,
   case Session#session.goodbye_sent of
     true ->
@@ -277,16 +276,26 @@ handle_wamp_message({goodbye,_Details,_Reason},Pid,#state{ets=Ets}=State) ->
   end,
   send_message_to(shutdown,Pid);
 
-handle_wamp_message({publish,_RequestId,Options,Topic,Arguments,ArgumentsKw},Pid,State) ->
-  disconnect_unauth(Pid, State),
-  {ok,_PublicationId} = send_event_to_topic(Pid,Options,Topic,Arguments,ArgumentsKw,State),
-  % TODO: send a reply if asked for ...
-  ok;
+handle_wamp_message({publish,RequestId,Options,Topic,Arguments,ArgumentsKw},Pid,#state{mw=MW}=State) ->
+  Session = disconnect_unauth(Pid, State),
+  case MW:perm_publish(Session#session.id,Options,Topic,Arguments,ArgumentsKw) of
+    true ->
+      {ok,_PublicationId} = send_event_to_topic(Pid,Options,Topic,Arguments,ArgumentsKw,State),
+      % TODO: send a reply if asked for ...
+      ok;
+    {false, Details, Error} ->
+      send_message_to({error,publish,RequestId,Details,Error},Pid)
+  end;
 
-handle_wamp_message({subscribe,RequestId,Options,Topic},Pid,State) ->
-  disconnect_unauth(Pid, State),
-  {ok,TopicId} = subscribe_to_topic(Pid,Options,Topic,State),
-  send_message_to({subscribed,RequestId,TopicId},Pid);
+handle_wamp_message({subscribe,RequestId,Options,Topic},Pid,#state{mw=MW}=State) ->
+  Session = disconnect_unauth(Pid, State),
+  case MW:perm_subscribe(Session#session.id,Options,Topic) of
+    true ->
+      {ok,TopicId} = subscribe_to_topic(Pid,Options,Topic,State),
+      send_message_to({subscribed,RequestId,TopicId},Pid);
+    {false,Details,Error} ->
+      send_message_to({error,subscribe,RequestId,Details,Error},Pid)
+  end;
 
 handle_wamp_message({unsubscribe,RequestId,SubscriptionId},Pid,State) ->
   disconnect_unauth(Pid, State),
@@ -297,22 +306,32 @@ handle_wamp_message({unsubscribe,RequestId,SubscriptionId},Pid,State) ->
       send_message_to({error,unsubscribe,RequestId,[],no_such_subscription},Pid)
   end;
 
-handle_wamp_message({call,RequestId,Options,Procedure,Arguments,ArgumentsKw},Pid,State) ->
-  disconnect_unauth(Pid, State),
-  case enqueue_procedure_call( Pid, RequestId, Options,Procedure,Arguments,ArgumentsKw,State) of
+handle_wamp_message({call,RequestId,Options,Procedure,Arguments,ArgumentsKw},Pid,#state{mw=MW}=State) ->
+  Session = disconnect_unauth(Pid, State),
+  case MW:perm_call(Session#session.id,Options,Procedure,Arguments,ArgumentsKw) of
     true ->
-      ok;
-    false ->
-      send_message_to({error,call,RequestId,[],no_such_procedure,undefined,undefined},Pid)
+      case enqueue_procedure_call( Pid, RequestId, Options,Procedure,Arguments,ArgumentsKw,State) of
+        true ->
+          ok;
+        false ->
+          send_message_to({error,call,RequestId,[],no_such_procedure,undefined,undefined},Pid)
+      end;
+    {false,Details,Error} ->
+      send_message_to({error,subscribe,RequestId,Details,Error},Pid)
   end;
 
-handle_wamp_message({register,RequestId,Options,Procedure},Pid,State) ->
-  disconnect_unauth(Pid, State),
-  case register_procedure(Pid,Options,Procedure,State) of
-    {ok,RegistrationId} ->
-      send_message_to({registered,RequestId,RegistrationId},Pid);
-    {error,procedure_already_exists} ->
-      send_message_to({register,error,RequestId,[],procedure_already_exists,undefined,undefined},Pid)
+handle_wamp_message({register,RequestId,Options,Procedure},Pid,#state{mw=MW}=State) ->
+  Session = disconnect_unauth(Pid, State),
+  case MW:perm_register(Session#session.id,Options,Procedure) of
+    true ->
+      case register_procedure(Pid,Options,Procedure,State) of
+        {ok,RegistrationId} ->
+          send_message_to({registered,RequestId,RegistrationId},Pid);
+        {error,procedure_already_exists} ->
+          send_message_to({register,error,RequestId,[],procedure_already_exists,undefined,undefined},Pid)
+      end;
+    {false,Details,Error} ->
+      send_message_to({error,subscribe,RequestId,Details,Error},Pid)
   end;
 
 handle_wamp_message({unregister,RequestId,RegistrationId},Pid,State) ->
@@ -667,14 +686,13 @@ get_session_from_pid(Pid,#state{ets=Ets}) ->
       [] -> undefined
   end.
 
--spec disconnect_unauth(Pid :: pid(), State :: #state{}) -> ok.
+-spec disconnect_unauth(Pid :: pid(), State :: #state{}) -> #session{}.
 disconnect_unauth(Pid, State) ->
   case session_authed(Pid,State) of
     false ->
       send_message_to(shutdown,Pid),
       throw(not_authenticated);
-    _ ->
-      ok
+    S -> S
   end.
 
 
@@ -684,12 +702,16 @@ mark_session_auth(FromPid, #state{ets=Ets}=State) ->
   true = ets:insert(Ets,Session#session{auth=true}),
   ok.
 
--spec session_authed(Pid :: pid(), State :: #state{}) -> true | false.
+-spec session_authed(Pid :: pid(), State :: #state{}) -> #session{} | false.
 session_authed(Pid,State) ->
   case get_session_from_pid(Pid,State) of
     undefined ->
       false;
-    S -> S#session.auth
+    S ->
+      case S#session.auth of
+        false -> false;
+        true -> S
+      end
   end.
 
 

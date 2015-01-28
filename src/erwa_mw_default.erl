@@ -26,14 +26,24 @@
 -export([perm_connect/3]).
 -export([authenticate/3]).
 -export([perm_publish/5]).
+-export([perm_subscribe/3]).
+-export([perm_call/5]).
+-export([perm_register/3]).
 
 perm_connect(_SessionId, _Realm, _Details) ->
   false.
 
-
 authenticate(_SessionId, _Signature, _Extra) ->
   false.
 
-
 perm_publish(_SessionId, _Options, _Topic, _Arguments, _ArgumentsKw) ->
+  {false, [], not_authorized}.
+
+perm_subscribe(_SessionId, _Options, _Topic) ->
+  {false, [], not_authorized}.
+
+perm_call(_SessionId, _Options, _Procedure, _Arguments, _ArgumentsKw) ->
+  {false, [], not_authorized}.
+
+perm_register(_SessionId, _Options, _Procedure) ->
   {false, [], not_authorized}.

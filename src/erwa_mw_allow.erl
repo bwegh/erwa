@@ -25,6 +25,10 @@
 
 -export([perm_connect/3]).
 -export([authenticate/3]).
+-export([perm_publish/5]).
+-export([perm_subscribe/3]).
+-export([perm_call/5]).
+-export([perm_register/3]).
 
 perm_connect(_SessionId, _Realm, _Details) ->
   true.
@@ -34,4 +38,13 @@ authenticate(_SessionId, _Signature, _Extra) ->
   true.
 
 perm_publish(_SessionId, _Options, _Topic, _Arguments, _ArgumentsKw) ->
+  true.
+
+perm_subscribe(_SessionId, _Options, _Topic) ->
+  true.
+
+perm_call(_SessionId, _Options, _Procedure, _Arguments, _ArgumentsKw) ->
+  true.
+
+perm_register(_SessionId, _Options, _Procedure) ->
   true.

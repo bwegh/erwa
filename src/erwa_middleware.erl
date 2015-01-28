@@ -37,3 +37,19 @@
                        Arguments :: list() | undefined ,ArgumentsKw :: list() | undefined) ->
   true |
   {false, Details :: list(), Error :: not_authorized }.
+
+
+-callback perm_subscribe(SessionId :: integer() ,Options :: list() ,Topic :: binary()) ->
+  true |
+  {false, Details :: list(), Error :: not_authorized }.
+
+
+-callback perm_call(SessionId :: integer(), Options :: list(), Procedure :: binary(),
+                    Arguments :: list() | undefined, ArgumentsKw :: list() | undefined) ->
+  true |
+  {false, Details :: list(), Error :: not_authorized }.
+
+
+-callback perm_register(SessionId :: integer() ,Options :: list() ,Procedure :: binary()) ->
+  true |
+  {false, Details :: list(), Error :: not_authorized }.
