@@ -158,19 +158,7 @@ is_valid_argumentskw(_)  -> false.
 
 
 
--define(ERROR_AND_OUT,<<"wamp.error.goodbye_and_out">>).
--define(ERROR_AUTHORIZATION_FAILED,<<"wamp.error.authorization_failed">>).
--define(ERROR_CLOSE_REALM,<<"wamp.error.close_realm">>).
--define(ERROR_INVALID_ARGUMENT,<<"wamp.error.invalid_argument">>).
--define(ERROR_INVALID_URI,<<"wamp.error.invalid_uri">>).
--define(ERROR_NO_SUCH_PROCEDURE,<<"wamp.error.no_such_procedure">>).
--define(ERROR_NO_SUCH_REALM,<<"wamp.error.no_such_realm">>).
--define(ERROR_NO_SUCH_REGISTRATION,<<"wamp.error.no_such_registration">>).
--define(ERROR_NO_SUCH_ROLE,<<"wamp.error.no_such_role">>).
--define(ERROR_NO_SUCH_SUBSCRIPTION,<<"wamp.error.no_such_subscription">>).
--define(ERROR_NOT_AUTHORIZED,<<"wamp.error.not_authorized">>).
--define(ERROR_PROCEDURE_ALREADY_EXISTS,<<"wamp.error.procedure_already_exists">>).
--define(ERROR_SHUTDOWN,<<"wamp.error.system_shutdown">>).
+
 
 
 
@@ -200,19 +188,10 @@ to_erl([?AUTHENTICATE,Signature,Extra]) ->
   true = is_valid_dict(Extra),
   {authenticate,Signature,dict_to_erl(Extra)};
 
-to_erl([?GOODBYE,Details,?ERROR_NOT_AUTHORIZED]) ->
-  to_erl([?GOODBYE,Details,not_authorized]);
-to_erl([?GOODBYE,Details,?ERROR_NO_SUCH_REALM]) ->
-  to_erl([?GOODBYE,Details,no_such_realm]);
-to_erl([?GOODBYE,Details,?ERROR_SHUTDOWN]) ->
-  to_erl([?GOODBYE,Details,system_shutdown]);
-to_erl([?GOODBYE,Details,?ERROR_CLOSE_REALM]) ->
-  to_erl([?GOODBYE,Details,close_realm]);
-to_erl([?GOODBYE,Details,?ERROR_AND_OUT]) ->
-  to_erl([?GOODBYE,Details,goodbye_and_out]);
+to_erl([?GOODBYE,Details,Error]) when is_binary(Error) ->
+  to_erl([?GOODBYE,Details,error_to_erl(Error)]);
 to_erl([?GOODBYE,Details,Reason]) ->
   true = is_valid_dict(Details),
-  true = is_valid_uri(Reason) or is_atom(Reason),
   {goodbye,dict_to_erl(Details),Reason};
 
 to_erl([?HEARTBEAT,IncomingSeq,OutgoingSeq,_Discard]) ->
@@ -225,13 +204,12 @@ to_erl([?ERROR,RequestType,RequestId,Details,Error]) ->
 to_erl([?ERROR,RequestType,RequestId,Details,Error,Arguments]) ->
   to_erl([?ERROR,RequestType,RequestId,Details,Error,Arguments,undefined]);
 
-to_erl([?ERROR,?CALL,RequestId,Details,?ERROR_NO_SUCH_PROCEDURE,Arguments,ArgumentsKw]) ->
-  to_erl([?ERROR,?CALL,RequestId,Details,no_such_procedure,Arguments,ArgumentsKw]);
+to_erl([?ERROR,RequestType,RequestId,Details,Error,Arguments,ArgumentsKw]) when is_binary(Error) ->
+  to_erl([?ERROR,RequestType,RequestId,Details,error_to_erl(Error),Arguments,ArgumentsKw]);
 
 to_erl([?ERROR,?CALL,RequestId,Details,Error,Arguments,ArgumentsKw]) ->
   true = is_valid_id(RequestId),
   true = is_valid_dict(Details),
-  true = is_valid_uri(Error) or is_atom(Error),
   true = is_valid_arguments(Arguments),
   true = is_valid_argumentskw(ArgumentsKw),
   {error,call,RequestId,dict_to_erl(Details),Error,Arguments,ArgumentsKw};
@@ -379,44 +357,33 @@ to_wamp({welcome,SessionId,Details}) ->
 to_wamp({heartbeat,IncomingSeq,OutgoingSeq}) ->
   [?HEARTBEAT,IncomingSeq,OutgoingSeq];
 
-to_wamp({abort,Details,not_authorized}) ->
-  to_wamp({abort,Details,?ERROR_NOT_AUTHORIZED});
-to_wamp({abort,Details,no_such_realm}) ->
-  to_wamp({abort,Details,?ERROR_NO_SUCH_REALM});
-to_wamp({abort,Details,close_realm}) ->
-  to_wamp({abort,Details,?ERROR_CLOSE_REALM});
-to_wamp({abort,Details,system_shutdown}) ->
-  to_wamp({abort,Details,?ERROR_SHUTDOWN});
+to_wamp({abort,Details,Error}) when is_atom(Error) ->
+  to_wamp({abort,Details,error_to_wamp(Error)});
 to_wamp({abort,Details,Reason}) ->
   [?ABORT,dict_to_wamp(Details),Reason];
 
 
-to_wamp({goodbye,Details,close_realm}) ->
-  to_wamp({goodbye,Details,?ERROR_CLOSE_REALM});
-to_wamp({goodbye,Details,system_shutdown}) ->
-  to_wamp({goodbye,Details,?ERROR_SHUTDOWN});
-to_wamp({goodbye,Details,invalid_argument}) ->
-  to_wamp({goodbye,Details,?ERROR_INVALID_ARGUMENT});
-to_wamp({goodbye,Details,goodbye_and_out}) ->
-  to_wamp({goodbye,Details,?ERROR_AND_OUT});
+to_wamp({goodbye,Details,Error}) when is_atom(Error)->
+  to_wamp({goodbye,Details,error_to_wamp(Error)});
+
 to_wamp({goodbye,Details,Reason}) ->
   [?GOODBYE,dict_to_wamp(Details),Reason];
 
 
-to_wamp({error,unsubscribe,RequestId,Details,no_such_subscription,Arguments,ArgumentsKw}) ->
-  to_wamp({error,?UNSUBSCRIBE,RequestId,Details,?ERROR_NO_SUCH_SUBSCRIPTION,Arguments,ArgumentsKw});
-to_wamp({error,register,RequestId,Details,procedure_already_exists,Arguments,ArgumentsKw}) ->
-  to_wamp({error,?REGISTER,RequestId,Details,?ERROR_PROCEDURE_ALREADY_EXISTS,Arguments,ArgumentsKw});
-to_wamp({error,unregister,RequestId,Details,no_such_registration,Arguments,ArgumentsKw}) ->
-  to_wamp({error,?UNREGISTER,RequestId,Details,?ERROR_NO_SUCH_REGISTRATION,Arguments,ArgumentsKw});
+to_wamp({error,Origin,RequestId,Details,Error,Arguments,ArgumentsKw}) when is_atom(Error) ->
+  to_wamp({error,Origin,RequestId,Details,error_to_wamp(Error),Arguments,ArgumentsKw});
 
-to_wamp({error,call,RequestId,Details,no_such_procedure,Arguments,ArgumentsKw}) ->
-  to_wamp({error,?CALL,RequestId,Details,?ERROR_NO_SUCH_PROCEDURE,Arguments,ArgumentsKw});
-to_wamp({error,call,RequestId,Details,invalid_argument,Arguments,ArgumentsKw}) ->
-  to_wamp({error,?CALL,RequestId,Details,?ERROR_INVALID_ARGUMENT,Arguments,ArgumentsKw});
 
-to_wamp({error,invocation,RequestId,Details,invalid_argument,Arguments,ArgumentsKw}) ->
-  to_wamp({error,?INVOCATION,RequestId,Details,?ERROR_INVALID_ARGUMENT,Arguments,ArgumentsKw});
+to_wamp({error,unsubscribe,RequestId,Details,Error,Arguments,ArgumentsKw}) ->
+  to_wamp({error,?UNSUBSCRIBE,RequestId,Details,Error,Arguments,ArgumentsKw});
+to_wamp({error,register,RequestId,Details,Error,Arguments,ArgumentsKw}) ->
+  to_wamp({error,?REGISTER,RequestId,Details,Error,Arguments,ArgumentsKw});
+to_wamp({error,unregister,RequestId,Details,Error,Arguments,ArgumentsKw}) ->
+  to_wamp({error,?UNREGISTER,RequestId,Details,Error,Arguments,ArgumentsKw});
+to_wamp({error,call,RequestId,Details,Error,Arguments,ArgumentsKw}) ->
+  to_wamp({error,?CALL,RequestId,Details,Error,Arguments,ArgumentsKw});
+to_wamp({error,invocation,RequestId,Details,Error,Arguments,ArgumentsKw}) ->
+  to_wamp({error,?INVOCATION,RequestId,Details,Error,Arguments,ArgumentsKw});
 
 
 to_wamp({error,Origin,RequestId,Details,Reason,undefined,undefined}) ->
@@ -505,6 +472,60 @@ to_wamp(noreply)  ->
   noreply;
 to_wamp(shutdown)  ->
   shutdown.
+
+
+error_to_erl(Error) ->
+  convert_error(to_erl,Error).
+
+error_to_wamp(Error) ->
+  convert_error(to_wamp,Error).
+
+-define(ERROR_MAPPING,[
+                       {},
+                       {goodbye_and_out,<<"wamp.error.goodbye_and_out">>},
+                       {authorization_failed,<<"wamp.error.authorization_failed">>},
+                       {close_realm,<<"wamp.error.close_realm">>},
+                       {invalid_argument,<<"wamp.error.invalid_argument">>},
+                       {invalid_uri,<<"wamp.error.invalid_uri">>},
+                       {no_such_procedure,<<"wamp.error.no_such_procedure">>},
+                       {no_such_realm,<<"wamp.error.no_such_realm">>},
+                       {no_such_registration,<<"wamp.error.no_such_registration">>},
+                       {no_such_role,<<"wamp.error.no_such_role">>},
+                       {no_such_subscription,<<"wamp.error.no_such_subscription">>},
+                       {not_authorized,<<"wamp.error.not_authorized">>},
+                       {procedure_already_exists,<<"wamp.error.procedure_already_exists">>},
+                       {system_shutdown,<<"wamp.error.system_shutdown">>}
+                       ]).
+
+
+convert_error(Direction,Error) ->
+  KeyPos =
+    case Direction of
+      to_erl -> 2;
+      to_wamp -> 1
+    end,
+  {ErlError,WampError} =
+    case lists:keyfind(Error,KeyPos,?ERROR_MAPPING) of
+      {EE,WE} -> {EE,WE};
+      false -> {Error,Error}
+    end,
+  case Direction of
+    to_erl ->
+      case is_atom(ErlError) of
+        true ->
+          ErlError;
+        false ->
+          {unknown_error,WampError}
+      end;
+    to_wamp ->
+      case is_atom(WampError) of
+        true ->
+          <<"wamp.error.internal">>;
+        false ->
+          WampError
+      end
+  end.
+
 
 
 dict_to_erl(Dict) ->

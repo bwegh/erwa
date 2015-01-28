@@ -30,6 +30,7 @@
 -export([stop/0]).
 
 -export([add/1]).
+-export([add/2]).
 -export([remove/1]).
 -export([get_router/1]).
 
@@ -59,6 +60,10 @@ start_link() ->
 add(Name) ->
   gen_server:call(?MODULE, {start_realm,Name}).
 
+-spec add(Name :: binary(), Middleware :: atom() ) -> ok.
+add(Name, Middleware) ->
+  gen_server:call(?MODULE, {start_realm,Name,Middleware}).
+
 -spec remove(Name :: binary()) -> {ok,not_running} | {ok, shutting_down}.
 remove(Name) ->
   gen_server:call(?MODULE, {stop_realm,Name}).
@@ -80,8 +85,13 @@ init([]) ->
 
 
 handle_call({start_realm,Name}, _From, State) ->
-  {ok,_Pid} = create_new_realm(Name,State),
+  Middleware = get_env(erwa,router_middleware,erwa_mw_default),
+  {ok,_Pid} = create_new_realm(Name,Middleware,State),
   {reply, ok, State};
+handle_call({start_realm,Name,Middleware}, _From, State) ->
+  {ok,_Pid} = create_new_realm(Name,Middleware,State),
+  {reply, ok, State};
+
 
 handle_call({stop_realm,Name}, _From, #state{ets=Ets}=State) ->
   Reply =
@@ -96,7 +106,9 @@ handle_call({stop_realm,Name}, _From, #state{ets=Ets}=State) ->
 handle_call({get_router,Name}, _From, #state{ets=Ets,autocreate_realm=AutoCreate}=State) ->
   Result =
     case {ets:lookup(Ets,Name),AutoCreate} of
-        {[],true} -> create_new_realm(Name,State);
+        {[],true} ->
+          Middleware = get_env(erwa,router_middleware,erwa_mw_default),
+          create_new_realm(Name,Middleware,State);
         {[],_} -> {error,not_found};
         {[{Name,Pid}],_} -> {ok,Pid}
     end,
@@ -128,11 +140,11 @@ code_change(_OldVsn, State, _Extra) ->
 
 
 
--spec create_new_realm(Name :: binary(), State :: #state{}) -> {ok, Pid :: pid()}.
-create_new_realm(Name,#state{ets=Ets}) ->
+-spec create_new_realm(Name :: binary(), Middleware :: atom(), State :: #state{}) -> {ok, Pid :: pid()}.
+create_new_realm(Name,Middleware,#state{ets=Ets}) ->
   case ets:lookup(Ets,Name) of
     [] ->
-      {ok,Pid} = supervisor:start_child(erwa_router_sup,[Name]),
+      {ok,Pid} = supervisor:start_child(erwa_router_sup,[[{realm,Name},{middleware,Middleware}]]),
       Ref = monitor(process,Pid),
       true = ets:insert_new(Ets,[{Name,Pid},{Ref,Name}]),
       {ok,Pid};

@@ -119,7 +119,7 @@ handle_call({connect,Host,Port,Realm,Encoding},From,#state{ets=Ets,version=Versi
                    _ -> 0
                  end,
         Byte = (15 bsl 4) bor (SerNum),
-        gen_tcp:send(Socket,<<127,Byte,0,0>>),
+        ok = gen_tcp:send(Socket,<<127,Byte,0,0>>),
         {undefined,Socket}
     end,
   State1 = State#state{enc=Enc,router=R,socket=S,realm=Realm},

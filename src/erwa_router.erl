@@ -57,10 +57,10 @@ handle_wamp(Router,Msg) ->
   gen_server:call(Router,{handle_wamp,Msg}).
 
 start(Args) ->
-  gen_server:start(?MODULE, [Args], []).
+  gen_server:start(?MODULE, Args, []).
 
 start_link(Args) ->
-  gen_server:start_link(?MODULE, [Args], []).
+  gen_server:start_link(?MODULE, Args, []).
 
 
 -define(ROUTER_DETAILS,[
@@ -94,12 +94,14 @@ start_link(Args) ->
 -record(state, {
 	realm = undefined,
   ets = undefined,
-  version = undefined
+  version = undefined,
+  mw = erwa_mw_default
 }).
 
 -record(session, {
   id = undefined,
   pid = undefined,
+  auth = false,
   monitor = undefined,
   details = undefined,
   requestId = 1,
@@ -169,10 +171,17 @@ start_link(Args) ->
 -define(TABLE_ACCESS,protected).
 
 -spec init(Params :: list() ) -> {ok,#state{}}.
-init([Realm]) ->
-  Ets = ets:new(erwa_router,[?TABLE_ACCESS,set,{keypos,2}]),
-  Version = erwa:get_version(),
-  {ok,#state{realm=Realm,ets=Ets,version=Version}}.
+init(Args) ->
+  Realm = proplists:get_value(realm,Args,undefined),
+  Middleware = proplists:get_value(middleware,Args,erwa_mw_default),
+  case is_binary(Realm) of
+    false ->
+      {stop,no_realm_given};
+    true ->
+      Ets = ets:new(erwa_router,[?TABLE_ACCESS,set,{keypos,2}]),
+      Version = erwa:get_version(),
+      {ok,#state{realm=Realm,ets=Ets,version=Version,mw=Middleware}}
+  end.
 
 
 handle_call({handle_wamp,Msg},{Pid,_Ref},State) ->
@@ -180,8 +189,17 @@ handle_call({handle_wamp,Msg},{Pid,_Ref},State) ->
     ok = handle_wamp_message(Msg,Pid,State),
     {reply,ok,State}
   catch
+    not_authorized ->
+      io:format("~nsomeone is messing with this service~n",[]),
+      {reply,ok,State};
+    already_auth ->
+      io:format("~nsomeone is trying to reauth ... ~n",[]),
+      {reply,ok,State};
+    invalid_order ->
+      io:format("~nsomeone doesnt know the correct order~n",[]),
+      {reply,ok,State};
     Error:Reason ->
-       io:format("~nerror in router:~n~p~n",[erlang:get_stacktrace()]),
+       io:format("~nerror in router:~p ~p~n~p~n",[Error,Reason,erlang:get_stacktrace()]),
       {reply,{error,Error,Reason},State}
   end;
 handle_call(_Msg,_From,State) ->
@@ -208,15 +226,46 @@ code_change(_OldVsn, State, _Extra) ->
 
 
 -spec handle_wamp_message(Msg :: term(),Pid :: pid(), State :: #state{}) -> ok.
-handle_wamp_message({hello,Realm,Details},Pid,#state{realm=Realm,version=Version}=State) ->
+handle_wamp_message({hello,Realm,Details},Pid,#state{realm=Realm,version=Version, mw=MW}=State) ->
   {ok,SessionId} = create_session(Pid,Details,State),
-  send_message_to({welcome,SessionId,[{agent,Version}|?ROUTER_DETAILS]},Pid);
-  %send_message_to({challenge,wampcra,[{challenge,JSON-Data}]},Pid);
+  case MW:perm_connect(SessionId, Realm, Details) of
+    true ->
+      mark_session_auth(Pid,State),
+      send_message_to({welcome,SessionId,[{agent,Version}|?ROUTER_DETAILS]},Pid);
+    false ->
+      send_message_to({abort,[],not_authorized},Pid),
+      send_message_to(shutdown,Pid);
+    {needs_auth,AuthMethod,Extra} ->
+      send_message_to({challenge,SessionId,AuthMethod,Extra},Pid)
+  end;
 
-handle_wamp_message({authenticate,_Signature,_Extra},Pid,_State) ->
-  send_message_to({abort,[],not_authorized},Pid);
+handle_wamp_message({authenticate,Signature,Extra},Pid,#state{mw=MW,version=Version}=State) ->
+  Session = get_session_from_pid(Pid,State),
+  case Session of
+    undefined ->
+      send_message_to(shutdown,Pid),
+      throw(invalid_order);
+    S ->
+      case S#session.auth of
+        true ->
+          send_message_to(shutdown,Pid),
+          throw(already_auth);
+        false ->
+          ok
+      end
+  end,
+  SessionId = Session#session.id,
+  case MW:authenticate(SessionId,Signature,Extra) of
+    true ->
+      mark_session_auth(Pid,State),
+      send_message_to({welcome,SessionId,[{agent,Version}|?ROUTER_DETAILS]},Pid);
+    false ->
+      send_message_to({abort,[],not_authorized},Pid),
+      send_message_to(shutdown,Pid)
+  end;
 
 handle_wamp_message({goodbye,_Details,_Reason},Pid,#state{ets=Ets}=State) ->
+  disconnect_unauth(Pid, State),
   Session = get_session_from_pid(Pid,State),
   SessionId = Session#session.id,
   case Session#session.goodbye_sent of
@@ -229,15 +278,18 @@ handle_wamp_message({goodbye,_Details,_Reason},Pid,#state{ets=Ets}=State) ->
   send_message_to(shutdown,Pid);
 
 handle_wamp_message({publish,_RequestId,Options,Topic,Arguments,ArgumentsKw},Pid,State) ->
+  disconnect_unauth(Pid, State),
   {ok,_PublicationId} = send_event_to_topic(Pid,Options,Topic,Arguments,ArgumentsKw,State),
   % TODO: send a reply if asked for ...
   ok;
 
 handle_wamp_message({subscribe,RequestId,Options,Topic},Pid,State) ->
+  disconnect_unauth(Pid, State),
   {ok,TopicId} = subscribe_to_topic(Pid,Options,Topic,State),
   send_message_to({subscribed,RequestId,TopicId},Pid);
 
 handle_wamp_message({unsubscribe,RequestId,SubscriptionId},Pid,State) ->
+  disconnect_unauth(Pid, State),
   case unsubscribe_from_topic(Pid,SubscriptionId,State) of
     true ->
       send_message_to({unsubscribed,RequestId},Pid);
@@ -246,6 +298,7 @@ handle_wamp_message({unsubscribe,RequestId,SubscriptionId},Pid,State) ->
   end;
 
 handle_wamp_message({call,RequestId,Options,Procedure,Arguments,ArgumentsKw},Pid,State) ->
+  disconnect_unauth(Pid, State),
   case enqueue_procedure_call( Pid, RequestId, Options,Procedure,Arguments,ArgumentsKw,State) of
     true ->
       ok;
@@ -254,6 +307,7 @@ handle_wamp_message({call,RequestId,Options,Procedure,Arguments,ArgumentsKw},Pid
   end;
 
 handle_wamp_message({register,RequestId,Options,Procedure},Pid,State) ->
+  disconnect_unauth(Pid, State),
   case register_procedure(Pid,Options,Procedure,State) of
     {ok,RegistrationId} ->
       send_message_to({registered,RequestId,RegistrationId},Pid);
@@ -262,6 +316,7 @@ handle_wamp_message({register,RequestId,Options,Procedure},Pid,State) ->
   end;
 
 handle_wamp_message({unregister,RequestId,RegistrationId},Pid,State) ->
+  disconnect_unauth(Pid, State),
   case unregister_procedure(Pid,RegistrationId,State) of
     true ->
       send_message_to({unregistered,RequestId},Pid);
@@ -270,19 +325,24 @@ handle_wamp_message({unregister,RequestId,RegistrationId},Pid,State) ->
   end;
 
 handle_wamp_message({error,invocation,InvocationId,Details,Error,Arguments,ArgumentsKw},Pid,State) ->
+  disconnect_unauth(Pid, State),
   case dequeue_procedure_call(Pid,InvocationId,Details,Arguments,ArgumentsKw,Error,State) of
     {ok} -> ok;
     {error,not_found} -> ok;
     {error,wrong_session} -> ok
   end;
+
 handle_wamp_message({yield,InvocationId,Options,Arguments,ArgumentsKw},Pid,State) ->
+  disconnect_unauth(Pid, State),
   case dequeue_procedure_call(Pid,InvocationId,Options,Arguments,ArgumentsKw,undefined,State) of
     {ok} -> ok;
     {error,not_found} -> ok;
     {error,wrong_session} -> ok
   end;
-handle_wamp_message(Msg,_Pid,_State) ->
+
+handle_wamp_message(Msg,Pid,_State) ->
   io:format("unknown message ~p~n",[Msg]),
+  send_message_to(shutdown,Pid),
   ok.
 
 
@@ -299,6 +359,10 @@ create_session(Pid,Details,#state{ets=Ets}=State) ->
       demonitor(MonRef),
       create_session(Pid,Details,State)
   end.
+
+
+
+
 
 -spec send_event_to_topic(FromPid :: pid(), Options :: list(), Url :: binary(), Arguments :: list()|undefined, ArgumentsKw :: list()|undefined, State :: #state{} ) -> {ok,non_neg_integer()}.
 send_event_to_topic(FromPid,Options,Url,Arguments,ArgumentsKw,#state{ets=Ets}=State) ->
@@ -580,12 +644,14 @@ remove_invocation(InvocationId,#state{ets=Ets}) ->
   ok.
 
 
+
 -spec send_message_to(Msg :: term(), Peer :: list() |  pid()) -> ok.
 send_message_to(Msg,Pid) when is_pid(Pid) ->
   send_message_to(Msg,[Pid]);
 send_message_to(Msg,Peers) when is_list(Peers) ->
   Send = fun(Pid) ->
-           Pid ! {erwa,Msg} end,
+           Pid ! {erwa,Msg}
+         end,
   lists:foreach(Send,Peers),
   ok.
 
@@ -599,6 +665,31 @@ get_session_from_pid(Pid,#state{ets=Ets}) ->
           [] -> undefined
         end;
       [] -> undefined
+  end.
+
+-spec disconnect_unauth(Pid :: pid(), State :: #state{}) -> ok.
+disconnect_unauth(Pid, State) ->
+  case session_authed(Pid,State) of
+    false ->
+      send_message_to(shutdown,Pid),
+      throw(not_authenticated);
+    _ ->
+      ok
+  end.
+
+
+-spec mark_session_auth(Pid :: pid(), State :: #state{}) -> ok.
+mark_session_auth(FromPid, #state{ets=Ets}=State) ->
+  Session = get_session_from_pid(FromPid,State),
+  true = ets:insert(Ets,Session#session{auth=true}),
+  ok.
+
+-spec session_authed(Pid :: pid(), State :: #state{}) -> true | false.
+session_authed(Pid,State) ->
+  case get_session_from_pid(Pid,State) of
+    undefined ->
+      false;
+    S -> S#session.auth
   end.
 
 
@@ -629,13 +720,11 @@ forward_messages(_,undefined)  ->
 
 
 
-
-
 -ifdef(TEST).
 
 hello_test() ->
   Realm = <<"realm1">>,
-  {ok,Pid} = start(Realm),
+  {ok,Pid} = start([{realm,Realm},{middleware,erwa_mw_allow}]),
   ok = handle_wamp(Pid,{hello,Realm,[]}),
   {ok,Msg} =
     receive
@@ -650,7 +739,7 @@ hello_test() ->
 
 subscribe_test() ->
   Realm = <<"realm2">>,
-  {ok,Pid} = start(Realm),
+  {ok,Pid} = start([{realm,Realm},{middleware,erwa_mw_allow}]),
   ok = handle_wamp(Pid,{hello,Realm,[]}),
   ok = receive
     {erwa,{welcome, _SessionId, _Details }} -> ok

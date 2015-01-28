@@ -44,7 +44,7 @@ all() ->
 
 init_per_suite(Config) ->
   {ok,_} = application:ensure_all_started(erwa),
-  ok = erwa:start_realm(?REALM),
+  ok = erwa:start_realm(?REALM,erwa_mw_allow),
   Config.
 
 end_per_suite(Config) ->
