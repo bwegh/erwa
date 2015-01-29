@@ -239,7 +239,7 @@ handle_wamp_message({hello,Realm,Details},Pid,#state{realm=Realm,version=Version
       send_message_to({abort,[],not_authorized},Pid),
       send_message_to(shutdown,Pid);
     {needs_auth,AuthMethod,Extra} ->
-      send_message_to({challenge,SessionId,AuthMethod,Extra},Pid)
+      send_message_to({challenge,AuthMethod,Extra},Pid)
   end;
 
 handle_wamp_message({authenticate,Signature,Extra},Pid,#state{mw=MW,version=Version}=State) ->
@@ -351,7 +351,7 @@ handle_wamp_message({error,invocation,InvocationId,Details,Error,Arguments,Argum
   case dequeue_procedure_call(Pid,InvocationId,Details,Arguments,ArgumentsKw,Error,State) of
     {ok} -> ok;
     {error,Reason} ->
-      disconnect({invocation_error,Reason},Pid)
+      disconnect(Pid,{invocation_error,Reason})
   end;
 
 handle_wamp_message({yield,InvocationId,Options,Arguments,ArgumentsKw},Pid,State) ->
@@ -359,11 +359,11 @@ handle_wamp_message({yield,InvocationId,Options,Arguments,ArgumentsKw},Pid,State
   case dequeue_procedure_call(Pid,InvocationId,Options,Arguments,ArgumentsKw,undefined,State) of
     {ok} -> ok;
     {error,Reason} ->
-      disconnect({yield,Reason},Pid)
+      disconnect(Pid,{yield,Reason})
   end;
 
 handle_wamp_message(Msg,Pid,_State) ->
-  disconnect({unknown_message,Msg},Pid),
+  disconnect(Pid,{unknown_message,Msg}),
   ok.
 
 
