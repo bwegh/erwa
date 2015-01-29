@@ -25,7 +25,15 @@ from twisted.internet.endpoints import clientFromString
 
 from autobahn.twisted import wamp, websocket
 from autobahn.wamp import types
+from autobahn.wamp import auth
 
+PASSWORDS = {
+  u'peter': u'secret1',
+  u'joe': u'secret2'
+}
+
+USER = u'peter'
+#USER = u'joe'
 
 
 class MyFrontendComponent(wamp.ApplicationSession):
@@ -34,6 +42,25 @@ class MyFrontendComponent(wamp.ApplicationSession):
    a remote procedure on a WAMP peer, subscribes to a topic to receive
    events, and then stops the world after some events.
    """
+
+   def onConnect(self):
+      self.join(self.config.realm, [u"wampcra"], USER)
+
+   def onChallenge(self, challenge):
+      print challenge
+      if challenge.method == u"wampcra":
+         if u'salt' in challenge.extra:
+            key = auth.derive_key(PASSWORDS[USER].encode('utf8'),
+            challenge.extra['salt'].encode('utf8'),
+            challenge.extra.get('iterations', None),
+            challenge.extra.get('keylen', None))
+         else:
+            key = PASSWORDS[USER].encode('utf8')
+         signature = auth.compute_wcs(key, challenge.extra['challenge'].encode('utf8'))
+         return signature.decode('ascii')
+      else:
+         raise Exception("don't know how to compute challenge for authmethod {}".format(challenge.method))
+
 
    @inlineCallbacks
    def onJoin(self, details):
@@ -60,6 +87,13 @@ class MyFrontendComponent(wamp.ApplicationSession):
       sub = yield self.subscribe(on_event, u'com.myapp.topic1')
       print("Subscribed with subscription ID {}".format(sub.id))
 
+      self.leave()
+
+
+   def onLeave(self, details):
+      print("onLeave: {}".format(details))
+      self.disconnect()
+
 
    def onDisconnect(self):
       reactor.stop()
@@ -72,7 +106,7 @@ if __name__ == '__main__':
    log.startLogging(sys.stdout)
 
    ## 1) create a WAMP application session factory
-   component_config = types.ComponentConfig(realm = "realm1")
+   component_config = types.ComponentConfig(realm = "realm2")
    session_factory = wamp.ApplicationSessionFactory(config = component_config)
    session_factory.session = MyFrontendComponent
 
@@ -82,7 +116,8 @@ if __name__ == '__main__':
    else:
       from autobahn.wamp.serializer import *
       serializers = []
-      serializers.append(JsonSerializer(batched=True))
+      #serializers.append(JsonSerializer(batched=True))
+      serializers.append(JsonSerializer(batched=False))
 
    ## 2) create a WAMP-over-WebSocket transport client factory
    transport_factory = websocket.WampWebSocketClientFactory(session_factory,
