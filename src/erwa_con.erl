@@ -108,7 +108,7 @@ handle_call({connect,Host,Port,Realm,Encoding},From,#state{ets=Ets,version=Versi
     case Host of
       undefined ->
         {ok, Router} =  erwa:get_router_for_realm(Realm),
-        ok = raw_send({hello,Realm,[{agent,Version}|?CLIENT_DETAILS]},State#state{socket=undefined,router=Router}),
+        ok = raw_send({hello,Realm,[{agent,Version},{erwa,[{source,node},{peer,local}]}]++?CLIENT_DETAILS},State#state{socket=undefined,router=Router}),
         {Router,undefined};
       _ ->
         {ok, Socket} = gen_tcp:connect(Host,Port,[binary,{packet,0}]),

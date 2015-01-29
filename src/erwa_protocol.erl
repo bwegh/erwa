@@ -32,6 +32,7 @@
 -export([is_valid_id/1]).
 -export([is_valid_dict/1]).
 
+-define(JSONB_SEPERATOR,<<24>>).
 
 deserialize(Buffer,Encoding) ->
   deserialize(Buffer,[],Encoding).
@@ -52,7 +53,7 @@ deserialize(Buffer,Messages,json) ->
   %% length and stuff, yet should not be needed
   {[to_erl(jsx:decode(Buffer))|Messages],<<"">>};
 deserialize(Buffer,_Messages,json_batched) ->
-  Wamps = binary:split(Buffer,[<<24>>],[global,trim]),
+  Wamps = binary:split(Buffer,[?JSONB_SEPERATOR],[global,trim]),
   {to_erl_reverse(lists:foldl(fun(M,List) -> [jsx:decode(M)|List] end,[],Wamps)),<<"">>};
 deserialize(<<Len:32/unsigned-integer-big,Data/binary>>  = Buffer,Messages,raw_msgpack) ->
   case byte_size(Data) >= Len of
@@ -87,7 +88,7 @@ serialize(Msg,json)  ->
   jsx:encode(Msg);
 serialize(Msg,json_batched) ->
   Enc = jsx:encode(Msg),
-  <<Enc/binary,24>>;
+  <<Enc/binary, ?JSONB_SEPERATOR/binary >>;
 serialize(Message,raw_msgpack) ->
   Enc = msgpack:pack(Message,[jsx]),
   Len = byte_size(Enc),

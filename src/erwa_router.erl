@@ -198,6 +198,9 @@ handle_call({handle_wamp,Msg},{Pid,_Ref},State) ->
     invalid_order ->
       io:format("~nsomeone doesnt know the correct order~n",[]),
       {reply,ok,State};
+    {Origin,Reason} ->
+      io:format("~nsome problem with ~p: ~p~n",[Origin,Reason]),
+      {reply,ok,State};
     Error:Reason ->
        io:format("~nerror in router:~p ~p~n~p~n",[Error,Reason,erlang:get_stacktrace()]),
       {reply,{error,Error,Reason},State}
@@ -298,7 +301,7 @@ handle_wamp_message({subscribe,RequestId,Options,Topic},Pid,#state{mw=MW}=State)
   end;
 
 handle_wamp_message({unsubscribe,RequestId,SubscriptionId},Pid,State) ->
-  disconnect_unauth(Pid, State),
+  _Session = disconnect_unauth(Pid, State),
   case unsubscribe_from_topic(Pid,SubscriptionId,State) of
     true ->
       send_message_to({unsubscribed,RequestId},Pid);
@@ -335,7 +338,7 @@ handle_wamp_message({register,RequestId,Options,Procedure},Pid,#state{mw=MW}=Sta
   end;
 
 handle_wamp_message({unregister,RequestId,RegistrationId},Pid,State) ->
-  disconnect_unauth(Pid, State),
+  _Session = disconnect_unauth(Pid, State),
   case unregister_procedure(Pid,RegistrationId,State) of
     true ->
       send_message_to({unregistered,RequestId},Pid);
@@ -344,24 +347,23 @@ handle_wamp_message({unregister,RequestId,RegistrationId},Pid,State) ->
   end;
 
 handle_wamp_message({error,invocation,InvocationId,Details,Error,Arguments,ArgumentsKw},Pid,State) ->
-  disconnect_unauth(Pid, State),
+  _Session = disconnect_unauth(Pid, State),
   case dequeue_procedure_call(Pid,InvocationId,Details,Arguments,ArgumentsKw,Error,State) of
     {ok} -> ok;
-    {error,not_found} -> ok;
-    {error,wrong_session} -> ok
+    {error,Reason} ->
+      disconnect({invocation_error,Reason},Pid)
   end;
 
 handle_wamp_message({yield,InvocationId,Options,Arguments,ArgumentsKw},Pid,State) ->
-  disconnect_unauth(Pid, State),
+  _Session = disconnect_unauth(Pid, State),
   case dequeue_procedure_call(Pid,InvocationId,Options,Arguments,ArgumentsKw,undefined,State) of
     {ok} -> ok;
-    {error,not_found} -> ok;
-    {error,wrong_session} -> ok
+    {error,Reason} ->
+      disconnect({yield,Reason},Pid)
   end;
 
 handle_wamp_message(Msg,Pid,_State) ->
-  io:format("unknown message ~p~n",[Msg]),
-  send_message_to(shutdown,Pid),
+  disconnect({unknown_message,Msg},Pid),
   ok.
 
 
@@ -686,12 +688,18 @@ get_session_from_pid(Pid,#state{ets=Ets}) ->
       [] -> undefined
   end.
 
+
+
+disconnect(Pid, Reason) ->
+  send_message_to(shutdown,Pid),
+  throw(Reason).
+
+
 -spec disconnect_unauth(Pid :: pid(), State :: #state{}) -> #session{}.
 disconnect_unauth(Pid, State) ->
   case session_authed(Pid,State) of
     false ->
-      send_message_to(shutdown,Pid),
-      throw(not_authenticated);
+      disconnect(Pid,not_authenticated);
     S -> S
   end.
 

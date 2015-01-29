@@ -70,7 +70,9 @@
                ws_enc = undefined,
                length = infitity,
                buffer = <<"">>,
-               router = undefined
+               router = undefined,
+               source = undefined,
+               peer = undefined
               }).
 
 
@@ -98,7 +100,8 @@ websocket_init(_TransportName, Req, _Opts) ->
   case find_supported_protocol(Protocols) of
       {Enc,WsEncoding,Header} ->
         Req2  = cowboy_req:set_resp_header(?SUBPROTHEADER,Header,Req1),
-        {ok,Req2,#state{enc=Enc,ws_enc=WsEncoding}};
+        Peer = cowboy_req:peer(Req2),
+        {ok,Req2,#state{enc=Enc,ws_enc=WsEncoding,source=websocket,peer=Peer}};
       _ ->
         % unsupported
         {shutdown,Req1}
@@ -124,8 +127,21 @@ websocket_terminate(_Reason, _Req, _State) ->
   ok.
 
 
-handle_wamp(Data,#state{buffer=Buffer, enc=Enc, router=Router}=State) ->
-  {Messages,NewBuffer} = erwa_protocol:deserialize(<<Buffer/binary, Data/binary>>,Enc),
+handle_wamp(Data,#state{buffer=Buffer, enc=Enc, router=Router, source=Source, peer=Peer}=State) ->
+  {MList,NewBuffer} = erwa_protocol:deserialize(<<Buffer/binary, Data/binary>>,Enc),
+  Messages =
+    case length(MList) > 0 of
+      true ->
+        [First | Others] = MList,
+        case First of
+          {hello,Realm,Details} ->
+            [{hello,Realm,[{erwa,[{source,Source},{peer,Peer}]}|Details]} | Others];
+          _ ->
+            MList
+        end;
+      _ ->
+        MList
+    end,
   {ok,NewRouter} = erwa_router:forward_messages(Messages,Router),
   {ok,State#state{router=NewRouter,buffer=NewBuffer}}.
 
@@ -175,10 +191,11 @@ handle_info({OK,Socket,<<127,L:4,S:4,0,0>>},  #state{ok=OK,socket=Socket,transpo
                     {undefined,<<127,0,0,0>>}
                 end,
   Transport:send(Socket,Reply),
+  {ok,Peer} = inet:peername(Socket),
   case Enc of
     illegal -> {stop,normal,State};
     undefined -> {stop,normal,State};
-    _ -> {noreply,State#state{enc=Enc,length=MaxLength}}
+    _ -> {noreply,State#state{enc=Enc,length=MaxLength,source=tcp,peer=Peer}}
   end;
 handle_info({OK,Socket,<<127,_L:4,_S:4,_Bits:16>>},  #state{ok=OK,socket=Socket,transport=Transport,enc=undefined}=State) ->
   Byte = 2 bsl 4,
