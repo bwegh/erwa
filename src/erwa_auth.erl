@@ -28,7 +28,9 @@
 %% @doc calculates the cryptographic hash of the challenge by using the secret key.
 -spec wamp_cra(Key :: binary(), Challenge :: binary() ) -> binary().
 wamp_cra(Key,Challenge) ->
-  hmac:hexlify(hmac:hmac256(Key,Challenge)).
+  _Bin = crypto:hmac(sha256,Key,Challenge),
+  %% @todo need to convert to ascii ... how?!
+  <<"bigFail">>.
 
 
 %% @doc calculates the derived key from secret key, using salt and iterations.
