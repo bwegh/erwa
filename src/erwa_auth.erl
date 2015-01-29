@@ -20,30 +20,20 @@
 %% SOFTWARE.
 %%
 
--module(erwa_mw_allow).
--behaviour(erwa_middleware).
+-module(erwa_auth).
 
--export([perm_connect/3]).
--export([authenticate/3]).
--export([perm_publish/5]).
--export([perm_subscribe/3]).
--export([perm_call/5]).
--export([perm_register/3]).
+-export([wamp_cra/2]).
+-export([pbkdf2/4]).
 
-perm_connect(_SessionId, _Realm, _Details) ->
-  true.
+%% @doc calculates the cryptographic hash of the challenge by using the secret key.
+-spec wamp_cra(Key :: binary(), Challenge :: binary() ) -> binary().
+wamp_cra(Key,Challenge) ->
+  crypto:hmac(sha256,Key,Challenge).
 
-authenticate(_SessionId, _Signature, _Extra) ->
-  false.
 
-perm_publish(_SessionId, _Options, _Topic, _Arguments, _ArgumentsKw) ->
-  true.
-
-perm_subscribe(_SessionId, _Options, _Topic) ->
-  true.
-
-perm_call(_SessionId, _Options, _Procedure, _Arguments, _ArgumentsKw) ->
-  true.
-
-perm_register(_SessionId, _Options, _Procedure) ->
-  true.
+%% @doc calculates the derived key from secret key, using salt and iterations.
+-spec pbkdf2(SecretKey :: binary(), Salt :: binary(),
+                      Iterations :: non_neg_integer(),
+                      Length :: non_neg_integer()) -> {ok, NewKey :: binary()}.
+pbkdf2(SecretKey, Salt, Iterations, Length) ->
+  pbkdf2:pbkdf2(SecretKey, Salt, Iterations, Length).

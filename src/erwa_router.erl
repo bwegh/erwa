@@ -259,9 +259,9 @@ handle_wamp_message({authenticate,Signature,Extra},Pid,#state{mw=MW,version=Vers
   end,
   SessionId = Session#session.id,
   case MW:authenticate(SessionId,Signature,Extra) of
-    true ->
+    {true,Details} ->
       mark_session_auth(Pid,State),
-      send_message_to({welcome,SessionId,[{agent,Version}|?ROUTER_DETAILS]},Pid);
+      send_message_to({welcome,SessionId,Details++[{agent,Version}|?ROUTER_DETAILS]},Pid);
     false ->
       send_message_to({abort,[],not_authorized},Pid),
       send_message_to(shutdown,Pid)

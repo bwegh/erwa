@@ -25,11 +25,11 @@
 -callback perm_connect(SessionId :: integer(), Realm :: binary(), Details :: list()) ->
   true |
   false |
-  {needs_auth, AuthMethod :: binary(), Extra :: list()}.
+  {needs_auth, AuthMethod :: wampcra, Extra :: list()}.
 
 
 -callback authenticate(SessionId :: integer() ,Signature :: binary() ,Extra :: list()) ->
-  true |
+  {true,Details :: list()} |
   false.
 
 
