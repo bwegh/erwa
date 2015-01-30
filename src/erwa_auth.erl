@@ -43,11 +43,10 @@ pbkdf2(SecretKey, Salt, Iterations, Length) ->
 -ifdef(TEST).
 
 wamp_cra_test() ->
-  Challenge = <<"{\"nonce\": \"LHRTC9zeOIrt_9U3\", \"authprovider\": \"userdb\", \"authid\": \"peter\", \"timestamp\": \"2014-06-22T16:36:25.448Z\", \"authrole\": \"user\", \"authmethod\": \"wampcra\", \"session\": 3251278072152162}">>,
+  Challenge = <<"{\"nonce\": \"LHRTC9zeOIrt_9U3\", \"authprovider\": \"userdb\", \"authid\": \"peter\",\"timestamp\": \"2015-01-29T20:36:25.448Z\", \"authrole\": \"user\",\"authmethod\": \"wampcra\", \"session\": 3251278072152162}">>,
   Key = <<"secret1">>,
-  Signature = <<"gir1mSx+deCDUV7wRM5SGIn/+R/ClqLZuH4m7FJeBVI=">>,
+  Signature = <<"/h8nclt5hisNxpVobobQR7f8nL1IAZhsllT014mo/xg=">>,
   Signature = wamp_cra(Key, Challenge),
   ok.
-
 
 -endif.

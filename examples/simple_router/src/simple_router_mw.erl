@@ -35,7 +35,6 @@
 -define(CHALLENGE,<<"{\"nonce\": \"LHRTC9zeOIrt_9U3\", \"authprovider\": \"userdb\", \"authid\": \"peter\",\"timestamp\": \"2015-01-29T20:36:25.448Z\", \"authrole\": \"user\",\"authmethod\": \"wampcra\", \"session\": 3251278072152162}">>).
 
 perm_connect(SessionId, Realm, Details) ->
-  io:format("-MW-> ~p:~p~n",[Realm,Details]),
   AuthId = proplists:get_value(authid,Details,undefined),
   case {Realm, AuthId} of
     {<<"realm2">>,<<"peter">>} ->
@@ -45,7 +44,6 @@ perm_connect(SessionId, Realm, Details) ->
   end.
 
 authenticate(_SessionId, Signature, _Extra) ->
-  io:format("-MW-> signature~n   ~p~n   ~p~n",[Signature,erwa_auth:wamp_cra(<<"secret1">>,?CHALLENGE)]),
   case Signature == erwa_auth:wamp_cra(<<"secret1">>,?CHALLENGE) of
     true ->
       {true,[{authid,<<"peter">>}]};
