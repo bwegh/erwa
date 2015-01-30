@@ -28,9 +28,8 @@
 %% @doc calculates the cryptographic hash of the challenge by using the secret key.
 -spec wamp_cra(Key :: binary(), Challenge :: binary() ) -> binary().
 wamp_cra(Key,Challenge) ->
-  _Bin = crypto:hmac(sha256,Key,Challenge),
-  %% @todo need to convert to ascii ... how?!
-  <<"bigFail">>.
+  Bin = crypto:hmac(sha256,Key,Challenge),
+  base64:encode(Bin).
 
 
 %% @doc calculates the derived key from secret key, using salt and iterations.
@@ -39,3 +38,16 @@ wamp_cra(Key,Challenge) ->
                       Length :: non_neg_integer()) -> {ok, NewKey :: binary()}.
 pbkdf2(SecretKey, Salt, Iterations, Length) ->
   pbkdf2:pbkdf2(SecretKey, Salt, Iterations, Length).
+
+
+-ifdef(TEST).
+
+wamp_cra_test() ->
+  Challenge = <<"{\"nonce\": \"LHRTC9zeOIrt_9U3\", \"authprovider\": \"userdb\", \"authid\": \"peter\", \"timestamp\": \"2014-06-22T16:36:25.448Z\", \"authrole\": \"user\", \"authmethod\": \"wampcra\", \"session\": 3251278072152162}">>,
+  Key = <<"secret1">>,
+  Signature = <<"gir1mSx+deCDUV7wRM5SGIn/+R/ClqLZuH4m7FJeBVI=">>,
+  Signature = wamp_cra(Key, Challenge),
+  ok.
+
+
+-endif.
