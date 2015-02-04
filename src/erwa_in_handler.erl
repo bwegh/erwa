@@ -70,7 +70,7 @@
                ws_enc = undefined,
                length = infitity,
                buffer = <<"">>,
-               router = undefined,
+               routing = undefined,
                source = undefined,
                peer = undefined
               }).
@@ -86,7 +86,8 @@ init(Ref, Socket, Transport, _Opts = []) ->
     ok = ranch:accept_ack(Ref),
     {Ok,Closed, Error} = Transport:messages(),
     ok = Transport:setopts(Socket, [{active, once}]),
-    gen_server:enter_loop(?MODULE, [], #state{socket=Socket,transport=Transport,ok=Ok,closed=Closed,error=Error}).
+    Routing = erwa_routing:create(),
+    gen_server:enter_loop(?MODULE, [], #state{socket=Socket,transport=Transport,ok=Ok,closed=Closed,error=Error,routing=Routing}).
 
 
 %%% for websocket
@@ -101,7 +102,8 @@ websocket_init(_TransportName, Req, _Opts) ->
       {Enc,WsEncoding,Header} ->
         Req2  = cowboy_req:set_resp_header(?SUBPROTHEADER,Header,Req1),
         Peer = cowboy_req:peer(Req2),
-        {ok,Req2,#state{enc=Enc,ws_enc=WsEncoding,source=websocket,peer=Peer}};
+        Routing = erwa_routing:create(),
+        {ok,Req2,#state{enc=Enc,ws_enc=WsEncoding,source=websocket,peer=Peer,routing=Routing}};
       _ ->
         % unsupported
         {shutdown,Req1}
@@ -127,7 +129,7 @@ websocket_terminate(_Reason, _Req, _State) ->
   ok.
 
 
-handle_wamp(Data,#state{buffer=Buffer, enc=Enc, router=Router, source=Source, peer=Peer}=State) ->
+handle_wamp(Data,#state{buffer=Buffer, enc=Enc, source=Source, peer=Peer,routing=Routing}=State) ->
   {MList,NewBuffer} = erwa_protocol:deserialize(<<Buffer/binary, Data/binary>>,Enc),
   Messages =
     case length(MList) > 0 of
@@ -142,8 +144,8 @@ handle_wamp(Data,#state{buffer=Buffer, enc=Enc, router=Router, source=Source, pe
       _ ->
         MList
     end,
-  {ok,NewRouter} = erwa_router:forward_messages(Messages,Router),
-  {ok,State#state{router=NewRouter,buffer=NewBuffer}}.
+  {ok,NewRouting} = erwa_routing:handle_messages(Messages,Routing),
+  {ok,State#state{routing=NewRouting,buffer=NewBuffer}}.
 
 
 -spec find_supported_protocol([binary()]) -> atom() | {json|json_batched|msgpack|msgpack_batched,text|binary,binary()}.
@@ -201,12 +203,10 @@ handle_info({OK,Socket,<<127,_L:4,_S:4,_Bits:16>>},  #state{ok=OK,socket=Socket,
   Byte = 2 bsl 4,
   Transport:send(Socket,<<127,Byte,0,0>>),
   {stop,normal,State};
-handle_info({OK,Socket,Data},  #state{ok=OK,enc=Enc,socket=Socket,transport=Transport,buffer=Buf,router=Router}=State) ->
+handle_info({OK,Socket,Data},  #state{ok=OK,socket=Socket,transport=Transport}=State) ->
   Transport:setopts(Socket, [{active, once}]),
-  Buffer = <<Buf/binary, Data/binary>>,
-  {Messages,NewBuffer} = erwa_protocol:deserialize(Buffer,Enc),
-  {ok,NewRouter} = erwa_router:forward_messages(Messages,Router),
-  {noreply, State#state{buffer=NewBuffer,router=NewRouter}};
+  {ok,NewState} = handle_wamp(Data,State),
+  {noreply, NewState};
 handle_info({Closed,Socket}, #state{closed=Closed,socket=Socket}=State) ->
   %erwa_protocol:close(connection_closed,ProtState),
   {stop, normal, State};
