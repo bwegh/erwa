@@ -89,13 +89,22 @@ start_link(Args) ->
                                                     ]}]}]}]).
 
 
-
+-define(INTERNAL_RPCS,
+        [ {<<"wamp.reflection.procedure.list">>,
+           fun reflection_procedure_list/2
+          },
+          {<<"wamp.reflection.topic.list">>,
+           fun reflection_topic_list/2
+          }
+        ]
+).
 
 -record(state, {
-	realm = undefined,
+  realm = undefined,
   ets = undefined,
   version = undefined,
-  mw = erwa_mw_default
+  mw = erwa_mw_default,
+  internal_rpc_map = []
 }).
 
 -record(session, {
@@ -180,9 +189,27 @@ init(Args) ->
     true ->
       Ets = ets:new(erwa_router,[?TABLE_ACCESS,set,{keypos,2}]),
       Version = erwa:get_version(),
-      {ok,#state{realm=Realm,ets=Ets,version=Version,mw=Middleware}}
+      State0 = #state{realm=Realm,ets=Ets,version=Version,mw=Middleware},
+      State = register_callback_map(?INTERNAL_RPCS, State0),
+      {ok, State}
   end.
 
+register_callback_map(CallbackMap, State) ->
+  %% create a session for the router itself.
+  {ok, _SessionId} = create_session(self(),[],State),
+  Register = fun (Url, Callback) ->
+                {ok, RegistrationId} =
+                    register_procedure(self(), [],
+                                       Url, State),
+                {RegistrationId, Callback}
+             end,
+  RegisteredRpcs =
+    [ Register(Url, Callback)
+      || {Url, Callback} <- CallbackMap
+    ],
+  State#state{
+    internal_rpc_map = RegisteredRpcs
+  }.
 
 handle_call({handle_wamp,Msg},{Pid,_Ref},State) ->
   try
@@ -213,11 +240,38 @@ handle_cast(shutdown, State) ->
 handle_cast(_Request, State) ->
 	{noreply, State}.
 
+internal_yield(State,RequestId,Details,Arguments,ArgumentsKw) ->
+  RouterPid = self(),
+  {ok} = dequeue_procedure_call(RouterPid,RequestId,Details,Arguments,ArgumentsKw,undefined,State),
+  ok.
+
+internal_error(State,RequestId,Arguments,ArgumentsKw,Error) ->
+  RouterPid = self(),
+  {ok} = dequeue_procedure_call(RouterPid,RequestId,[],Arguments,ArgumentsKw,Error,State),
+  ok.
+
 handle_info({'DOWN',Ref,process,_Pid,_Reason},State) ->
   remove_session_with_ref(Ref,State),
   {noreply,State};
+
+handle_info({erwa,{invocation,RequestId,RpcId,_Details,Arguments,_ArgumentsKw}},
+            State = #state{ internal_rpc_map = InternalRpcMap }) ->
+  NewState =
+    case proplists:get_value(RpcId, InternalRpcMap) of
+      undefined ->
+        %% this should never happen.
+        io:format("~nerror: Unexpected state, called an undefined router-side RPC"),
+        ok = internal_error(State,RequestId, undefined, undefined, no_such_procedure),
+        State;
+      Fun ->
+        {Res, State0} = Fun({args, Arguments}, State),
+        ok = internal_yield(State0, RequestId, [], [Res], undefined),
+        State0
+    end,
+  {noreply, NewState};
+
 handle_info(_Info, State) ->
-	{noreply, State}.
+  {noreply, State}.
 
 terminate(_Reason, _State) ->
 	ok.
@@ -279,10 +333,18 @@ handle_wamp_message({goodbye,_Details,_Reason},Pid,#state{ets=Ets}=State) ->
   end,
   send_message_to(shutdown,Pid);
 
-handle_wamp_message({publish,RequestId,Options,Topic,Arguments,ArgumentsKw},Pid,#state{mw=MW}=State) ->
+handle_wamp_message({publish,RequestId,Options,Topic,Arguments,ArgumentsKw},Pid,#state{mw=MW,ets=Ets}=State) ->
   Session = disconnect_unauth(Pid, State),
   case MW:perm_publish(Session#session.id,Options,Topic,Arguments,ArgumentsKw) of
     true ->
+      case ets:lookup(Ets,Topic) of
+        [] ->
+          %% if topic doesn't already exist create it.
+          %% otherwise reflection api will not always work.
+          {ok,_T} = create_topic(Topic,Options,State);
+        _ ->
+          pass
+      end,
       {ok,_PublicationId} = send_event_to_topic(Pid,Options,Topic,Arguments,ArgumentsKw,State),
       % TODO: send a reply if asked for ...
       ok;
@@ -748,6 +810,14 @@ forward_messages(_,undefined)  ->
   {error,undefined}.
 
 
+%% reflection api
+reflection_procedure_list({args, _Arguments}, State=#state{ ets=Ets }) ->
+  Match = ets:match(Ets, {url_procedure, '$1', '_'}),
+  {lists:flatten(Match), State}.
+
+reflection_topic_list({args, _Arguments}, State=#state{ ets=Ets }) ->
+  Match = ets:match(Ets, {url_topic, '$1', '_'}),
+  {lists:flatten(Match), State}.
 
 
 -ifdef(TEST).
@@ -794,4 +864,3 @@ subscribe_test() ->
   ok.
 
 -endif.
-
