@@ -181,7 +181,8 @@ handle_cast(_Request, State) ->
   {noreply, State}.
 
 
-handle_info({OK,Socket,<<127,L:4,S:4,0,0>>},  #state{ok=OK,socket=Socket,transport=Transport,enc=undefined}=State) ->
+handle_info({OK,Socket,<<127,L:4,S:4,0,0,Rest/binary>>},
+	    #state{ok=OK,socket=Socket,transport=Transport,enc=undefined}=State) ->
   Transport:setopts(Socket, [{active, once}]),
   MaxLength = math:pow(2,9+L),
   % 15 is the max receive length possible ~ 16M
@@ -201,9 +202,10 @@ handle_info({OK,Socket,<<127,L:4,S:4,0,0>>},  #state{ok=OK,socket=Socket,transpo
   case Enc of
     illegal -> {stop,normal,State};
     undefined -> {stop,normal,State};
-    _ -> {noreply,State#state{enc=Enc,length=MaxLength,source=tcp,peer=Peer}}
+    _ -> handle_info({OK, Socket, Rest}, State#state{enc=Enc,length=MaxLength,source=tcp,peer=Peer})
   end;
-handle_info({OK,Socket,<<127,_L:4,_S:4,_Bits:16>>},  #state{ok=OK,socket=Socket,transport=Transport,enc=undefined}=State) ->
+handle_info({OK,Socket,<<127,_L:4,_S:4,_Rest/binary>>},
+	    #state{ok=OK,socket=Socket,transport=Transport,enc=undefined}=State) ->
   Byte = 2 bsl 4,
   Transport:send(Socket,<<127,Byte,0,0>>),
   {stop,normal,State};
