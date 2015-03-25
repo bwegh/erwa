@@ -220,8 +220,8 @@ handle_info({Error,Socket,Reason}, #state{error=Error,socket=Socket}=State) ->
   {stop, {error, Reason} , State};
 handle_info({erwa,shutdown}, State) ->
   {stop, normal, State};
-handle_info({erwa,Msg}, #state{socket=Socket,transport=Transport}=State) when is_tuple(Msg) ->
-  Transport:send(Socket,erwa_protocol:serialize(Msg,raw_msgpack)),
+handle_info({erwa,Msg}, #state{socket=Socket,transport=Transport,enc=Enc}=State) when is_tuple(Msg) ->
+  Transport:send(Socket,erwa_protocol:serialize(Msg,Enc)),
   {noreply, State};
 handle_info(_Info, State) ->
   {noreply, State}.
