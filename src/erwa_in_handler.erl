@@ -28,6 +28,10 @@
 -behaviour(ranch_protocol).
 -behaviour(gen_server).
 
+-ifdef(TEST).
+-include_lib("eunit/include/eunit.hrl").
+-endif.
+
 
 %% for tcp
 -export([start_link/4]).

@@ -32,6 +32,10 @@
 -export([is_valid_id/1]).
 -export([is_valid_dict/1]).
 
+-ifdef(TEST).
+-include_lib("eunit/include/eunit.hrl").
+-endif.
+
 -define(JSONB_SEPERATOR,<<24>>).
 
 deserialize(Buffer,Encoding) ->

@@ -45,6 +45,10 @@
 -export([code_change/3]).
 -export([forward_messages/2]).
 
+-ifdef(TEST).
+-include_lib("eunit/include/eunit.hrl").
+-endif.
+
 
 
 shutdown(Router) ->
