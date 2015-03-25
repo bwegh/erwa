@@ -154,6 +154,10 @@ handle_call({yield,_,_,_,_}=Msg,_From,State) ->
   ok = raw_send(Msg,State),
   {reply,ok,State};
 
+handle_call({error,invocation,RequestId,ArgsKw,ErrorUri},_From,State) ->
+    ok = raw_send({error,invocation,RequestId,[{}],ErrorUri,[],ArgsKw},State),
+    {reply,ok,State};
+
 handle_call(_Msg,_From,State) ->
   {noreply,State}.
 

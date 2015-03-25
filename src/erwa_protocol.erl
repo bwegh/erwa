@@ -215,6 +215,13 @@ to_erl([?ERROR,?CALL,RequestId,Details,Error,Arguments,ArgumentsKw]) ->
   true = is_valid_argumentskw(ArgumentsKw),
   {error,call,RequestId,dict_to_erl(Details),Error,Arguments,ArgumentsKw};
 
+to_erl([?ERROR,?INVOCATION,RequestId,Details,Error,Arguments,ArgumentsKw]) ->
+  true = is_valid_id(RequestId),
+  true = is_valid_dict(Details),
+  true = is_valid_arguments(Arguments),
+  true = is_valid_argumentskw(ArgumentsKw),
+  {error,invocation,RequestId,dict_to_erl(Details),Error,Arguments,ArgumentsKw};
+
 to_erl([?PUBLISH,RequestId,Options,Topic]) ->
   to_erl([?PUBLISH,RequestId,Options,Topic,undefined,undefined]);
 to_erl([?PUBLISH,RequestId,Options,Topic,Arguments]) ->
