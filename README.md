@@ -12,6 +12,7 @@ Table of Contents
 =================
 
 * [Description](#description)
+* [Features](#features)
 * [Router](#router)
 * [Peer](#peer)
 * [Examples](#examples)
@@ -24,8 +25,33 @@ Erwa is the implementation of the WAMP protocol in Erlang.
 It supports the router and the peer role, so the client and
 the server side.
 
-The project is still in early development, so I am happy to get any
-kind of feedback.
+Pull Requests, Bug Reports, Comments and any other kind of feedback is welcome.
+
+
+[Back to TOC](#table-of-contents)
+
+Features
+========
+
+* Router
+  * the complete [basic profile](https://github.com/tavendo/WAMP/blob/master/spec/basic.md) revision RC4
+  * [Advanced Profile](https://github.com/tavendo/WAMP/blob/master/spec/advanced.md) (only listing stable/implemented)
+     * RawSocket Transport
+     * Batched Websocket Transport
+     * Messages
+     * Feature Announcement
+     * Agent Identification
+     * Challenge Response Authentication (Database needs to be implemented by user)
+  * NOT yet supported
+     * LongPoll Transport
+     * Subscriber Black-and Whitelisting
+     * Publisher Exclusion
+     * Publisher Identification
+     * Progressive Call Results
+     * Cancelling Calls
+     * Caller Identification
+* Peer
+  * only supports raw sockets and the basic profile
 
 [Back to TOC](#table-of-contents)
 
@@ -37,12 +63,6 @@ and [cowboy](https://github.com/extend/cowboy) from [Loïc Hoguin (essen)](https
 to handle the incomming connections and the webserver part for the websockets.
 Erwa has two modules to work either as a protocol for ranch on incomming TCP connections, or
 as websocket handler with cowboy on incomming websocket connections.
-
-The features of the router are:
-* the basic profile
-* both router roles
-  * Dealer
-  * Broker
 
 All you need to do to get a simple WAMP router up and running is to add a dispatch rule to
 ranch and/or cowboy:
