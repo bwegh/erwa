@@ -43,6 +43,11 @@
 -export([code_change/3]).
 
 
+-ifdef(TEST).
+-include_lib("eunit/include/eunit.hrl").
+-endif.
+
+
 -record(state, {
 	ets=undefined,
   autocreate_realm = false

@@ -32,6 +32,10 @@
 -export([is_valid_id/1]).
 -export([is_valid_dict/1]).
 
+-ifdef(TEST).
+-include_lib("eunit/include/eunit.hrl").
+-endif.
+
 -define(JSONB_SEPERATOR,<<24>>).
 
 deserialize(Buffer,Encoding) ->
@@ -81,7 +85,7 @@ serialize(Erwa,Enc) when is_tuple(Erwa) ->
   WAMP = to_wamp(Erwa),
   serialize(WAMP,Enc);
 serialize(Msg,msgpack)  ->
-  msgpack:pack(Msg,[{format,jsx}]);
+  msgpack:pack(Msg, [{format,jsx}, {allow_atom,pack}]);
 serialize(Msg,msgpack_batched) ->
   serialize(Msg,raw_msgpack);
 serialize(Msg,json)  ->
@@ -90,7 +94,7 @@ serialize(Msg,json_batched) ->
   Enc = jsx:encode(Msg),
   <<Enc/binary, ?JSONB_SEPERATOR/binary >>;
 serialize(Message,raw_msgpack) ->
-  Enc = msgpack:pack(Message,[jsx]),
+  Enc = msgpack:pack(Message, [{format,jsx}, {allow_atom,pack}]),
   Len = byte_size(Enc),
   <<Len:32/unsigned-integer-big,Enc/binary>>;
 serialize(Message,raw_json) ->
@@ -214,6 +218,13 @@ to_erl([?ERROR,?CALL,RequestId,Details,Error,Arguments,ArgumentsKw]) ->
   true = is_valid_arguments(Arguments),
   true = is_valid_argumentskw(ArgumentsKw),
   {error,call,RequestId,dict_to_erl(Details),Error,Arguments,ArgumentsKw};
+
+to_erl([?ERROR,?INVOCATION,RequestId,Details,Error,Arguments,ArgumentsKw]) ->
+  true = is_valid_id(RequestId),
+  true = is_valid_dict(Details),
+  true = is_valid_arguments(Arguments),
+  true = is_valid_argumentskw(ArgumentsKw),
+  {error,invocation,RequestId,dict_to_erl(Details),Error,Arguments,ArgumentsKw};
 
 to_erl([?PUBLISH,RequestId,Options,Topic]) ->
   to_erl([?PUBLISH,RequestId,Options,Topic,undefined,undefined]);

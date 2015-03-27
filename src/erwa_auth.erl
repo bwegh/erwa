@@ -26,6 +26,11 @@
 -export([pbkdf2/4]).
 -export([create_wampcra_challenge/4]).
 
+-ifdef(TEST).
+-include_lib("eunit/include/eunit.hrl").
+-endif.
+
+
 %% @doc calculates the cryptographic hash of the challenge by using the secret key.
 -spec wamp_cra(Key :: binary(), Challenge :: binary() ) -> binary().
 wamp_cra(Key,Challenge) ->

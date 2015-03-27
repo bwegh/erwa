@@ -7,3 +7,5 @@ relx
 *.beam
 .erwa.plt
 .erlang.mk.*
+.rebar/
+.eunit/
