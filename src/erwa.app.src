@@ -33,7 +33,7 @@
 	{applications, [
 		kernel,
 		stdlib,
-    erwa_lib
+    wamper
 	]},
 	{mod, {erwa_app, []}},
 	{env, []}

@@ -124,7 +124,7 @@ websocket_handle(Data, Req, State) ->
 websocket_info({erwa,shutdown}, Req, State) ->
   {shutdown,Req,State};
 websocket_info({erwa,Msg}, Req, #state{enc=Enc,ws_enc=WsEnc}=State) when is_tuple(Msg)->
-	Reply = erwa_protocol:serialize(Msg,Enc),
+	Reply = wamper_protocol:serialize(Msg,Enc),
 	{reply,{WsEnc,Reply},Req,State};
 websocket_info(_Data, Req, State) ->
   {ok,Req,State}.
@@ -134,7 +134,7 @@ websocket_terminate(_Reason, _Req, _State) ->
 
 
 handle_wamp(Data,#state{buffer=Buffer, enc=Enc, source=Source, peer=Peer,routing=Routing}=State) ->
-  {MList,NewBuffer} = erwa_protocol:deserialize(<<Buffer/binary, Data/binary>>,Enc),
+  {MList,NewBuffer} = wamper_protocol:deserialize(<<Buffer/binary, Data/binary>>,Enc),
   Messages =
     case length(MList) > 0 of
       true ->
@@ -214,14 +214,14 @@ handle_info({OK,Socket,Data},  #state{ok=OK,socket=Socket,transport=Transport}=S
   {ok,NewState} = handle_wamp(Data,State),
   {noreply, NewState};
 handle_info({Closed,Socket}, #state{closed=Closed,socket=Socket}=State) ->
-  %erwa_protocol:close(connection_closed,ProtState),
+  %wamper_protocol:close(connection_closed,ProtState),
   {stop, normal, State};
 handle_info({Error,Socket,Reason}, #state{error=Error,socket=Socket}=State) ->
   {stop, {error, Reason} , State};
 handle_info({erwa,shutdown}, State) ->
   {stop, normal, State};
 handle_info({erwa,Msg}, #state{socket=Socket,transport=Transport,enc=Enc}=State) when is_tuple(Msg) ->
-  Transport:send(Socket,erwa_protocol:serialize(Msg,Enc)),
+  Transport:send(Socket,wamper_protocol:serialize(Msg,Enc)),
   {noreply, State};
 handle_info(_Info, State) ->
   {noreply, State}.
