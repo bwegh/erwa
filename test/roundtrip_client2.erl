@@ -57,17 +57,17 @@ init(Args) ->
       {enc,E} -> E;
       _ -> json
     end,
-  {ok,Con} = erwa:start_client(),
+  {ok,Con} = awre:start_client(),
   {ok,SessionId,_RouterDetails} =
     case lists:keyfind(tcp,1,Args) of
       {tcp,true} ->
-        erwa:connect(Con,"localhost",5555,Realm,Enc);
+        awre:connect(Con,"localhost",5555,Realm,Enc);
        _ ->
-        erwa:connect(Con,Realm)
+        awre:connect(Con,Realm)
     end,
-  {ok,SubscriptionId} = erwa:subscribe(Con,[{}],Event),
-  {ok,RegistrationId} = erwa:register(Con,[{}],RPC),
-  erwa:publish(Con,[{}],Event),
+  {ok,SubscriptionId} = awre:subscribe(Con,[{}],Event),
+  {ok,RegistrationId} = awre:register(Con,[{}],RPC),
+  awre:publish(Con,[{}],Event),
   io:format("init of ~p done~n",[?MODULE]),
   {ok,#state{con=Con,session=SessionId,subscription=SubscriptionId,registration=RegistrationId,event_url=Event,remote_rpc=RemoteRpc}}.
 
@@ -80,15 +80,15 @@ handle_cast(_Msg,State) ->
 
 handle_info({erwa,{event,SubscriptionId,_PublicationId,_Details,_Arguments,_ArgumentsKw}},#state{con=Con,subscription=SubscriptionId}=State) ->
   io:format("event at ~p~n",[?MODULE]),
-  ok = erwa:unsubscribe(Con,SubscriptionId),
-  ok = erwa:stop_client(Con),
+  ok = awre:unsubscribe(Con,SubscriptionId),
+  ok = awre:stop_client(Con),
   {noreply,State#state{event_received=true}};
 
 handle_info({erwa,{invocation,RequestId,RegistrationId,_Details,[A,B],_ArgumentsKw}},#state{registration=RegistrationId,con=Con,remote_rpc=RPC}=State) ->
   io:format("invocation of ~p~n",[?MODULE]),
-  ok = erwa:yield(Con,RequestId,[{}],[A-B]),
-  {ok,_Details,[14],_} = erwa:call(Con,[{}],RPC,[9,5]),
-  erwa:unregister(Con,RegistrationId),
+  ok = awre:yield(Con,RequestId,[{}],[A-B]),
+  {ok,_Details,[14],_} = awre:call(Con,[{}],RPC,[9,5]),
+  awre:unregister(Con,RegistrationId),
   {noreply,State#state{been_called=true}};
 
 handle_info(Msg,State) ->

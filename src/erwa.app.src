@@ -33,10 +33,7 @@
 	{applications, [
 		kernel,
 		stdlib,
-    jsx,
-    msgpack,
-    pbkdf2,
-    crypto
+    erwa_lib
 	]},
 	{mod, {erwa_app, []}},
 	{env, []}
