@@ -4,7 +4,7 @@ Erwa
 
 
 Erwa is an implementation of [WAMP (Web Application Messaging Protocol)](http://wamp.ws/spec/) router in Erlang.
-The client / peer side has been moved to a seperate project called [Awre](https://github.com/bwegh/awre).
+The client/peer side has been moved to a seperate project called [Awre](https://github.com/bwegh/awre). Both use the library [Wamper](https://github.com/bwegh/wamper).
 
 
 
