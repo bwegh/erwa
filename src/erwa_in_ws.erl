@@ -84,7 +84,6 @@ websocket_info(erwa_stop, Req, State) ->
   {stop,Req,State};
 websocket_info({erwa,Msg}, Req, #state{session=Session,ws_enc=WsEnc,enc=Enc}=State) when is_tuple(Msg)->
   Encode = fun(M) ->
-             io:format(" <<< ~p ~n",[M]),
              {WsEnc,wamper_protocol:serialize(M,Enc)}
            end,
   case erwa_session:handle_info(Msg, Session) of
