@@ -6,4 +6,4 @@ otp_release:
    - 17.1
    - 17.0
 install: true
-script: "make tests"
+script: "make eunit && make tests"
