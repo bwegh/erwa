@@ -201,7 +201,6 @@ hndl_msg(_Msg,_State) ->
 
 
 hndl_msg_authed({subscribe,RequestId,Options,Topic},#state{broker=Broker}=State) ->
-  io:format("broker = ~p ~n",[Broker]),
   {ok,SubscriptionId} = erwa_broker:subscribe(Topic,Options,Broker),
   {reply, {subscribed,RequestId,SubscriptionId}, State };
 
