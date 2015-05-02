@@ -305,7 +305,6 @@ get_tablesize(#data{ets=Ets}) ->
   ets:info(Ets,size).
 
 start_stop_test() ->
-  ?debugFmt("unit tests in ~p",[?MODULE]),
   {ok,Pid} = start(),
   {ok,Data} = get_data(Pid),
   0 = get_tablesize(Data),

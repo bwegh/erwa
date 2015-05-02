@@ -56,7 +56,6 @@ perm_register(_SessionId, _Options, _Procedure) ->
 -ifdef(TEST).
 
 simple_test() ->
-  ?debugFmt("unit tests in ~p~n",[?MODULE]),
   true = perm_connect(0,<<"">>, []),
   false = authenticate(0,<<"">>,[]),
   true = perm_publish(0,[],<<"">>,[],[]),

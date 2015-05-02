@@ -208,7 +208,6 @@ get_peer(_) ->
 %% tests
 
 handshake_hello_test() ->
-  ?debugFmt("unit tests in ~p~n",[?MODULE]),
   {ok,Socket} = erwa_tcp_mock:start(),
   Session = erwa_session:create(),
   State1 = #state{ok=ok,transport=erwa_tcp_mock,socket=Socket,closed=closed,error=error,session=Session},

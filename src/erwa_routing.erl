@@ -177,12 +177,10 @@ send_all_clients(Msg,#state{con_ets=Con}) ->
 
 -ifdef(TEST).
 
-info_test() ->
-  ?debugFmt("unit tests in ~p~n",[?MODULE]).
-
 start_stop_test() ->
   {ok,Pid} = start(),
-  {ok,stopped} = stop(Pid).
+  %{ok,stopped} = stop(Pid).
+  error = stop(Pid).
 
 simple_routing_test() ->
   {ok,Pid} = start(),

@@ -266,7 +266,6 @@ ensure_tablesize(Number,MaxTime) ->
   end.
 
 start_stop_test() ->
-  ?debugFmt("unit tests in ~p~n",[?MODULE]),
   ?assertMatch({ok,_},start()),
   ?assertMatch({ok,stopped},stop()).
 

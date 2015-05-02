@@ -183,7 +183,6 @@ ensure_tablesize(Number,MaxTime) ->
   end.
 
 stat_stop_test() ->
-  ?debugFmt("unit tests in ~p~n",[?MODULE]),
   {ok,_} = start(),
   {ok,stopped} = stop().
 

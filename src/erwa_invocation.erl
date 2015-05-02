@@ -181,7 +181,6 @@ flush() ->
 
 
 call_result_test() ->
-  ?debugFmt("unit tests in ~p~n",[?MODULE]),
   flush(),
   CallInfo = #{procedure_id => 123,
                    caller_pid => self(),
