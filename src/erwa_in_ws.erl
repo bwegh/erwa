@@ -50,54 +50,54 @@
                ws_enc = undefined,
                length = infitity,
                buffer = <<"">>,
-               session = undefined,
-               stopping = false
+               session = undefined
               }).
 
 
 init( Req, _Opts) ->
   % need to check for the wamp.2.json or wamp.2.msgpack
-  {ok, Protocols, Req1} = cowboy_req:parse_header(?SUBPROTHEADER, Req),
+  Protocols = cowboy_req:parse_header(?SUBPROTHEADER, Req),
   case find_supported_protocol(Protocols) of
-      {Enc,WsEncoding,Header} ->
-        Req2  = cowboy_req:set_resp_header(?SUBPROTHEADER,Header,Req1),
-        Peer = cowboy_req:peer(Req2),
-        Session = erwa_session:create(),
-        Session1 = erwa_session:set_peer(Peer,Session),
-        Session2 = erwa_session:set_source(websocket,Session1),
-        {ok,Req2,#state{enc=Enc,ws_enc=WsEncoding,session=Session2}};
-      _ ->
-        % unsupported
-        {shutdown,Req1}
+    {Enc,WsEncoding,Header} ->
+      Req1  = cowboy_req:set_resp_header(?SUBPROTHEADER,Header,Req),
+      Peer = cowboy_req:peer(Req1),
+      Session = erwa_session:create(),
+      Session1 = erwa_session:set_peer(Peer,Session),
+      Session2 = erwa_session:set_source(websocket,Session1),
+      {cowboy_websocket,Req1,#state{enc=Enc,ws_enc=WsEncoding,session=Session2}};
+    _ ->
+      % unsupported
+      {shutdown,Req}
   end.
 
 
 
-websocket_handle({WsEnc, Data}, Req, #state{ws_enc=WsEnc,enc=Enc,buffer=Buffer}=State) ->
+websocket_handle({WsEnc, Data}, Req, #state{ws_enc=WsEnc,enc=Enc,buffer=Buffer,session=Session}=State) ->
   {MList,NewBuffer} = wamper_protocol:deserialize(<<Buffer/binary, Data/binary>>,Enc),
-  ok = handle_messages(MList),
-  {ok,Req,State#state{buffer=NewBuffer}};
+  {ok,NewSession} = handle_messages(MList,Session),
+  {ok,Req,State#state{buffer=NewBuffer,session=NewSession}};
 websocket_handle(Data, Req, State) ->
   erlang:error(unsupported,[Data,Req,State]),
   {ok, Req, State}.
 
 websocket_info(erwa_stop, Req, State) ->
   {stop,Req,State};
-websocket_info(_, Req, #state{stopping=true}=State) ->
-  {stop,Req,State};
-websocket_info({erwa_in,Msg}, Req, #state{enc=Enc,ws_enc=WsEnc,session=Session}=State) when is_tuple(Msg)->
-  case erwa_session:handle_message(Msg, Session) of
+websocket_info({erwa,Msg}, Req, #state{session=Session}=State) when is_tuple(Msg)->
+  case erwa_session:handle_info(Msg, Session) of
     {ok, NewSession} ->
       {ok,Req,State#state{session=NewSession}};
     {reply, OutMsg, NewSession} ->
-      {reply,{WsEnc,wamper_protocol:serialize(OutMsg,Enc)},Req,State#state{session=NewSession}};
+      self() ! {erwa_out,OutMsg},
+      {ok,Req,State#state{session=NewSession}};
     {reply_stop, OutMsg, NewSession} ->
+      self() ! {erwa_out,OutMsg},
       self() ! erwa_stop,
-      {reply,{WsEnc,wamper_protocol:serialize(OutMsg,Enc)},Req,State#state{session=NewSession,stopping=true}};
+      {ok,Req,State#state{session=NewSession}};
     {stop, NewSession} ->
       {stop,Req,State#state{session=NewSession}}
   end;
 websocket_info({erwa_out,Msg}, Req, #state{enc=Enc,ws_enc=WsEnc}=State) when is_tuple(Msg)->
+  io:format(" <<< ~p ~n",[Msg]),
 	Reply = wamper_protocol:serialize(Msg,Enc),
 	{reply,{WsEnc,Reply},Req,State};
 
@@ -108,11 +108,24 @@ terminate(_Reason, _Req, _State) ->
   ok.
 
 
-handle_messages([]) ->
-  ok;
-handle_messages([Msg|Tail]) ->
-  self() ! {erwa_in,Msg},
-  handle_messages(Tail).
+handle_messages([],Session) ->
+  {ok,Session};
+handle_messages([Msg|Tail],Session) ->
+  io:format(" >>> ~p ~n",[Msg]),
+  case erwa_session:handle_message(Msg, Session) of
+    {ok, NewSession} ->
+      handle_messages(Tail,NewSession);
+    {reply, OutMsg, NewSession} ->
+      self() ! {erwa_out,OutMsg},
+      handle_messages(Tail,NewSession);
+    {reply_stop, OutMsg, NewSession} ->
+      self() ! {erwa_out,OutMsg},
+      self() ! erwa_stop,
+      {ok,NewSession};
+    {stop, NewSession} ->
+      self() ! erwa_stop,
+      {ok, NewSession}
+  end.
 
 
 
