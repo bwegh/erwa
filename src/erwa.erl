@@ -59,7 +59,6 @@ get_version() ->
 %% @doc Start a router for a realm.
 -spec start_realm(Name :: binary() ) -> ok | {error, Reason :: term()}.
 start_realm(Name) ->
-  ?debugFmt("unit tests in ~p~n",[?MODULE]),
   ok = erwa_realms:add(Name),
   ok.
 
