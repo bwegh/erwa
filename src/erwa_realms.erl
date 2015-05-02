@@ -284,11 +284,11 @@ garbage_test() ->
   ?assert({ok,stopped} =:= stop()).
 
 add_remove_test() ->
-  erwa_sup:start_link(),
+  ?assertMatch({ok,_},erwa_sup:start_link()),
   Name1 = <<"com.doesnotexist.wamp">>,
   Name2 = <<"com.doesnotexist.pamw">>,
   MWL = [erwa_mw_allow],
-  set_autocreate(false),
+  ?assert(ok =:= set_autocreate(false)),
   ?assert(0 =:= get_tablesize()),
   ?assert({error,not_found} =:= get_routing(Name1)),
   ?assert(0 =:= get_tablesize()),
@@ -309,9 +309,9 @@ add_remove_test() ->
   ?assert({ok,shutting_down} =:= shutdown(Name2)),
   ?assert(ok =:= ensure_tablesize(0,5000)),
   ?assert({error,not_found} =:= get_routing(Name2)),
-  set_autocreate(true),
+  ?assert(ok =:= set_autocreate(true)),
   ?assertMatch({ok,_}, get_routing(Name1)),
-  set_autocreate(false),
+  ?assert(ok =:= set_autocreate(false)),
   ?assert(2 =:= get_tablesize()),
   ?assert({ok,killed} =:= kill(Name1)),
   ?assert(ok =:= ensure_tablesize(0,5000)),
