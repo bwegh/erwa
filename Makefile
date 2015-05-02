@@ -1,9 +1,10 @@
 PROJECT = erwa
-CT_SUITES = eunit roundtrip
+CT_SUITES = eunit connect roundtrip
 CT_OPTS = -cover test/cover.spec
 ERLC_OPTS = +debug_info
 
 DEPS = cowboy ranch wamper
+dep_cowboy = git https://github.com/ninenines/cowboy.git master
 dep_wamper = git https://github.com/bwegh/wamper master
 
 
