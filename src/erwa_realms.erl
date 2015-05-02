@@ -266,56 +266,56 @@ ensure_tablesize(Number,MaxTime) ->
   end.
 
 start_stop_test() ->
-  ?assertMatch({ok,_},start()),
-  ?assertMatch({ok,stopped},stop()).
+  {ok,_}=start(),
+  {ok,stopped}=stop().
 
 environment_test() ->
   application:set_env(erwa,router_middleware,[erwa_mw_allow]),
-  ?assert([erwa_mw_allow] =:= get_env(erwa,router_middleware,[erwa_mw_default])),
+  [erwa_mw_allow] = get_env(erwa,router_middleware,[erwa_mw_default]),
   application:unset_env(erwa,router_middleware),
-  ?assert([erwa_mw_default] =:= get_env(erwa,router_middleware,[erwa_mw_default])).
+  [erwa_mw_default] = get_env(erwa,router_middleware,[erwa_mw_default]).
 
 garbage_test() ->
   {ok,Pid} = start(),
-  ?assert(ignored =:= gen_server:call(?MODULE,some_garbage)),
-  ?assert(ok =:= gen_server:cast(?MODULE,some_garbage)),
+  ignored = gen_server:call(?MODULE,some_garbage),
+  ok = gen_server:cast(?MODULE,some_garbage),
   Pid ! some_garbage,
-  ?assert({ok,stopped} =:= stop()).
+  {ok,stopped} = stop().
 
 add_remove_test() ->
-  ?assertMatch({ok,_},erwa_sup:start_link()),
+  {ok,_} = erwa_sup:start_link(),
   Name1 = <<"com.doesnotexist.wamp">>,
   Name2 = <<"com.doesnotexist.pamw">>,
   MWL = [erwa_mw_allow],
-  ?assert(ok =:= set_autocreate(false)),
-  ?assert(0 =:= get_tablesize()),
-  ?assert({error,not_found} =:= get_routing(Name1)),
-  ?assert(0 =:= get_tablesize()),
-  ?assert({error,not_running} =:= kill(Name1)),
-  ?assert(0 =:= get_tablesize()),
-  ?assert(ok =:= add(Name1)),
-  ?assert(2 =:= get_tablesize()),
-  ?assert({error,already_exists} =:= add(Name1)),
-  ?assert(2 =:= get_tablesize()),
-  ?assert(ok =:= add(Name2,MWL)),
-  ?assert(4 =:= get_tablesize()),
-  ?assertMatch({ok,_}, get_routing(Name1)),
-  ?assertMatch({ok,_},get_middleware_list(Name1)),
-  ?assertMatch({ok,_},get_routing(Name2)),
-  ?assert({ok,killed} =:= kill(Name1)),
-  ?assert(ok =:= ensure_tablesize(2,5000)),
-  ?assert({error,not_found} =:= get_routing(Name1)),
-  ?assert({ok,shutting_down} =:= shutdown(Name2)),
-  ?assert(ok =:= ensure_tablesize(0,5000)),
-  ?assert({error,not_found} =:= get_routing(Name2)),
-  ?assert(ok =:= set_autocreate(true)),
-  ?assertMatch({ok,_}, get_routing(Name1)),
-  ?assert(ok =:= set_autocreate(false)),
-  ?assert(2 =:= get_tablesize()),
-  ?assert({ok,killed} =:= kill(Name1)),
-  ?assert(ok =:= ensure_tablesize(0,5000)),
-  ?assert(timeout =:= ensure_tablesize(5,10)),
-  ?assert({ok,stopped} =:= stop()).
+  ok = set_autocreate(false),
+  0 = get_tablesize(),
+  {error,not_found} = get_routing(Name1),
+  0 = get_tablesize(),
+  {error,not_running} = kill(Name1),
+  0 = get_tablesize(),
+  ok = add(Name1),
+  2 = get_tablesize(),
+  {error,already_exists} = add(Name1),
+  2 = get_tablesize(),
+  ok = add(Name2,MWL),
+  4 = get_tablesize(),
+  {ok,_} = get_routing(Name1),
+  {ok,_} = get_middleware_list(Name1),
+  {ok,_} = get_routing(Name2),
+  {ok,killed} = kill(Name1),
+  ok = ensure_tablesize(2,5000),
+  {error,not_found} = get_routing(Name1),
+  {ok,shutting_down} = shutdown(Name2),
+  ok = ensure_tablesize(0,5000),
+  {error,not_found} = get_routing(Name2),
+  ok = set_autocreate(true),
+  {ok,_} = get_routing(Name1),
+  ok = set_autocreate(false),
+  2 = get_tablesize(),
+  {ok,killed} = kill(Name1),
+  ok = ensure_tablesize(0,5000),
+  timeout = ensure_tablesize(5,10),
+  {ok,stopped} = stop().
 
 
 
