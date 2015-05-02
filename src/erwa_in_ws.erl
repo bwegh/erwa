@@ -74,32 +74,30 @@ init( Req, _Opts) ->
 
 websocket_handle({WsEnc, Data}, Req, #state{ws_enc=WsEnc,enc=Enc,buffer=Buffer,session=Session}=State) ->
   {MList,NewBuffer} = wamper_protocol:deserialize(<<Buffer/binary, Data/binary>>,Enc),
-  {ok,NewSession} = handle_messages(MList,Session),
-  {ok,Req,State#state{buffer=NewBuffer,session=NewSession}};
+  {ok,OutFrames,NewSession} = handle_messages(MList,[],Session,State),
+  {reply,OutFrames,Req,State#state{buffer=NewBuffer,session=NewSession}};
 websocket_handle(Data, Req, State) ->
   erlang:error(unsupported,[Data,Req,State]),
   {ok, Req, State}.
 
 websocket_info(erwa_stop, Req, State) ->
   {stop,Req,State};
-websocket_info({erwa,Msg}, Req, #state{session=Session}=State) when is_tuple(Msg)->
+websocket_info({erwa,Msg}, Req, #state{session=Session,ws_enc=WsEnc,enc=Enc}=State) when is_tuple(Msg)->
+  Encode = fun(M) ->
+             io:format(" <<< ~p ~n",[M]),
+             {WsEnc,wamper_protocol:serialize(M,Enc)}
+           end,
   case erwa_session:handle_info(Msg, Session) of
     {ok, NewSession} ->
       {ok,Req,State#state{session=NewSession}};
-    {reply, OutMsg, NewSession} ->
-      self() ! {erwa_out,OutMsg},
-      {ok,Req,State#state{session=NewSession}};
-    {reply_stop, OutMsg, NewSession} ->
-      self() ! {erwa_out,OutMsg},
+    {send, OutMsg, NewSession} ->
+      {reply,Encode(OutMsg),Req,State#state{session=NewSession}};
+    {send_stop, OutMsg, NewSession} ->
       self() ! erwa_stop,
-      {ok,Req,State#state{session=NewSession}};
+      {reply,Encode(OutMsg),Req,State#state{session=NewSession}};
     {stop, NewSession} ->
       {stop,Req,State#state{session=NewSession}}
   end;
-websocket_info({erwa_out,Msg}, Req, #state{enc=Enc,ws_enc=WsEnc}=State) when is_tuple(Msg)->
-  io:format(" <<< ~p ~n",[Msg]),
-	Reply = wamper_protocol:serialize(Msg,Enc),
-	{reply,{WsEnc,Reply},Req,State};
 
 websocket_info(_Data, Req, State) ->
   {ok,Req,State}.
@@ -108,23 +106,23 @@ terminate(_Reason, _Req, _State) ->
   ok.
 
 
-handle_messages([],Session) ->
-  {ok,Session};
-handle_messages([Msg|Tail],Session) ->
-  io:format(" >>> ~p ~n",[Msg]),
+handle_messages([],ToSend,Session,_State) ->
+  {ok,lists:reverse(ToSend),Session};
+handle_messages([Msg|Tail],ToSend,Session,#state{ws_enc=WsEnc,enc=Enc}=State) ->
+  Encode = fun(M) ->
+             {WsEnc,wamper_protocol:serialize(M,Enc)}
+           end,
   case erwa_session:handle_message(Msg, Session) of
     {ok, NewSession} ->
-      handle_messages(Tail,NewSession);
+      handle_messages(Tail,ToSend,NewSession,State);
     {reply, OutMsg, NewSession} ->
-      self() ! {erwa_out,OutMsg},
-      handle_messages(Tail,NewSession);
+      handle_messages(Tail,[Encode(OutMsg)|ToSend],NewSession,State);
     {reply_stop, OutMsg, NewSession} ->
-      self() ! {erwa_out,OutMsg},
       self() ! erwa_stop,
-      {ok,NewSession};
+      {ok,lists:reverse([Encode(OutMsg)|ToSend]),NewSession};
     {stop, NewSession} ->
       self() ! erwa_stop,
-      {ok, NewSession}
+      {ok, lists:reverse(ToSend), NewSession}
   end.
 
 
