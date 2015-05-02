@@ -179,8 +179,7 @@ send_all_clients(Msg,#state{con_ets=Con}) ->
 
 start_stop_test() ->
   {ok,Pid} = start(),
-  %{ok,stopped} = stop(Pid).
-  error = stop(Pid).
+  {ok,stopped} = stop(Pid).
 
 simple_routing_test() ->
   {ok,Pid} = start(),
