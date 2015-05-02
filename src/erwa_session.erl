@@ -209,10 +209,14 @@ hndl_msg_authed({unsubscribe,RequestId,SubscriptionId},#state{broker=Broker}=Sta
   ok = erwa_broker:unsubscribe(SubscriptionId,Broker),
   {reply, {unsubscribed,RequestId},State};
 
-hndl_msg_authed({publish,_RequestId,Options,Topic,Arguments,ArgumentsKw},#state{broker=Broker}=State) ->
-  {ok,_PublicationId} = erwa_broker:publish(Topic,Options,Arguments,ArgumentsKw,State,Broker),
-  %{reply,{published,RequestId,PublicationId},State};
-  {ok,State};
+hndl_msg_authed({publish,RequestId,Options,Topic,Arguments,ArgumentsKw},#state{broker=Broker}=State) ->
+  {ok,PublicationId} = erwa_broker:publish(Topic,Options,Arguments,ArgumentsKw,State,Broker),
+  case lists:keyfind(acknowledge,1,Options) of
+    {acknowledge,true} ->
+      {reply,{published,RequestId,PublicationId},State};
+    _ ->
+      {ok,State}
+  end;
 
 
 
