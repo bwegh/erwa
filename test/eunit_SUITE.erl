@@ -1,5 +1,5 @@
 %%
-%% Copyright (c) 2014 Bas Wegh
+%% Copyright (c) 2014-2015 Bas Wegh
 %%
 %% Permission is hereby granted, free of charge, to any person obtaining a copy
 %% of this software and associated documentation files (the "Software"), to deal
@@ -36,4 +36,4 @@ all() ->
 	[eunit].
 
 eunit(_) ->
-	ok = eunit:test({application, erwa}).
+	ok = eunit:test({application, erwa},[verbose]).

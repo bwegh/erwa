@@ -1,5 +1,5 @@
 %%
-%% Copyright (c) 2014 Bas Wegh
+%% Copyright (c) 2015 Bas Wegh
 %%
 %% Permission is hereby granted, free of charge, to any person obtaining a copy
 %% of this software and associated documentation files (the "Software"), to deal
@@ -20,26 +20,39 @@
 %% SOFTWARE.
 %%
 
+
 %% @private
--module(erwa_app).
--behaviour(application).
+-module(erwa_routing_sup).
+-behaviour(supervisor).
 
 -ifdef(TEST).
 -include_lib("eunit/include/eunit.hrl").
 -endif.
 
+%% API.
+-export([start_link/0]).
+-export([start_routing/0]).
+
+%% supervisor.
+-export([init/1]).
 
 %% API.
--export([start/2]).
--export([stop/1]).
 
-%% API.
-
-start(_Type, _Args) ->
-  erwa_sup:start_link().
+-spec start_link() -> {ok, pid()}.
+start_link() ->
+  supervisor:start_link({local, ?MODULE}, ?MODULE, []).
 
 
-stop(_State) ->
-	ok.
+-spec start_routing() -> {ok, pid()}.
+start_routing() ->
+  supervisor:start_child(?MODULE,[]).
 
+%% supervisor.
+
+init([]) ->
+Procs = [
+		{routing, {erwa_routing, start_link, []},
+			transient, 5000, worker, []}
+	],
+	{ok, {{simple_one_for_one, 1000, 10}, Procs}}.
 

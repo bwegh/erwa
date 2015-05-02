@@ -23,6 +23,10 @@
 -module(erwa_mw_default).
 -behaviour(erwa_middleware).
 
+-ifdef(TEST).
+-include_lib("eunit/include/eunit.hrl").
+-endif.
+
 -export([perm_connect/3]).
 -export([authenticate/3]).
 -export([perm_publish/5]).
@@ -47,3 +51,20 @@ perm_call(_SessionId, _Options, _Procedure, _Arguments, _ArgumentsKw) ->
 
 perm_register(_SessionId, _Options, _Procedure) ->
   {false, [], not_authorized}.
+
+
+
+-ifdef(TEST).
+
+simple_test() ->
+  ?debugFmt("unit tests in ~p~n",[?MODULE]),
+  false = perm_connect(0,<<"">>, []),
+  false = authenticate(0,<<"">>,[]),
+  {false, [], not_authorized} = perm_publish(0,[],<<"">>,[],[]),
+  {false, [], not_authorized} = perm_subscribe(0,[],<<"">>),
+  {false, [], not_authorized} = perm_call(0,[],<<"">>,[],[]),
+  {false, [], not_authorized} = perm_register(0,[],<<"">>).
+
+
+
+-endif.

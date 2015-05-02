@@ -25,18 +25,20 @@
 %% start a router or connect to another router either local or remote.
 -module(erwa).
 
+-ifdef(TEST).
+-include_lib("eunit/include/eunit.hrl").
+-endif.
 
 
 %% API for router
 -export([start_realm/1]).
 -export([start_realm/2]).
 -export([stop_realm/1]).
--export([get_router_for_realm/1]).
+-export([get_routing_for_realm/1]).
 
 
 
 -export([get_version/0]).
-
 
 
 %% @doc returns the version string for the application, used as agent description
@@ -55,24 +57,27 @@ get_version() ->
 
 
 %% @doc Start a router for a realm.
--spec start_realm(Name :: binary() ) -> ok.
+-spec start_realm(Name :: binary() ) -> ok | {error, Reason :: term()}.
 start_realm(Name) ->
-  erwa_realms:add(Name).
+  ?debugFmt("unit tests in ~p~n",[?MODULE]),
+  ok = erwa_realms:add(Name),
+  ok.
 
--spec start_realm(Name :: binary(), Middleware :: atom() ) -> ok.
-start_realm(Name,Middleware) when is_atom(Middleware) ->
-  erwa_realms:add(Name,Middleware).
+-spec start_realm(Name :: binary(), Middlewares :: [atom()] ) -> ok | {error, Reason :: term()}.
+start_realm(Name,Middlewares) when is_list(Middlewares) ->
+  ok = erwa_realms:add(Name,Middlewares),
+  ok.
 
 
 %% @doc Stop the router of a realm.
 -spec stop_realm(Name :: binary()) -> {ok,Info :: atom()} | {error, Reason :: atom()}.
 stop_realm(Name) ->
-  erwa_realms:remove(Name).
+  erwa_realms:shutdown(Name).
 
 %% @doc Get the router of a realm.
--spec get_router_for_realm(Realm :: binary() ) -> {ok, Pid :: pid()} | {error, not_found}.
-get_router_for_realm(Realm) ->
-  erwa_realms:get_router(Realm).
+-spec get_routing_for_realm(Realm :: binary() ) -> {ok, Pid :: pid()} | {error, not_found}.
+get_routing_for_realm(Realm) ->
+  erwa_realms:get_routing(Realm).
 
 
 

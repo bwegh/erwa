@@ -1,5 +1,5 @@
 %%
-%% Copyright (c) 2014 Bas Wegh
+%% Copyright (c) 2015 Bas Wegh
 %%
 %% Permission is hereby granted, free of charge, to any person obtaining a copy
 %% of this software and associated documentation files (the "Software"), to deal
@@ -22,11 +22,16 @@
 
 
 %% @private
--module(erwa_router_sup).
+-module(erwa_invocation_sup).
 -behaviour(supervisor).
+
+-ifdef(TEST).
+-include_lib("eunit/include/eunit.hrl").
+-endif.
 
 %% API.
 -export([start_link/0]).
+-export([start_invocation/1]).
 
 %% supervisor.
 -export([init/1]).
@@ -37,11 +42,17 @@
 start_link() ->
   supervisor:start_link({local, ?MODULE}, ?MODULE, []).
 
+
+-spec start_invocation(Args :: map()) -> {ok, pid()}.
+start_invocation(Args) ->
+  supervisor:start_child(?MODULE,[Args]).
+
 %% supervisor.
 
 init([]) ->
 Procs = [
-		{erwa_router, {erwa_router, start_link, []},
-			transient, 5000, supervisor, []}
+		{invocation, {erwa_invocation, start_link, []},
+			temporary, 5000, worker, []}
 	],
 	{ok, {{simple_one_for_one, 1000, 10}, Procs}}.
+

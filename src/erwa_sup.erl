@@ -1,5 +1,5 @@
 %%
-%% Copyright (c) 2014 Bas Wegh
+%% Copyright (c) 2014-2015 Bas Wegh
 %%
 %% Permission is hereby granted, free of charge, to any person obtaining a copy
 %% of this software and associated documentation files (the "Software"), to deal
@@ -40,7 +40,10 @@ start_link() ->
 %% supervisor.
 
 init([]) ->
-Procs = [{router_sup,{erwa_router_sup,start_link,[]},permanent,5000,supervisor,[]},
+Procs = [{sessions,{erwa_sessions,start_link,[]},permanent,5000,worker,[]},
+         {publications,{erwa_publications,start_link,[]},permanent,5000,worker,[]},
+         {invocation_sup,{erwa_invocation_sup,start_link,[]},permanent,5000,supervisor,[]},
+         {realms_sup,{erwa_routing_sup,start_link,[]},permanent,5000,supervisor,[]},
          {realms,{erwa_realms,start_link,[]},permanent,5000,worker,[]}
         ],
 {ok, {{one_for_one, 10, 10}, Procs}}.

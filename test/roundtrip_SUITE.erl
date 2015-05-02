@@ -40,7 +40,7 @@
 
 
 all() ->
-	[pubsub,pubsub_tcp].
+	[pubsub_tcp].
 
 
 init_per_suite(Config) ->
@@ -48,8 +48,8 @@ init_per_suite(Config) ->
   {ok,_} = application:ensure_all_started(erwa),
   {ok,_} = application:ensure_all_started(ranch),
   {ok,_} = application:ensure_all_started(sasl),
-  {ok,_} = ranch:start_listener(erwa_tcp, 5, ranch_tcp, [{port,5555}], erwa_in_handler, []),
-  ok = erwa:start_realm(?REALM,erwa_mw_allow),
+  {ok,_} = ranch:start_listener(erwa_tcp, 5, ranch_tcp, [{port,5555}], erwa_in_tcp, []),
+  ok = erwa:start_realm(?REALM,[erwa_mw_allow]),
   Config.
 
 end_per_suite(Config) ->

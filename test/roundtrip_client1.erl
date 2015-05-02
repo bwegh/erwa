@@ -67,7 +67,7 @@ init(Args) ->
     end,
   {ok,SubscriptionId} = awre:subscribe(Con,[{}],Event),
   {ok,RegistrationId} = awre:register(Con,[{}],RPC),
-  io:format("init of ~p done~n",[?MODULE]),
+  ct:log("init of ~p done~n",[?MODULE]),
   {ok,#state{con=Con,session=SessionId,subscription=SubscriptionId,registration=RegistrationId,event_url=Event,remote_rpc=RemoteRpc}}.
 
 handle_call({test_passed},_From,State) ->
@@ -78,13 +78,13 @@ handle_cast(_Msg,State) ->
 
 
 handle_info({erwa,{event,SubscriptionId,_PublicationId,_Details,_Arguments,_ArgumentsKw}},#state{con=Con,subscription=SubscriptionId,remote_rpc=RPC}=State) ->
-  io:format("event at ~p~n",[?MODULE]),
+  ct:log("event at ~p~n",[?MODULE]),
   {ok,_Details,[4],_} = awre:call(Con,[{}],RPC,[9,5]),
   ok = awre:unsubscribe(Con,SubscriptionId),
   {noreply,State#state{event_received=true}};
 
 handle_info({erwa,{invocation,RequestId,RegistrationId,_Details,[A,B],_ArgumentsKw}},#state{registration=RegistrationId,event_url=EventUrl,con=Con}=State) ->
-  io:format("invocation of ~p~n",[?MODULE]),
+  ct:log("invocation of ~p~n",[?MODULE]),
   ok = awre:yield(Con,RequestId,[{}],[A+B]),
   ok = awre:publish(Con,[{}],EventUrl,[3,4]),
   awre:unregister(Con,RegistrationId),
@@ -92,7 +92,7 @@ handle_info({erwa,{invocation,RequestId,RegistrationId,_Details,[A,B],_Arguments
   {noreply,State#state{been_called=true}};
 
 handle_info(Msg,State) ->
-  io:format("~p received message: ~p (state: ~p)~n",[?MODULE,Msg,State]),
+  ct:log("~p received message: ~p (state: ~p)~n",[?MODULE,Msg,State]),
   {noreply,State}.
 
 terminate(_Reason,_State) ->

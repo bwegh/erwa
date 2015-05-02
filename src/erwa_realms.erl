@@ -1,5 +1,5 @@
 %%
-%% Copyright (c) 2014 Bas Wegh
+%% Copyright (c) 2014-2015 Bas Wegh
 %%
 %% Permission is hereby granted, free of charge, to any person obtaining a copy
 %% of this software and associated documentation files (the "Software"), to deal
@@ -24,6 +24,11 @@
 -module(erwa_realms).
 -behaviour(gen_server).
 
+-ifdef(TEST).
+-include_lib("eunit/include/eunit.hrl").
+-endif.
+
+
 %% API.
 -export([start/0]).
 -export([start_link/0]).
@@ -31,8 +36,11 @@
 
 -export([add/1]).
 -export([add/2]).
--export([remove/1]).
--export([get_router/1]).
+-export([shutdown/1]).
+-export([kill/1]).
+-export([get_routing/1]).
+-export([get_middleware_list/1]).
+-export([set_autocreate/1]).
 
 %% gen_server.
 -export([init/1]).
@@ -43,15 +51,46 @@
 -export([code_change/3]).
 
 
--ifdef(TEST).
--include_lib("eunit/include/eunit.hrl").
--endif.
-
-
 -record(state, {
 	ets=undefined,
   autocreate_realm = false
 }).
+
+
+
+
+-spec add(Name :: binary() ) -> ok | {error, Reason :: term() }.
+add(Name) ->
+  MW_List = get_env(erwa,router_middleware,[erwa_mw_default]),
+  add(Name,MW_List).
+
+-spec add(Name :: binary(), Middlewares :: [atom()] ) -> ok | {error, Reason :: term() }.
+add(Name, Middlewares) ->
+  gen_server:call(?MODULE, {start_realm,Name,Middlewares}).
+
+
+-spec kill(Name :: binary()) -> {ok, killing} | {error, Reason :: term()}.
+kill(Name) ->
+  gen_server:call(?MODULE, {kill_realm,Name}).
+
+-spec shutdown(Name :: binary()) -> {ok, shutting_down} | {error, Reason :: term()}.
+shutdown(Name) ->
+  gen_server:call(?MODULE, {shutdown_realm,Name}).
+
+
+-spec get_middleware_list(Name :: binary()) -> {ok, [atom()]} | {error,not_found}.
+get_middleware_list(Name) ->
+  gen_server:call(?MODULE, {get_middleware_list,Name}).
+
+-spec get_routing(Name :: binary()) -> {ok, Realm :: pid()} | {error,not_found}.
+get_routing(Name) ->
+  gen_server:call(?MODULE, {get_routing,Name}).
+
+-spec set_autocreate(boolean()) -> ok.
+set_autocreate(true) ->
+  gen_server:call(?MODULE, enable_autocreate);
+set_autocreate(false) ->
+  gen_server:call(?MODULE, disable_autocreate).
 
 
 
@@ -61,24 +100,9 @@ start() ->
 start_link() ->
   gen_server:start_link({local, ?MODULE}, ?MODULE, [], []).
 
--spec add(Name :: binary() ) -> ok.
-add(Name) ->
-  gen_server:call(?MODULE, {start_realm,Name}).
-
--spec add(Name :: binary(), Middleware :: atom() ) -> ok.
-add(Name, Middleware) ->
-  gen_server:call(?MODULE, {start_realm,Name,Middleware}).
-
--spec remove(Name :: binary()) -> {ok,not_running} | {ok, shutting_down}.
-remove(Name) ->
-  gen_server:call(?MODULE, {stop_realm,Name}).
-
--spec get_router(Name :: binary()) -> {ok, Router :: pid()} | {error,not_found}.
-get_router(Name) ->
-  gen_server:call(?MODULE, {get_router,Name}).
-
 stop() ->
   gen_server:call(?MODULE, {stop}).
+
 
   %% gen_server.
 
@@ -89,36 +113,31 @@ init([]) ->
 
 
 
-handle_call({start_realm,Name}, _From, State) ->
-  Middleware = get_env(erwa,router_middleware,erwa_mw_default),
-  {ok,_Pid} = create_new_realm(Name,Middleware,State),
-  {reply, ok, State};
 handle_call({start_realm,Name,Middleware}, _From, State) ->
-  {ok,_Pid} = create_new_realm(Name,Middleware,State),
-  {reply, ok, State};
-
-
-handle_call({stop_realm,Name}, _From, #state{ets=Ets}=State) ->
-  Reply =
-    case ets:lookup(Ets,Name) of
-        [] -> {ok,not_running};
-        [{Name,Pid}] ->
-          ok = erwa_router:shutdown(Pid),
-          {ok, shutting_down}
-    end,
-  {reply, Reply, State};
-
-handle_call({get_router,Name}, _From, #state{ets=Ets,autocreate_realm=AutoCreate}=State) ->
-  Result =
-    case {ets:lookup(Ets,Name),AutoCreate} of
-        {[],true} ->
-          Middleware = get_env(erwa,router_middleware,erwa_mw_default),
-          create_new_realm(Name,Middleware,State);
-        {[],_} -> {error,not_found};
-        {[{Name,Pid}],_} -> {ok,Pid}
-    end,
+  Result = create_new_realm(Name,Middleware,State),
   {reply, Result, State};
 
+handle_call({kill_realm,Name}, _From, State) ->
+  Reply = stop_realm({name,Name},kill,State),
+  {reply, Reply, State};
+
+handle_call({shutdown_realm,Name}, _From, State) ->
+  Reply = stop_realm({name,Name},shutdown,State),
+  {reply, Reply, State};
+
+handle_call({get_routing,Name}, _From, State) ->
+  Result = get_realm_data(routing,Name,State),
+  {reply, Result, State};
+
+handle_call({get_middleware_list,Name}, _From, State) ->
+  Result = get_realm_data(middleware,Name,State),
+  {reply, Result, State};
+
+
+handle_call(enable_autocreate, _From, State) ->
+	{reply, ok, State#state{autocreate_realm=true}};
+handle_call(disable_autocreate, _From, State) ->
+	{reply, ok, State#state{autocreate_realm=false}};
 handle_call({stop}, _From, State) ->
 	{stop,normal,{ok,stopped},State};
 
@@ -131,7 +150,7 @@ handle_cast(_Request, State) ->
 	{noreply, State}.
 
 handle_info({'DOWN',Ref,process,_Pid,_Reason},State) ->
-  remove_router(Ref,State),
+  _ = stop_realm({monitor,Ref},clean_up,State),
   {noreply,State};
 
 handle_info(_Info, State) ->
@@ -145,20 +164,66 @@ code_change(_OldVsn, State, _Extra) ->
 
 
 
--spec create_new_realm(Name :: binary(), Middleware :: atom(), State :: #state{}) -> {ok, Pid :: pid()}.
-create_new_realm(Name,Middleware,#state{ets=Ets}) ->
+-spec create_new_realm(Name :: binary(), MW_List :: [atom()], State :: #state{})
+    -> ok | {error,Reason :: term()}.
+
+create_new_realm(Name,MW_List,#state{ets=Ets}) ->
   case ets:lookup(Ets,Name) of
     [] ->
-      {ok,Pid} = supervisor:start_child(erwa_router_sup,[[{realm,Name},{middleware,Middleware}]]),
+      {ok,Pid} = erwa_routing_sup:start_routing(),
       Ref = monitor(process,Pid),
-      true = ets:insert_new(Ets,[{Name,Pid},{Ref,Name}]),
-      {ok,Pid};
-    [{Name,Pid}] ->
-      {ok,Pid}
+      true = ets:insert_new(Ets,[{Name,active,Pid,Ref,MW_List},{Ref,Name}]),
+      ok;
+    [{Name,active,_Pid,_Monitor,_MW_List}] ->
+      {error,already_exists};
+    [{Name,closing,_Pid,_Monitor,_MW_List}] ->
+      {error, shutting_down}
+  end.
+
+get_realm_data(Tag,Name,#state{ets=Ets, autocreate_realm=AC}=State) ->
+  case ets:lookup(Ets,Name) of
+    [{Name,active,Pid,_Ref,MW_List}] ->
+      case Tag of
+        middleware ->
+          {ok,MW_List};
+        routing ->
+          {ok,Pid}
+      end;
+    [{Name,_,_Pid,_Ref,_MW_List}] ->
+      {error, shutting_down};
+    [] ->
+      case AC of
+        true ->
+          MW_List = get_env(erwa,router_middleware,[erwa_mw_default]),
+          ok = create_new_realm(Name,MW_List,State),
+          get_realm_data(Tag,Name,State);
+        false ->
+          {error,not_found}
+      end
   end.
 
 
-remove_router(Ref,#state{ets=Ets}) ->
+stop_realm({name,Name},Type,#state{ets=Ets}) ->
+  case ets:lookup(Ets,Name) of
+        [{Name,RealmState,Pid,Ref,MW_List}] ->
+          case {Type,RealmState} of
+            {kill,_} ->
+              ets:delete(Ets,Ref),
+              ets:delete(Ets,Name),
+              demonitor(Ref,[flush]),
+              {ok,stopped} = erwa_routing:stop(Pid),
+              {ok, killed};
+            {shutdown,closing} ->
+              {ok, shutting_down};
+            {shutdown,_} ->
+              true = ets:insert(Ets,{Name,closing,Pid,Ref,MW_List}),
+              ok = erwa_routing:shutdown(Pid),
+              {ok,shutting_down}
+          end;
+        [] -> {error,not_running};
+        Res -> {error,Res}
+  end;
+stop_realm({monitor,Ref},clean_up,#state{ets=Ets}) ->
   case ets:lookup(Ets,Ref) of
     [] ->
       ok;
@@ -169,9 +234,10 @@ remove_router(Ref,#state{ets=Ets}) ->
   end.
 
 
-get_env(Application, Par, Def) when is_atom(Application), is_atom(Par) ->
-  case application:get_env(Application,Par) of
-    undefined -> Def;
+
+get_env(Application, Pararmeter, Default) when is_atom(Application), is_atom(Pararmeter) ->
+  case application:get_env(Application,Pararmeter) of
+    undefined -> Default;
     {ok, Value} -> Value
   end.
 
@@ -200,25 +266,58 @@ ensure_tablesize(Number,MaxTime) ->
   end.
 
 start_stop_test() ->
+  ?debugFmt("unit tests in ~p~n",[?MODULE]),
   {ok,_Pid} = start(),
+  {ok,stopped} = stop().
+
+environment_test() ->
+  application:set_env(erwa,router_middleware,[erwa_mw_allow]),
+  [erwa_mw_allow] = get_env(erwa,router_middleware,[erwa_mw_default]),
+  application:unset_env(erwa,router_middleware),
+  [erwa_mw_default] = get_env(erwa,router_middleware,[erwa_mw_default]).
+
+garbage_test() ->
+  {ok,Pid} = start(),
+  ignored = gen_server:call(?MODULE,some_garbage),
+  ok = gen_server:cast(?MODULE,some_garbage),
+  Pid ! some_garbage,
   {ok,stopped} = stop().
 
 add_remove_test() ->
   erwa_sup:start_link(),
-  Name = <<"com.doesnotexist.wamp">>,
+  Name1 = <<"com.doesnotexist.wamp">>,
+  Name2 = <<"com.doesnotexist.pamw">>,
+  MWL = [erwa_mw_allow],
+  set_autocreate(false),
   0 = get_tablesize(),
-  {error,not_found} = get_router(Name),
+  {error,not_found} = get_routing(Name1),
   0 = get_tablesize(),
-  {ok,not_running} = remove(Name),
+  {error,not_running} = kill(Name1),
   0 = get_tablesize(),
-  ok = add(Name),
+  ok = add(Name1),
   2 = get_tablesize(),
-  ok = add(Name),
+  {error,already_exists} = add(Name1),
   2 = get_tablesize(),
-  {ok,_Pid} = get_router(Name),
-  {ok,shutting_down} = remove(Name),
+  ok = add(Name2,MWL),
+  4 = get_tablesize(),
+  {ok,_} = get_routing(Name1),
+  {ok,_} = get_middleware_list(Name1),
+  {ok,_} = get_routing(Name2),
+  {ok,killed} = kill(Name1),
+  ok = ensure_tablesize(2,5000),
+  {error,not_found} = get_routing(Name1),
+  {ok,shutting_down} = shutdown(Name2),
   ok = ensure_tablesize(0,5000),
+  {error,not_found} = get_routing(Name2),
+  set_autocreate(true),
+  {ok,_} = get_routing(Name1),
+  set_autocreate(false),
+  2 = get_tablesize(),
+  {ok,killed} = kill(Name1),
+  ok = ensure_tablesize(0,5000),
+  timeout = ensure_tablesize(5,10),
   {ok,stopped} = stop().
+
 
 
 

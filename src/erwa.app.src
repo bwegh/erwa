@@ -33,7 +33,8 @@
 	{applications, [
 		kernel,
 		stdlib,
-    wamper
+    wamper,
+    crypto
 	]},
 	{mod, {erwa_app, []}},
 	{env, []}
