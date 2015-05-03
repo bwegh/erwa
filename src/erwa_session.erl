@@ -201,7 +201,7 @@ hndl_msg(_Msg,_State) ->
 
 
 hndl_msg_authed({subscribe,RequestId,Options,Topic},#state{broker=Broker}=State) ->
-  {ok,SubscriptionId} = erwa_broker:subscribe(Topic,Options,Broker),
+  {ok,SubscriptionId} = erwa_broker:subscribe(Topic,Options,State,Broker),
   {reply, {subscribed,RequestId,SubscriptionId}, State };
 
 hndl_msg_authed({unsubscribe,RequestId,SubscriptionId},#state{broker=Broker}=State) ->

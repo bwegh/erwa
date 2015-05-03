@@ -31,12 +31,15 @@
 
 
 %% API
--export([subscribe/3]).
+-export([subscribe/4]).
 -export([unsubscribe/2]).
 -export([unsubscribe_all/1]).
 -export([publish/6]).
 
 -export([get_features/1]).
+
+-export([enable_metaevents/1]).
+-export([disable_metaevents/1]).
 
 %% gen_server
 -export([init/1]).
@@ -77,7 +80,8 @@
                }).
 
 -record(state, {
-                ets = none
+                ets = none,
+                meta_events = enabled
                 }).
 
 
@@ -93,6 +97,7 @@
 
 -record(pid_info, {
                      pid = none,
+                     id = unknown,
                      topics = []
                      }).
 
@@ -106,11 +111,21 @@ start_link() ->
 get_data(Pid) ->
    gen_server:call(Pid, get_data).
 
--spec subscribe(Topic::binary(),Options::map(),Data::record(data)) -> {ok, non_neg_integer()}.
-subscribe(Topic,Options,#data{pid=Pid}) ->
-  gen_server:call(Pid, {subscribe,Topic,Options} ).
 
--spec unsubscribe(SubscriptionId::non_neg_integer(),Data::record(data)) -> ok | {error, Reason::term()}.
+-spec enable_metaevents( pid() ) -> ok.
+enable_metaevents( Pid ) ->
+  gen_server:call(Pid,enable_metaevents).
+
+-spec disable_metaevents( pid() ) -> ok.
+disable_metaevents( Pid ) ->
+  gen_server:call(Pid,disable_metaevents).
+
+
+-spec subscribe(Topic::binary(),Options::map(), Session :: term(), Data::record(data)) -> {ok, non_neg_integer()}.
+subscribe(Topic,Options,Session,#data{pid=Pid}) ->
+  gen_server:call(Pid, {subscribe,Topic,Options,Session} ).
+
+-spec unsubscribe(SubscriptionId::non_neg_integer(), Data::record(data)) -> ok | {error, Reason::term()}.
 unsubscribe(SubscriptionId,#data{pid=Pid}) ->
   gen_server:call(Pid, {unsubscribe,SubscriptionId} ).
 
@@ -161,8 +176,8 @@ init([]) ->
 	{ok, #state{ets=Ets}}.
 
 
-handle_call({subscribe,TopicUri,Options}, {Pid, _Ref}, State) ->
-  Result = subscribe(Pid,TopicUri,Options,State),
+handle_call({subscribe,TopicUri,Options,Session}, {Pid, _Ref}, State) ->
+  Result = subscribe(Pid,TopicUri,Options,Session,State),
 	{reply,Result,State};
 handle_call({unsubscribe,SubscriptionId}, {Pid, _Ref}, State) ->
   Result = unsubscribe(SubscriptionId,Pid,State),
@@ -172,6 +187,10 @@ handle_call(unsubscribe_all, {Pid, _Ref}, #state{ets=_Ets} = State) ->
 	{reply,Result,State};
 handle_call(get_data, _From, #state{ets=Ets} = State) ->
 	{reply,{ok,#data{ets=Ets, pid=self()}},State};
+handle_call(enable_metaevents, _From, State) ->
+  {reply,ok,State#state{meta_events=enabled}};
+handle_call(disable_metaevents, _From, State) ->
+  {reply,ok,State#state{meta_events=disabled}};
 handle_call(stop, _From, State) ->
 	{stop,normal,{ok,stopped},State};
 handle_call(Request, From, State) ->
@@ -193,9 +212,9 @@ code_change(_OldVsn, State, _Extra) ->
 
 
 
--spec subscribe(Pid:: pid(),TopicUri :: binary(), Options :: list(), State :: record(state)) ->
+-spec subscribe(Pid:: pid(),TopicUri :: binary(), Options :: list(), Session::term(), State :: record(state)) ->
   {ok, ID::non_neg_integer()} | {error, Reason :: term()}.
-subscribe(Pid,TopicUri,Options,#state{ets=Ets}=State) ->
+subscribe(Pid,TopicUri,Options,Session,#state{ets=Ets}=State) ->
   Match =
     case lists:keyfind(match,1,Options) of
       {match, M} ->
@@ -209,16 +228,17 @@ subscribe(Pid,TopicUri,Options,#state{ets=Ets}=State) ->
     wildcard ->
       {error,not_supported};
     not_used ->
-      ok = add_topic_to_pid(TopicUri,Pid,State),
-      case ets:lookup(Ets,TopicUri) of
-        [#topic{id=SubscriptionId,subscribers=Subs}=T] ->
-          NewSubs = [Pid|lists:delete(Pid,Subs)],
-          ets:insert(Ets,T#topic{subscribers=NewSubs}),
-          {ok,SubscriptionId};
-        [] ->
-          {ok,SubscriptionId} = create_topic(TopicUri,[Pid],State),
-          {ok,SubscriptionId}
-      end
+      SubscriptionId = case ets:lookup(Ets,TopicUri) of
+                         [#topic{id=SID,subscribers=Subs}=T] ->
+                           NewSubs = [Pid|lists:delete(Pid,Subs)],
+                           ets:insert(Ets,T#topic{subscribers=NewSubs}),
+                           SID;
+                         [] ->
+                           {ok,SID} = create_topic(TopicUri,[Pid],State),
+                           SID
+                       end,
+      ok = add_topic_to_pid(TopicUri,Pid,Session,State),
+      {ok,SubscriptionId}
   end.
 
 -spec unsubscribe(IdOrTopic :: non_neg_integer() | binary(), Pid :: pid(), State :: record(state)) ->
@@ -240,6 +260,7 @@ unsubscribe(TopicUri,Pid,#state{ets=Ets}=State) when is_binary(TopicUri) ->
       ok = remove_topic_from_pid(TopicUri,Pid,State),
       true = ets:delete(Ets,SubscriptionId),
       true = ets:delete(Ets,TopicUri),
+      publish_metaevent({on_delete,TopicUri,SubscriptionId},State),
       ok;
     {true,NewSubs} ->
       ok = remove_topic_from_pid(TopicUri,Pid,State),
@@ -267,36 +288,62 @@ create_topic(Uri,Pids,#state{ets=Ets}=State) ->
   ID = gen_id(),
   case ets:insert_new(Ets,[#id_topic{id=ID,topic=Uri},#topic{uri=Uri,id=ID,subscribers=Pids}]) of
     true ->
+      publish_metaevent({on_create,Uri,ID},State),
       {ok,ID};
     false ->
       create_topic(Uri,Pids,State)
   end.
 
-add_topic_to_pid(Topic,Pid,#state{ets=Ets}) ->
-  case ets:lookup(Ets,Pid) of
-    [#pid_info{topics=Topics} = PT] ->
-      true = ets:insert(Ets,PT#pid_info{topics=[Topic|lists:delete(Topic,Topics)]}),
-      ok;
-    [] ->
-      PT = #pid_info{pid=Pid,topics=[Topic]},
-      true = ets:insert_new(Ets,PT),
-      ok
-  end.
+add_topic_to_pid(Topic,Pid,Session,#state{ets=Ets}=State) ->
+  SessionId = erwa_session:get_id(Session),
+  ok = case ets:lookup(Ets,Pid) of
+         [#pid_info{topics=Topics} = PT] ->
+           true = ets:insert(Ets,PT#pid_info{topics=[Topic|lists:delete(Topic,Topics)]}),
+           ok;
+         [] ->
+           PT = #pid_info{pid=Pid,id=SessionId,topics=[Topic]},
+           true = ets:insert_new(Ets,PT),
+           ok
+       end,
+  publish_metaevent({on_subscribe,Topic,SessionId},State).
 
 
-remove_topic_from_pid(Topic,Pid,#state{ets=Ets}) ->
-  [#pid_info{topics=Topics} = PT] = ets:lookup(Ets,Pid),
+remove_topic_from_pid(Topic,Pid,#state{ets=Ets}=State) ->
+  [#pid_info{topics=Topics,id=SessionId} = PT] = ets:lookup(Ets,Pid),
   case lists:delete(Topic,Topics) of
     [] ->
       true = ets:delete(Ets,Pid);
     NewTopics ->
       true = ets:insert(Ets,PT#pid_info{topics=NewTopics})
   end,
-  ok.
+  publish_metaevent({on_unsubscribe,Topic,SessionId},State).
 
 gen_id() ->
   crypto:rand_uniform(0,9007199254740992).
 
+publish_metaevent(_,#state{meta_events=disabled}) ->
+  ok;
+% no meta_events on meta stuff ...
+publish_metaevent({_,<<"wamp.subscription.on_create">>,_},_) ->
+  ok;
+publish_metaevent({_,<<"wamp.subscription.on_delete">>,_},_) ->
+  ok;
+publish_metaevent({_,<<"wamp.subscription.on_subscribe">>,_},_) ->
+  ok;
+publish_metaevent({_,<<"wamp.subscription.on_unsubscribe">>,_},_) ->
+  ok;
+publish_metaevent({on_create,Uri,Id},#state{ets=Ets}) ->
+  {ok,_} = publish(<<"wamp.subscription.on_create">>,[],[],[{<<"uri">>,Uri},{<<"id">>,Id}],no_session,#data{ets=Ets}),
+  ok;
+publish_metaevent({on_delete,Uri,Id},#state{ets=Ets}) ->
+  {ok,_} = publish(<<"wamp.subscription.on_delete">>,[],[],[{<<"uri">>,Uri},{<<"id">>,Id}],no_session,#data{ets=Ets}),
+  ok;
+publish_metaevent({on_subscribe,Uri,SessionId},#state{ets=Ets}) ->
+  {ok,_} = publish(<<"wamp.subscription.on_subscribe">>,[],[],[{<<"uri">>,Uri},{<<"session">>,SessionId}],no_session,#data{ets=Ets}),
+  ok;
+publish_metaevent({on_unsubscribe,Uri,SessionId},#state{ets=Ets}) ->
+  {ok,_} = publish(<<"wamp.subscription.on_unsubscribe">>,[],[],[{<<"uri">>,Uri},{<<"session">>,SessionId}],no_session,#data{ets=Ets}),
+  ok.
 
 
 -ifdef(TEST).
@@ -308,6 +355,7 @@ start_stop_test() ->
   {ok,Pid} = start(),
   {ok,Data} = get_data(Pid),
   0 = get_tablesize(Data),
+  ok = enable_metaevents(Pid),
   {ok,stopped} = stop(Data).
 
 features_test() ->
@@ -319,10 +367,12 @@ features_test() ->
 un_subscribe_test() ->
   {ok,Pid} = start(),
   {ok,Data} = get_data(Pid),
+  ok = disable_metaevents(Pid),
+  Session = erwa_session:create(),
   0 = get_tablesize(Data),
-  {ok,ID1} = subscribe(<<"topic.test1">>,[],Data),
+  {ok,ID1} = subscribe(<<"topic.test1">>,[],Session,Data),
   3 = get_tablesize(Data),
-  {ok,ID2} = subscribe(<<"topic.test2">>,[],Data),
+  {ok,ID2} = subscribe(<<"topic.test2">>,[],Session,Data),
   5 = get_tablesize(Data),
   ok = unsubscribe(ID1,Data),
   3 = get_tablesize(Data),
@@ -336,12 +386,14 @@ un_subscribe_test() ->
 unsubscribe_all_test() ->
   {ok,Pid} = start(),
   {ok,Data} = get_data(Pid),
+  ok = disable_metaevents(Pid),
+  Session = erwa_session:create(),
   0 = get_tablesize(Data),
   ok = unsubscribe_all(Data),
   0 = get_tablesize(Data),
-  {ok,ID1} = subscribe(<<"topic.test1">>,[],Data),
+  {ok,ID1} = subscribe(<<"topic.test1">>,[],Session,Data),
   3 = get_tablesize(Data),
-  {ok,ID2} = subscribe(<<"topic.test2">>,[],Data),
+  {ok,ID2} = subscribe(<<"topic.test2">>,[],Session,Data),
   5 = get_tablesize(Data),
   ok = unsubscribe_all(Data),
   0 = get_tablesize(Data),
@@ -357,19 +409,22 @@ unsubscribe_all_test() ->
 multiple_un_subscribe_test() ->
   {ok,Pid} = start(),
   {ok,Data} = get_data(Pid),
+  ok = disable_metaevents(Pid),
+  Session = erwa_session:create(),
   0 = get_tablesize(Data),
-  {ok,ID1} = subscribe(<<"topic.test1">>,[],Data),
+  {ok,ID1} = subscribe(<<"topic.test1">>,[],Session,Data),
   3 = get_tablesize(Data),
-  {ok,ID2} = subscribe(<<"topic.test2">>,[],Data),
+  {ok,ID2} = subscribe(<<"topic.test2">>,[],Session,Data),
   5 = get_tablesize(Data),
   MyPid = self(),
   F = fun() ->
-        {ok,ID3} = erwa_broker:subscribe(<<"topic.test1">>,[],Data),
+        S2 = erwa_session:create(),
+        {ok,ID3} = erwa_broker:subscribe(<<"topic.test1">>,[],S2,Data),
         MyPid ! {first_subscription,ID3},
         receive
         after 200 -> ok
         end,
-        {ok,ID4} = erwa_broker:subscribe(<<"topic.test2">>,[],Data),
+        {ok,ID4} = erwa_broker:subscribe(<<"topic.test2">>,[],S2,Data),
         MyPid ! {second_subscription,ID4},
         receive
         after 200 -> ok
@@ -405,12 +460,15 @@ publish_test() ->
   {ok,_} = erwa_publications:start(),
   {ok,Pid} = start(),
   {ok,Data} = get_data(Pid),
-  {ok,ID} = erwa_broker:subscribe(<<"topic.test1">>,[],Data),
+  ok = disable_metaevents(Pid),
+  Session = erwa_session:create(),
+  {ok,ID} = erwa_broker:subscribe(<<"topic.test1">>,[],Session,Data),
 
   Session = erwa_session:create(),
   MyPid = self(),
   F = fun() ->
-        {ok,ID} = erwa_broker:subscribe(<<"topic.test1">>,[],Data),
+        S2 = erwa_session:create(),
+        {ok,ID} = erwa_broker:subscribe(<<"topic.test1">>,[],S2,Data),
         MyPid ! subscribed,
         receive
           {erwa,{event,ID,PubId,[],undefined,undefined}} ->
