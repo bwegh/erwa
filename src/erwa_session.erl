@@ -165,7 +165,7 @@ hndl_msg({hello,RealmName,_Details},#state{version=Version}=State) ->
       {ok,MWL} = erwa_realms:get_middleware_list(RealmName),
       BrokerFeat = erwa_broker:get_features(Broker),
       DealerFeat = erwa_dealer:get_features(Dealer),
-      State1 = State#state{mwl=MWL,realm_name=RealmName, routing_pid=RoutingPid, is_auth=true, dealer=Dealer, broker=Broker},
+      State1 = State#state{id=SessionId,mwl=MWL,realm_name=RealmName, routing_pid=RoutingPid, is_auth=true, dealer=Dealer, broker=Broker},
       Msg ={welcome,SessionId,[{agent,Version},{roles,[BrokerFeat,DealerFeat]}]},
       {reply,Msg,State1};
     {_,{error,not_found}} ->
