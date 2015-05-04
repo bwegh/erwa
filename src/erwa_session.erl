@@ -61,6 +61,8 @@
 
                 goodbye_sent = false,
 
+                calls = [],
+
                 invocation_id = 1,
                 invocations = []
                 }).
@@ -228,10 +230,10 @@ hndl_msg_authed({unregister,RequestId,RegistrationId},#state{dealer=Dealer} = St
   ok = erwa_dealer:unregister(RegistrationId,Dealer),
   {reply,{unregistered,RequestId} ,State};
 
-hndl_msg_authed({call,RequestId,Options,ProcedureUri,Arguments,ArgumentsKw},#state{dealer=Dealer}=State) ->
+hndl_msg_authed({call,RequestId,Options,ProcedureUri,Arguments,ArgumentsKw},#state{dealer=Dealer,calls=Calls}=State) ->
   case erwa_dealer:call(ProcedureUri,RequestId,Options,Arguments,ArgumentsKw,Dealer) of
-    ok ->
-      {ok,State};
+    {ok,Pid} ->
+      {ok,State#state{calls=[{RequestId,Pid}|Calls]}};
     {error,procedure_not_found} ->
       {reply, {error,call,RequestId,[],no_such_procedure}, State};
     {error,_} ->
@@ -273,11 +275,11 @@ hndl_info({invocation,set_request_id,ProcedureId,Options,Arguments,ArgumentsKw},
   NewState = State#state{invocations=[{ID,Pid}|Invs],invocation_id=ID+1},
   {send,{invocation,ID,ProcedureId,Options1,Arguments,ArgumentsKw},NewState};
 
-hndl_info({result,_,_,_,_}=Msg,State) ->
-  {send,Msg,State};
+hndl_info({result,CallRequestId,_,_,_}=Msg,#state{calls=Calls}=State) ->
+  {send,Msg,State#state{calls=lists:keydelete(CallRequestId,1,Calls)}};
 
-hndl_info({error,call,_,_,_,_,_}=Msg,State) ->
-  {send,Msg,State};
+hndl_info({error,call,CallRequestId,_,_,_,_}=Msg,#state{calls=Calls}=State) ->
+  {send,Msg,State#state{calls=lists:keydelete(CallRequestId,1,Calls)}};
 
 hndl_info({event,_,_,_,_,_}=Msg,State) ->
   {send,Msg,State};
