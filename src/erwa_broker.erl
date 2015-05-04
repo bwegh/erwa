@@ -64,7 +64,7 @@
                                       {publication_trustlevels,false},
                                       {publisher_exclusion,true},
                                       {publisher_identification,true},
-                                      {subscriber_blackwhite_listing,false},
+                                      {subscriber_blackwhite_listing,true},
                                       {subscriber_list,false},
                                       {subscriber_metaevents,false}
                                     ]}
@@ -140,7 +140,7 @@ publish(TopicUri,Options,Arguments,ArgumentsKw,Session,#data{ets=Ets}) ->
   case ets:lookup(Ets,TopicUri) of
     [#topic{subscribers=Subs,id=SubscriptionId}] ->
       {ok,PublicationID} = erwa_publications:get_pub_id(),
-      Receipients = case lists:keyfind(exclude_me,1,Options) of
+      Receipients1 = case lists:keyfind(exclude_me,1,Options) of
                       {exclude_me,false} ->
                         Subs;
                       _ ->
@@ -150,11 +150,31 @@ publish(TopicUri,Options,Arguments,ArgumentsKw,Session,#data{ets=Ets}) ->
                   {disclose_me,true} -> [{publisher,erwa_session:get_id(Session)}];
                   _ -> []
                 end,
+      Receipients2 = case lists:keyfind(exclude,1,Options) of
+                  {exclude,ToExclude} ->
+                    ExcludeFilter = fun(Pid) ->
+                                      [#pid_info{id=SessionId}] = ets:lookup(Ets,Pid),
+                                      not lists:member(SessionId,ToExclude)
+                                    end,
+                    lists:filter(ExcludeFilter,Receipients1);
+                  _ ->
+                    Receipients1
+                end,
+      Receipients3 = case lists:keyfind(eligible,1,Options) of
+                  {eligible,ToEligible} ->
+                    EligibleFilter = fun(Pid) ->
+                                      [#pid_info{id=SessionId}] = ets:lookup(Ets,Pid),
+                                      lists:member(SessionId,ToEligible)
+                                    end,
+                    lists:filter(EligibleFilter,Receipients2);
+                  _ ->
+                    Receipients2
+                end,
       DoSend = fun(Pid) ->
                Pid ! {erwa,{event,SubscriptionId,PublicationID,Details,Arguments,ArgumentsKw}},
                false
              end,
-      [] = lists:filter(DoSend,Receipients),
+      [] = lists:filter(DoSend,Receipients3),
       {ok,PublicationID};
     [] ->
       {ok,gen_id()}
@@ -462,7 +482,6 @@ publish_test() ->
   ok = disable_metaevents(Pid),
   Session = erwa_session:create(),
   {ok,ID} = erwa_broker:subscribe(<<"topic.test1">>,[],Session,Data),
-
   Session = erwa_session:create(),
   MyPid = self(),
   F = fun() ->
@@ -481,10 +500,126 @@ publish_test() ->
   receive
     subscribed -> ok
   end,
-  {ok,PublicationID} = publish(<<"topic.test1">>,[],undefined,undefined,Session,Data),
+  {ok,PublicationID1} = publish(<<"topic.test1">>,[],undefined,undefined,Session,Data),
   receive
-    {received,PublicationID} -> ok
+    {received,PublicationID1} -> ok
   end,
+  {ok,PublicationID2} = publish(<<"topic.test1">>,[{exclude_me,false}],undefined,undefined,Session,Data),
+  ok = receive
+         {erwa,{event,ID,PublicationID2,[],undefined,undefined}} ->
+           ok
+       end,
+  {ok,stopped} = stop(Data),
+  {ok,stopped} = erwa_publications:stop().
+
+
+exclude_test() ->
+  {ok,_} = erwa_publications:start(),
+  {ok,Pid} = start(),
+  {ok,Data} = get_data(Pid),
+  ok = disable_metaevents(Pid),
+  SessionId1 = gen_id(),
+  SessionId2 = gen_id(),
+  Session = erwa_session:set_id(SessionId1,erwa_session:create()),
+  {ok,ID} = erwa_broker:subscribe(<<"topic.test1">>,[],Session,Data),
+  MyPid = self(),
+  F = fun() ->
+        S2 = erwa_session:set_id(SessionId2,erwa_session:create()),
+        {ok,ID} = erwa_broker:subscribe(<<"topic.test1">>,[],S2,Data),
+        MyPid ! subscribed,
+        Received  = receive
+                      {erwa,{event,ID,_,[],undefined,undefined}} ->
+                        true;
+                      got_something ->
+                        MyPid ! nothing,
+                        false
+                    end,
+        case Received of
+          true ->
+            receive
+              {got_something} ->
+                MyPid ! yes_got_it
+            end;
+          false ->
+            ok
+        end,
+        ok = erwa_broker:unsubscribe_all(Data),
+        MyPid ! done,
+        ok
+      end,
+  ClientPid = spawn(F),
+  receive
+    subscribed -> ok
+  end,
+  {ok,PubID} = publish(<<"topic.test1">>,[{exclude_me,false},{exclude,[SessionId2]}],undefined,undefined,Session,Data),
+  ok = receive
+         {erwa,{event,ID,PubID,[],undefined,undefined}} ->
+           ok
+       end,
+  receive
+    after 100 -> ok
+  end,
+  ClientPid ! got_something,
+  ok = receive
+         nothing -> ok;
+         yes_got_it -> wrong
+       end,
+  {ok,stopped} = stop(Data),
+  {ok,stopped} = erwa_publications:stop().
+
+
+
+eligible_test() ->
+  {ok,_} = erwa_publications:start(),
+  {ok,Pid} = start(),
+  {ok,Data} = get_data(Pid),
+  ok = disable_metaevents(Pid),
+  SessionId1 = gen_id(),
+  SessionId2 = gen_id(),
+  Session = erwa_session:set_id(SessionId1,erwa_session:create()),
+  {ok,ID} = erwa_broker:subscribe(<<"topic.test1">>,[],Session,Data),
+  MyPid = self(),
+  F = fun() ->
+        S2 = erwa_session:set_id(SessionId2,erwa_session:create()),
+        {ok,ID} = erwa_broker:subscribe(<<"topic.test1">>,[],S2,Data),
+        MyPid ! subscribed,
+        Received  = receive
+                      {erwa,{event,ID,_,[],undefined,undefined}} ->
+                        true;
+                      got_something ->
+                        MyPid ! nothing,
+                        false
+                    end,
+        case Received of
+          true ->
+            receive
+              {got_something} ->
+                MyPid ! yes_got_it
+            end;
+          false ->
+            ok
+        end,
+        ok = erwa_broker:unsubscribe_all(Data),
+        MyPid ! done,
+        ok
+      end,
+  ClientPid = spawn(F),
+  receive
+    subscribed -> ok
+  end,
+  {ok,PubID} = publish(<<"topic.test1">>,[{exclude_me,false},{eligible,[SessionId1]}],undefined,undefined,Session,Data),
+  ok = receive
+         {erwa,{event,ID,PubID,[],undefined,undefined}} ->
+           ok
+       end,
+  receive
+    after 100 -> ok
+  end,
+  ClientPid ! got_something,
+  ok = receive
+         nothing -> ok;
+         yes_got_it -> wrong
+       end,
   {ok,stopped} = stop(Data),
   {ok,stopped} = erwa_publications:stop().
 

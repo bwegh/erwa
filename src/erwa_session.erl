@@ -24,6 +24,7 @@
 
 -ifdef(TEST).
 -include_lib("eunit/include/eunit.hrl").
+-export([set_id/2]).
 -endif.
 
 -export([create/0]).
@@ -306,3 +307,11 @@ close_session(#state{broker=Broker,dealer=Dealer,routing_pid=RoutingPid}) ->
   ok = erwa_routing:disconnect(RoutingPid),
   ok = erwa_sessions:unregister_session(),
   ok.
+
+-ifdef(TEST).
+
+set_id(Id,State) ->
+  State#state{id=Id}.
+
+
+-endif.
