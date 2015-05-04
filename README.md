@@ -40,12 +40,12 @@ Erwa has the following features:
      * Messages
      * Feature Announcement
      * Agent Identification
-     * Challenge Response Authentication (Database needs to be implemented by user)
-  * NOT yet supported
-     * LongPoll Transport
      * Subscriber Black-and Whitelisting
      * Publisher Exclusion
      * Publisher Identification
+     * Challenge Response Authentication (Database needs to be implemented by user)
+  * NOT yet supported
+     * LongPoll Transport
      * Progressive Call Results
      * Cancelling Calls
      * Caller Identification
