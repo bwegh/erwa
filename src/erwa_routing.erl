@@ -100,7 +100,7 @@ init([]) ->
   {ok,BrokerPid} =erwa_broker:start_link(),
   {ok,Broker} = erwa_broker:get_data(BrokerPid),
 
-  {ok,DealerPid} =erwa_dealer:start_link(),
+  {ok,DealerPid} =erwa_dealer:start_link(#{broker=>Broker}),
   {ok,Dealer} = erwa_dealer:get_data(DealerPid),
 	{ok, #state{con_ets=Ets, broker=Broker, dealer=Dealer}}.
 

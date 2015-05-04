@@ -205,7 +205,6 @@ hndl_msg_authed({subscribe,RequestId,Options,Topic},#state{broker=Broker}=State)
   {reply, {subscribed,RequestId,SubscriptionId}, State };
 
 hndl_msg_authed({unsubscribe,RequestId,SubscriptionId},#state{broker=Broker}=State) ->
-  io:format("broker = ~p ~n",[Broker]),
   ok = erwa_broker:unsubscribe(SubscriptionId,Broker),
   {reply, {unsubscribed,RequestId},State};
 
@@ -221,7 +220,7 @@ hndl_msg_authed({publish,RequestId,Options,Topic,Arguments,ArgumentsKw},#state{b
 
 
 hndl_msg_authed({register,RequestId,Options,ProcedureUri},#state{dealer=Dealer}=State) ->
-  {ok,RegistrationId} = erwa_dealer:register(ProcedureUri,Options,Dealer),
+  {ok,RegistrationId} = erwa_dealer:register(ProcedureUri,Options,State,Dealer),
   {reply,{registered,RequestId,RegistrationId},State};
 
 hndl_msg_authed({unregister,RequestId,RegistrationId},#state{dealer=Dealer} = State) ->

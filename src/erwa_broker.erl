@@ -193,8 +193,7 @@ handle_call(disable_metaevents, _From, State) ->
   {reply,ok,State#state{meta_events=disabled}};
 handle_call(stop, _From, State) ->
 	{stop,normal,{ok,stopped},State};
-handle_call(Request, From, State) ->
-  io:format("unknown message ~p from ~p ~n",[Request,From]),
+handle_call(_Request, _sFrom, State) ->
 	{reply, ignored, State}.
 
 
