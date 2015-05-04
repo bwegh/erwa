@@ -131,7 +131,7 @@ unregister_all( #data{pid=Pid}) ->
 
 -spec call(Uri :: binary(), RequestId :: non_neg_integer(), Options :: list(),
            Arguments :: list(), ArgumentsKw :: list(), Data :: #data{}) ->
-  ok | {error,invocation_failed} | {error, procedure_not_found}.
+  {ok, pid()} | {error,invocation_failed} | {error, procedure_not_found}.
 call(Uri, RequestId, Options, Arguments, ArgumentsKw, #data{ets=Ets}) ->
   case ets:lookup(Ets,Uri) of
     [#procedure{uri=Uri,pids=Pids,id=ID}] ->
@@ -144,8 +144,8 @@ call(Uri, RequestId, Options, Arguments, ArgumentsKw, #data{ets=Ets}) ->
                    callee_pids => Pids
                    },
       case erwa_invocation_sup:start_invocation(CallInfo) of
-        {ok, _ } ->
-          ok;
+        {ok,Pid} ->
+          {ok,Pid};
         _ -> {error,invocation_failed}
       end;
     [] ->
@@ -513,7 +513,7 @@ call_test() ->
   A = gen_id(),
   B = gen_id(),
   C = A+B,
-  ok = erwa_dealer:call(<<"proc.sum">>, RequestId, [], [A,B], undefined,Data),
+  {ok,_} = erwa_dealer:call(<<"proc.sum">>, RequestId, [], [A,B], undefined,Data),
   ok = receive
          {erwa,{result, RequestId, [], [C], undefined}} -> ok
        end,
