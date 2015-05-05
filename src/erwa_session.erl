@@ -50,6 +50,7 @@
                 realm_name = none,
                 mwl = [],
                 version = none,
+                client_roles = unknown,
 
                 routing_pid = none,
                 broker = none,
@@ -156,11 +157,12 @@ check_out_message(Msg,State) ->
 
 
 
-hndl_msg({hello,RealmName,_Details},#state{version=Version}=State) ->
+hndl_msg({hello,RealmName,Details},#state{version=Version}=State) ->
   % Todo: middleware check
   MWResult = true,
-  case {MWResult,erwa_realms:get_routing(RealmName)} of
-    {true,{ok, RoutingPid}} ->
+  R = lists:keyfind(roles,1,Details),
+  case {MWResult,erwa_realms:get_routing(RealmName),R} of
+    {true,{ok, RoutingPid},{roles,Roles}} ->
       {ok, SessionId} = erwa_sessions:register_session(),
       ok = erwa_routing:connect(RoutingPid),
       {ok,Broker} = erwa_routing:get_broker(RoutingPid),
@@ -168,13 +170,14 @@ hndl_msg({hello,RealmName,_Details},#state{version=Version}=State) ->
       {ok,MWL} = erwa_realms:get_middleware_list(RealmName),
       BrokerFeat = erwa_broker:get_features(Broker),
       DealerFeat = erwa_dealer:get_features(Dealer),
-      State1 = State#state{id=SessionId,mwl=MWL,realm_name=RealmName, routing_pid=RoutingPid, is_auth=true, dealer=Dealer, broker=Broker},
+      State1 = State#state{id=SessionId,mwl=MWL,realm_name=RealmName, routing_pid=RoutingPid,
+                           is_auth=true, dealer=Dealer, broker=Broker, client_roles=Roles},
       Msg ={welcome,SessionId,[{agent,Version},{roles,[BrokerFeat,DealerFeat]}]},
       {reply,Msg,State1};
-    {_,{error,not_found}} ->
+    {_,{error,not_found},_} ->
       Msg = {abort,[],no_such_realm},
       {reply_stop,Msg,State};
-    {false, _ } ->
+    {false, _, _} ->
       Msg = {abort,[],not_authorized},
       {reply_stop,Msg,State}
   end;
@@ -290,6 +293,18 @@ hndl_info({invocation,set_request_id,ProcedureId,Options,Arguments,ArgumentsKw},
   Options1 = lists:keydelete(invocation_pid,1,Options),
   NewState = State#state{invocations=[{ID,Pid}|Invs],invocation_id=ID+1},
   {send,{invocation,ID,ProcedureId,Options1,Arguments,ArgumentsKw},NewState};
+
+hndl_info({interrupt,set_request_id,Options},#state{invocations=Invs, client_roles=Roles}=State) ->
+  {invocation_pid,Pid} = lists:keyfind(invocation_pid,1,Options),
+  {InvocationId,Pid} = lists:keyfind(Pid,2,Invs),
+  [callee,Features] = lists:keyfind(callee,1,Roles),
+  case lists:keyfind(call_canceling,1,Features) of
+    {call_canceling,true} ->
+      {send,{interrupt,InvocationId,lists:keydelete(invocation_pid,1,Options)},State};
+    _ ->
+      ok = erwa_invocation:error(Pid,[],canceled,undefined,undefined),
+      {ok,State#state{invocations=lists:keydelete(InvocationId,1,Invs)}}
+  end;
 
 hndl_info({result,CallRequestId,_,_,_}=Msg,#state{calls=Calls}=State) ->
   {send,Msg,State#state{calls=lists:keydelete(CallRequestId,1,Calls)}};

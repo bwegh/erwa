@@ -60,6 +60,7 @@
                 canceled = false
                 }).
 
+
 start(Args) ->
   gen_server:start(?MODULE, Args, []).
 
@@ -87,8 +88,8 @@ init(Args) ->
                 procedure_id=ProcedureId,
                 call_arguments=Arguments,
                 call_argumentskw=ArgumentsKw} = State} ->
-      send_message_to({invocation,set_request_id,ProcedureId,[{invocation_pid,self()}],Arguments,ArgumentsKw},Callees),
-      {ok, State};
+                  send_message_to({invocation,set_request_id,ProcedureId,[{invocation_pid,self()}],Arguments,ArgumentsKw},Callees),
+                  {ok, State};
     {error,Reason} ->
       {stop,Reason}
   end.
@@ -130,7 +131,9 @@ handle_cast(_Request, State) ->
 	{noreply, State}.
 
 
-
+handle_info(automatic_cancel, #state{callee_pids=Callees} = State) ->
+  send_message_to({interrupt,set_request_id,[{invocation_pid,self()}]},Callees),
+  {noreply, State#state{canceled=true}};
 handle_info(_Info, State) ->
 	{noreply, State}.
 
@@ -162,13 +165,17 @@ check_and_create_state(Args) ->
                    callee_pids = Callees
                    },
     %% TODO check the options passed
+
+
     case length(Callees) of
       0 ->
         {error, no_callees};
       1 ->
+        set_timeout_if_needed(Args),
         {ok, State};
       _ ->
         %multiple callees
+        %set_timeout_if_needed(Args),
         %{ok, State}
         % error for now
         {error,multiple_callees}
@@ -178,6 +185,10 @@ check_and_create_state(Args) ->
   end.
 
 
+set_timeout_if_needed(#{timeout := Timeout}) when Timeout > 0 ->
+  timer:send_after(Timeout,automatic_cancel);
+set_timeout_if_needed(_) ->
+  ok.
 
 -spec send_message_to(Msg :: term(), Peer :: list() | pid()) -> ok.
 send_message_to(Msg,Pid) when is_pid(Pid) ->
