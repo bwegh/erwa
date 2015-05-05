@@ -48,13 +48,14 @@
 
 -record(state, {
                 procedure_id = unknown,
-                call_req_id = none,
-                caller_pid = none,
+                call_req_id = unknown,
+                caller_pid = unknown,
+                caller_id = unknown,
                 call_options = [],
                 call_arguments = undefined,
                 call_argumentskw = undefined,
 
-                invocation_id = none,
+                invocation_id = unknown,
                 callee_pids = [],
                 results = [],
                 canceled = false
@@ -85,10 +86,19 @@ error(Pid,Details,ErrorUri,Arguments,ArgumentsKw) ->
 init(Args) ->
   case check_and_create_state(Args) of
     {ok, #state{callee_pids=Callees,
+                caller_id=CallerId,
+                call_options = COptions,
                 procedure_id=ProcedureId,
                 call_arguments=Arguments,
                 call_argumentskw=ArgumentsKw} = State} ->
-                  send_message_to({invocation,set_request_id,ProcedureId,[{invocation_pid,self()}],Arguments,ArgumentsKw},Callees),
+                  OutOptions = [{invocation_pid,self()}],
+                  NewOptions = case lists:keyfind(disclose_me,1,COptions) of
+                                 {disclose_me,true} ->
+                                   [{caller,CallerId}|OutOptions];
+                                 _ ->
+                                   OutOptions
+                               end,
+                  send_message_to({invocation,set_request_id,ProcedureId,NewOptions,Arguments,ArgumentsKw},Callees),
                   {ok, State};
     {error,Reason} ->
       {stop,Reason}
@@ -148,6 +158,7 @@ check_and_create_state(Args) ->
   try
     #{procedure_id := ProcedureId,
       caller_pid := CallerPid,
+      caller_id :=CallerId,
       call_req_id := RequestId,
       call_options := Options,
       call_arguments := Arguments,
@@ -159,6 +170,7 @@ check_and_create_state(Args) ->
                    procedure_id = ProcedureId,
                    call_req_id = RequestId,
                    caller_pid = CallerPid,
+                   caller_id = CallerId,
                    call_options = Options,
                    call_arguments = Arguments,
                    call_argumentskw = ArgumentsKw,
@@ -217,13 +229,14 @@ flush() ->
 call_result_test() ->
   flush(),
   CallInfo = #{procedure_id => 123,
-                   caller_pid => self(),
-                   call_req_id => 124,
-                   call_options => [],
-                   call_arguments => [1,4],
-                   call_argumentskw => [{}],
-                   callee_pids => [self()]
-                   },
+               caller_pid => self(),
+               caller_id => 2393874,
+               call_req_id => 124,
+               call_options => [],
+               call_arguments => [1,4],
+               call_argumentskw => [{}],
+               callee_pids => [self()]
+               },
   {ok,Pid} = start(CallInfo),
   monitor(process,Pid),
 
@@ -244,13 +257,14 @@ call_result_test() ->
 call_error_test() ->
   flush(),
   CallInfo = #{procedure_id => 123,
-                   caller_pid => self(),
-                   call_req_id => 124,
-                   call_options => [],
-                   call_arguments => [1,4],
-                   call_argumentskw => [{}],
-                   callee_pids => [self()]
-                   },
+               caller_pid => self(),
+               caller_id => 2393874,
+               call_req_id => 124,
+               call_options => [],
+               call_arguments => [1,4],
+               call_argumentskw => [{}],
+               callee_pids => [self()]
+               },
   {ok,Pid} = start(CallInfo),
   monitor(process,Pid),
 
@@ -270,31 +284,34 @@ call_error_test() ->
 
 failed_init_test() ->
   CallInfo1 = #{procedure_id => 123,
-               caller_pid => self(),
-               call_req_id => 124,
-               call_options => [],
-               call_arguments => [1,4],
-               call_argumentskw => [{}],
-               callee_pids => []
-               },
+                caller_pid => self(),
+                caller_id => 2393874,
+                call_req_id => 124,
+                call_options => [],
+                call_arguments => [1,4],
+                call_argumentskw => [{}],
+                callee_pids => []
+                },
   {error,no_callees} = start(CallInfo1),
   CallInfo2 = #{procedure_id => 123,
-               caller_pid => self(),
-               call_req_id => 124,
-               call_options => [],
-               call_arguments => [1,4],
-               call_argumentskw => [{}],
-               callee_pids => [self(),self()]
-               },
+                caller_pid => self(),
+                caller_id => 2393874,
+                call_req_id => 124,
+                call_options => [],
+                call_arguments => [1,4],
+                call_argumentskw => [{}],
+                callee_pids => [self(),self()]
+                },
   {error,multiple_callees} = start(CallInfo2),
   CallInfo3 = #{procedure_id => 123,
-               % caller_pid => self(),
-               call_req_id => 124,
-               call_options => [],
-               call_arguments => [1,4],
-               call_argumentskw => [{}],
-               callee_pids => [self()]
-               },
+                % caller_pid => self(),
+                caller_id => 2393874,
+                call_req_id => 124,
+                call_options => [],
+                call_arguments => [1,4],
+                call_argumentskw => [{}],
+                callee_pids => [self()]
+                },
   {error,{badmatch,_}} = start(CallInfo3),
   ok.
 
@@ -302,6 +319,7 @@ failed_init_test() ->
 garbage_test() ->
   CallInfo = #{procedure_id => 123,
                caller_pid => self(),
+               caller_id => 2393874,
                call_req_id => 124,
                call_options => [],
                call_arguments => [1,4],

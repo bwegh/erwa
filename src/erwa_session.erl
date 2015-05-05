@@ -234,7 +234,7 @@ hndl_msg_authed({unregister,RequestId,RegistrationId},#state{dealer=Dealer} = St
   {reply,{unregistered,RequestId} ,State};
 
 hndl_msg_authed({call,RequestId,Options,ProcedureUri,Arguments,ArgumentsKw},#state{dealer=Dealer,calls=Calls}=State) ->
-  case erwa_dealer:call(ProcedureUri,RequestId,Options,Arguments,ArgumentsKw,Dealer) of
+  case erwa_dealer:call(ProcedureUri,RequestId,Options,Arguments,ArgumentsKw,State,Dealer) of
     {ok,Pid} ->
       {ok,State#state{calls=[{RequestId,Pid}|Calls]}};
     {error,procedure_not_found} ->

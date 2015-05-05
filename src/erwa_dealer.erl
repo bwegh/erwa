@@ -34,7 +34,7 @@
 -export([unregister/2]).
 -export([unregister_all/1]).
 
--export([call/6]).
+-export([call/7]).
 
 -export([get_features/1]).
 
@@ -60,15 +60,15 @@
 
 
 -define(FEATURES,{dealer,[{features,[
-                                      {call_canceling,false},
-                                      {call_timeout,false},
-                                      {call_trustlevels,false},
-                                      {callee_blackwhite_listing,false},
-                                      {caller_exclusion,false},
-                                      {caller_identification,false},
-                                      {partitioned_rpc,false},
-                                      {pattern_based_registration,false},
-                                      {progressive_call_results,false}
+                                     {call_canceling,             true},
+                                     {call_timeout,               true},
+                                     {call_trustlevels,           false},
+                                     {callee_blackwhite_listing,  false},
+                                     {caller_exclusion,           false},
+                                     {caller_identification,      false},
+                                     {partitioned_rpc,            false},
+                                     {pattern_based_registration, false},
+                                     {progressive_call_results,   true}
                                      ]
                            }]
                   }
@@ -130,13 +130,14 @@ unregister_all( #data{pid=Pid}) ->
    gen_server:call(Pid, unregister_all).
 
 -spec call(Uri :: binary(), RequestId :: non_neg_integer(), Options :: list(),
-           Arguments :: list(), ArgumentsKw :: list(), Data :: #data{}) ->
+           Arguments :: list(), ArgumentsKw :: list(), Session::term(), Data :: #data{}) ->
   {ok, pid()} | {error,invocation_failed} | {error, procedure_not_found}.
-call(Uri, RequestId, Options, Arguments, ArgumentsKw, #data{ets=Ets}) ->
+call(Uri, RequestId, Options, Arguments, ArgumentsKw, Session, #data{ets=Ets}) ->
   case ets:lookup(Ets,Uri) of
     [#procedure{uri=Uri,pids=Pids,id=ID}] ->
       CallInfo = #{procedure_id => ID,
                    caller_pid => self(),
+                   caller_id => erwa_session:get_id(Session),
                    call_req_id => RequestId,
                    call_options => Options,
                    call_arguments => Arguments,
@@ -513,7 +514,7 @@ call_test() ->
   A = gen_id(),
   B = gen_id(),
   C = A+B,
-  {ok,_} = erwa_dealer:call(<<"proc.sum">>, RequestId, [], [A,B], undefined,Data),
+  {ok,_} = call(<<"proc.sum">>, RequestId, [], [A,B], undefined,Session,Data),
   ok = receive
          {erwa,{result, RequestId, [], [C], undefined}} -> ok
        end,
