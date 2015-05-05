@@ -241,6 +241,22 @@ hndl_msg_authed({call,RequestId,Options,ProcedureUri,Arguments,ArgumentsKw},#sta
       {reply, {error,call,RequestId,[],no_such_procedure}, State}
   end;
 
+hndl_msg_authed({cancel,RequestId,Options},#state{calls=Calls}=State) ->
+  case lists:keyfind(RequestId,1,Calls) of
+    {RequestId,Pid} ->
+      ok = erwa_invocation:cancel(Pid,Options),
+      {reply,{error,call,RequestId,[],canceled},State#state{calls=lists:keydelete(RequestId,1,Calls)}};
+
+    false ->
+      {reply, {error,call,RequestId,[],no_such_procedure}, State};
+    {error,_} ->
+      %% TODO: change the reply for eg partitioned calls
+      {reply, {error,call,RequestId,[],no_such_procedure}, State}
+  end;
+
+
+
+
 hndl_msg_authed({error,invocation,InvocationId,Details,Error,Arguments,ArgumentsKw},#state{invocations=Invs}=State) ->
   case lists:keyfind(InvocationId,1,Invs) of
     {InvocationId,Pid} ->
