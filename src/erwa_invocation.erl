@@ -29,6 +29,7 @@
 
 
 %% API
+-export([cancel/2]).
 -export([yield/4]).
 -export([error/5]).
 
@@ -55,7 +56,8 @@
 
                 invocation_id = none,
                 callee_pids = [],
-                results = []
+                results = [],
+                canceled = false
                 }).
 
 start(Args) ->
@@ -70,11 +72,14 @@ stop(Pid) ->
   %% gen_server.
 
 
+cancel(Pid,Options) ->
+  gen_server:call(Pid,{cancel,Options}).
+
 yield(Pid,Options,Arguments,ArgumentsKw) ->
-  gen_server:cast(Pid,{yield,Options,Arguments,ArgumentsKw}).
+  gen_server:cast(Pid,{yield,Options,Arguments,ArgumentsKw,self()}).
 
 error(Pid,Details,ErrorUri,Arguments,ArgumentsKw) ->
-  gen_server:cast(Pid,{error,Details,ErrorUri,Arguments,ArgumentsKw}).
+  gen_server:cast(Pid,{error,Details,ErrorUri,Arguments,ArgumentsKw,self()}).
 
 init(Args) ->
   case check_and_create_state(Args) of
@@ -89,20 +94,38 @@ init(Args) ->
   end.
 
 
+handle_call({cancel,_Options},_From, #state{canceled=false, callee_pids=Callees}=State) ->
+  send_message_to({interrupt,set_request_id,[{invocation_pid,self()}]},Callees),
+  {reply,ok,State#state{canceled=true}};
 handle_call(stop, _From, State) ->
 	{stop,normal,{ok,stopped},State};
 handle_call(_Request, _From, State) ->
 	{reply, ignored, State}.
 
 
-handle_cast({yield,_Options,Arguments,ArgumentsKw}, #state{caller_pid=Pid,call_req_id=RequestId}=State) ->
-  %% TODO: implement advanced stuff
-  send_message_to({result, RequestId, [], Arguments, ArgumentsKw},Pid),
-  {stop,normal,State};
-handle_cast({error,Details,ErrorUri,Arguments,ArgumentsKw},#state{caller_pid=Pid,call_req_id=RequestId}=State) ->
-  %% TODO: implement advanced stuff
+
+handle_cast({yield,Options,Arguments,ArgumentsKw,CalleePid}, #state{caller_pid=Pid,call_req_id=RequestId,callee_pids=Callees}=State) ->
+  case lists:keyfind(progress,1,Options) of
+    {progress,true} ->
+      send_message_to({result, RequestId, [{progress,true}], Arguments, ArgumentsKw},Pid),
+      {noreply,State};
+    _ ->
+      send_message_to({result, RequestId, [], Arguments, ArgumentsKw},Pid),
+      case lists:delete(CalleePid,Callees) of
+        [] ->
+          {stop,normal,State#state{callee_pids=[]}};
+        NewCallees ->
+          {noreply,State#state{callee_pids=NewCallees}}
+      end
+  end;
+handle_cast({error,Details,ErrorUri,Arguments,ArgumentsKw,CalleePid},#state{caller_pid=Pid,call_req_id=RequestId, callee_pids=Callees}=State) ->
   send_message_to({error, call, RequestId, Details, ErrorUri, Arguments, ArgumentsKw},Pid),
-  {stop,normal,State};
+  case lists:delete(CalleePid,Callees) of
+    [] ->
+      {stop,normal,State#state{callee_pids=[]}};
+    NewCallees ->
+      {noreply,State#state{callee_pids=NewCallees}}
+  end;
 handle_cast(_Request, State) ->
 	{noreply, State}.
 
