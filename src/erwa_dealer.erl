@@ -52,7 +52,6 @@
 %% internal
 -export([start/0]).
 -export([start/1]).
--export([start_link/0]).
 -export([start_link/1]).
 -export([stop/1]).
 
@@ -161,8 +160,6 @@ get_features(#data{features = F}) ->
 start() ->
   gen_server:start(?MODULE, #{broker => unknown}, []).
 
-start_link() ->
-  gen_server:start_link(?MODULE, #{broker => unknown}, []).
 
 start(Args) ->
   gen_server:start(?MODULE, Args, []).
@@ -372,6 +369,13 @@ features_test() ->
   timeout = ensure_tablesize(1,Data,0),
   {ok,stopped} = stop(Data).
 
+set_metaevents_test() ->
+  {ok,Pid} = start(),
+  {ok,Data} = get_data(Pid),
+  enable_metaevents(Pid),
+  disable_metaevents(Pid),
+  {ok,stopped} = stop(Data).
+
 un_register_test() ->
   {ok,Pid} = start(),
   {ok,Data} = get_data(Pid),
@@ -500,6 +504,53 @@ call_test() ->
                                  end,
         ok = erwa_invocation:yield(InvocationPid,[],[A+B],undefined),
         ok = erwa_dealer:unregister_all(Data),
+        ok
+      end,
+  CPid = spawn(F),
+  monitor(process,CPid),
+  ok = receive
+         subscribed -> ok
+       end,
+  RequestId = gen_id(),
+  A = gen_id(),
+  B = gen_id(),
+  C = A+B,
+  {ok,InvocationPid} = call(<<"proc.sum">>, RequestId, [], [A,B], undefined,Session,Data),
+  monitor(process, InvocationPid),
+  ok = receive
+         {erwa,{result, RequestId, [], [C], undefined}} -> ok
+       end,
+
+  ok = receive
+           {'DOWN',_,process,CPid,normal} ->
+             ok
+           end,
+  ok = receive
+         {'DOWN',_,process,InvocationPid,_} ->
+           ok
+       end,
+  ok.
+
+
+caller_identification_test() ->
+  erwa_invocation_sup:start_link(),
+  {ok,Pid} = start(),
+  {ok,Data} = get_data(Pid),
+  Session = erwa_session:set_id(gen_id(),erwa_session:create()),
+
+  MyPid = self(),
+  F = fun() ->
+        {ok,ProcId} = erwa_dealer:register(<<"proc.sum">>,[],Session,Data),
+        MyPid ! subscribed,
+        SessionId = erwa_session:get_id(Session),
+        {ok,A,B,InOptions} = receive
+                                   {erwa,{invocation,set_request_id,ProcId,Opts,[In1,In2],undefined}} ->
+                                     {ok,In1,In2,Opts}
+                                 end,
+        {caller,SessionId} = lists:keyfind(caller,1,InOptions),
+        {invocation_pid,InvocationPid} = lists:keyfind(invocation_pid,1,InOptions),
+        ok = erwa_invocation:yield(InvocationPid,[],[A+B],undefined),
+        ok = erwa_dealer:unregister_all(Data),
         receive
           after 100 ->
             MyPid ! done
@@ -514,15 +565,120 @@ call_test() ->
   A = gen_id(),
   B = gen_id(),
   C = A+B,
-  {ok,_} = call(<<"proc.sum">>, RequestId, [], [A,B], undefined,Session,Data),
+  {ok,InvocationPid} = call(<<"proc.sum">>, RequestId, [{disclose_me,true}], [A,B], undefined,Session,Data),
+  monitor(process, InvocationPid),
   ok = receive
          {erwa,{result, RequestId, [], [C], undefined}} -> ok
+       end,
+  ok = receive
+         {'DOWN',_,process,InvocationPid,_} ->
+           ok
        end,
   ok = receive
          done -> ok
        end,
   ok.
 
+
+call_cancel_test() ->
+  erwa_invocation_sup:start_link(),
+  {ok,Pid} = start(),
+  {ok,Data} = get_data(Pid),
+  Session = erwa_session:set_id(gen_id(),erwa_session:create()),
+
+  MyPid = self(),
+  F = fun() ->
+        {ok,ProcId} = erwa_dealer:register(<<"proc.sum">>,[],Session,Data),
+        MyPid ! subscribed,
+        {ok,InOptions} = receive
+                           {erwa,{invocation,set_request_id,ProcId,Opts,_,_}} ->
+                             {ok,Opts}
+                         end,
+        {invocation_pid,InvocationPid} = lists:keyfind(invocation_pid,1,InOptions),
+        ok = receive
+               {erwa,{interrupt,set_request_id,[{invocation_pid,InvocationPid}]}} ->
+                 ok
+             end,
+        ok = erwa_invocation:error(InvocationPid,[],canceled,undefined,undefined),
+        ok = erwa_dealer:unregister_all(Data),
+        receive
+          after 100 ->
+            MyPid ! done
+        end,
+        ok
+      end,
+  spawn(F),
+  ok = receive
+         subscribed -> ok
+       end,
+  RequestId = gen_id(),
+  A = gen_id(),
+  B = gen_id(),
+  C = A+B,
+  {ok,InvocationPid} = call(<<"proc.sum">>, RequestId, [], [A,B], undefined,Session,Data),
+  monitor(process, InvocationPid),
+  receive
+    after 100 ->
+      ok
+  end,
+  erwa_invocation:cancel(InvocationPid,[]),
+  ok = receive
+         {erwa,{error,call,_,_,_,_,_}} -> ok
+       end,
+  ok = receive
+         {'DOWN',_,process,InvocationPid,_} ->
+           ok
+       end,
+  ok = receive
+         done -> ok
+       end,
+  ok.
+
+
+call_progressive_test() ->
+  erwa_invocation_sup:start_link(),
+  {ok,Pid} = start(),
+  {ok,Data} = get_data(Pid),
+  Session = erwa_session:set_id(gen_id(),erwa_session:create()),
+
+  MyPid = self(),
+  F = fun() ->
+        {ok,ProcId} = erwa_dealer:register(<<"proc.sum">>,[],Session,Data),
+        MyPid ! subscribed,
+        {ok,InOptions} = receive
+                           {erwa,{invocation,set_request_id,ProcId,Opts,_,_}} ->
+                             {ok,Opts}
+                         end,
+        {invocation_pid,InvocationPid} = lists:keyfind(invocation_pid,1,InOptions),
+        ok = erwa_invocation:yield(InvocationPid,[{progress,true}],[234],undefined),
+        receive
+          after 50 ->
+            ok
+        end,
+        ok = erwa_invocation:yield(InvocationPid,[],[567],undefined),
+        ok = erwa_dealer:unregister_all(Data),
+        ok
+      end,
+  spawn(F),
+  ok = receive
+         subscribed -> ok
+       end,
+  RequestId = gen_id(),
+  A = gen_id(),
+  B = gen_id(),
+  {ok,InvocationPid} = call(<<"proc.sum">>, RequestId, [{receive_progress,true}], [A,B], undefined,Session,Data),
+  monitor(process, InvocationPid),
+  ok = receive
+         {erwa,{result, RequestId, [{progress,true}], [234], undefined}} -> ok
+       end,
+  ok = receive
+         {erwa,{result, RequestId, [], [567], undefined}} -> ok
+       end,
+  ok = receive
+         {'DOWN',_,process,InvocationPid,_} ->
+           ok
+       end,
+  ok.
 
 garbage_test() ->
   {ok,Pid} = start(),

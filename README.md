@@ -43,10 +43,10 @@ Erwa has the following features:
      * Subscriber Black-and Whitelisting
      * Publisher Exclusion
      * Publisher Identification
-     * Progressive Call Results (beta)
-     * Cancelling Calls (beta)
-     * Call Timeouts (beta)
-     * Caller Identification (beta)
+     * Progressive Call Results
+     * Cancelling Calls
+     * Call Timeouts
+     * Caller Identification
   * NOT yet supported
      * LongPoll Transport
      * Challenge Response Authentication (Database needs to be implemented by user)
