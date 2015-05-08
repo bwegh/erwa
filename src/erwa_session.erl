@@ -207,7 +207,7 @@ hndl_msg(_Msg,_State) ->
 
 
 hndl_msg_authed({subscribe,RequestId,Options,Topic},#state{broker=Broker}=State) ->
-  {ok,SubscriptionId} = erwa_broker:subscribe(Topic,Options,State,Broker),
+  {ok,SubscriptionId} = erwa_broker:subscribe(Topic,maps:from_list(Options),State,Broker),
   {reply, {subscribed,RequestId,SubscriptionId}, State };
 
 hndl_msg_authed({unsubscribe,RequestId,SubscriptionId},#state{broker=Broker}=State) ->
@@ -215,7 +215,7 @@ hndl_msg_authed({unsubscribe,RequestId,SubscriptionId},#state{broker=Broker}=Sta
   {reply, {unsubscribed,RequestId},State};
 
 hndl_msg_authed({publish,RequestId,Options,Topic,Arguments,ArgumentsKw},#state{broker=Broker}=State) ->
-  {ok,PublicationId} = erwa_broker:publish(Topic,Options,Arguments,ArgumentsKw,State,Broker),
+  {ok,PublicationId} = erwa_broker:publish(Topic,maps:from_list(Options),Arguments,ArgumentsKw,State,Broker),
   case lists:keyfind(acknowledge,1,Options) of
     {acknowledge,true} ->
       {reply,{published,RequestId,PublicationId},State};
@@ -312,8 +312,8 @@ hndl_info({result,CallRequestId,_,_,_}=Msg,#state{calls=Calls}=State) ->
 hndl_info({error,call,CallRequestId,_,_,_,_}=Msg,#state{calls=Calls}=State) ->
   {send,Msg,State#state{calls=lists:keydelete(CallRequestId,1,Calls)}};
 
-hndl_info({event,_,_,_,_,_}=Msg,State) ->
-  {send,Msg,State};
+hndl_info({event,SubscriptionId,PublicationId,Details,Arguments,ArgumentsKw},State) ->
+  {send,{event,SubscriptionId,PublicationId,maps:to_list(Details),Arguments,ArgumentsKw},State};
 
 hndl_info(routing_closing,#state{goodbye_sent=GBsent}=State) ->
   Msg = {goodbye,[],close_realm},
