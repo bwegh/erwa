@@ -297,7 +297,7 @@ hndl_info({invocation,set_request_id,ProcedureId,Options,Arguments,ArgumentsKw},
 hndl_info({interrupt,set_request_id,Options},#state{invocations=Invs, client_roles=Roles}=State) ->
   Pid = maps:get(invocation_pid,Options),
   {InvocationId,Pid} = lists:keyfind(Pid,2,Invs),
-  Features = maps:get(features,maps:get(callee,Roles)),
+  Features = maps:get(features,maps:get(callee,Roles),#{}),
   case maps:get(call_canceling,Features,false) of
     true ->
       {send,{interrupt,InvocationId,lists:keydelete(invocation_pid,1,Options)},State};
