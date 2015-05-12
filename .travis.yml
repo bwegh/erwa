@@ -2,8 +2,9 @@ language: erlang
 notifications:
   email: false
 otp_release:
+   - 17.5
+   - 17.4
    - 17.3
    - 17.1
-   - 17.0
 install: true
 script: "make eunit && make ct-connect && make ct-roundtrip"
