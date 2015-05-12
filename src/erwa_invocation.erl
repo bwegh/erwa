@@ -93,10 +93,10 @@ init(Args) ->
                 procedure_id=ProcedureId,
                 call_arguments=Arguments,
                 call_argumentskw=ArgumentsKw} = State} ->
-                  OutOptions = [{invocation_pid,self()}],
-                  NewOptions = case lists:keyfind(disclose_me,1,COptions) of
-                                 {disclose_me,true} ->
-                                   [{caller,CallerId}|OutOptions];
+                  OutOptions = #{invocation_pid => self()},
+                  NewOptions = case maps:get(disclose_me,COptions,false) of
+                                 true ->
+                                   maps:put(caller,CallerId,OutOptions);
                                  _ ->
                                    OutOptions
                                end,
@@ -119,15 +119,15 @@ handle_call(_Request, _From, State) ->
 
 handle_cast({yield,Options,Arguments,ArgumentsKw,CalleePid},
             #state{caller_pid=Pid,call_req_id=RequestId,callee_pids=Callees, progressive=Progressive}=State) ->
-  case {lists:keyfind(progress,1,Options),Progressive} of
-    {{progress,true},true} ->
-      send_message_to({result, RequestId, [{progress,true}], Arguments, ArgumentsKw},Pid),
+  case {maps:get(progress,Options,false),Progressive} of
+    {true,true} ->
+      send_message_to({result, RequestId, #{progress => true}, Arguments, ArgumentsKw},Pid),
       {noreply,State};
-    {{progress,true},false} ->
-      send_message_to({error,call, RequestId, [], <<"erwa.missbehaving_callee">>, undefined, undefined},Pid),
+    {true,false} ->
+      send_message_to({error,call, RequestId, #{}, <<"erwa.missbehaving_callee">>, undefined, undefined},Pid),
       {stop,normal,State};
     _ ->
-      send_message_to({result, RequestId, [], Arguments, ArgumentsKw},Pid),
+      send_message_to({result, RequestId, #{}, Arguments, ArgumentsKw},Pid),
       case lists:delete(CalleePid,Callees) of
         [] ->
           {stop,normal,State#state{callee_pids=[]}};
@@ -135,8 +135,8 @@ handle_cast({yield,Options,Arguments,ArgumentsKw,CalleePid},
           {noreply,State#state{callee_pids=NewCallees}}
       end
   end;
-handle_cast({error,Details,ErrorUri,Arguments,ArgumentsKw,CalleePid},#state{caller_pid=Pid,call_req_id=RequestId, callee_pids=Callees}=State) ->
-  send_message_to({error, call, RequestId, Details, ErrorUri, Arguments, ArgumentsKw},Pid),
+handle_cast({error,_Details,ErrorUri,Arguments,ArgumentsKw,CalleePid},#state{caller_pid=Pid,call_req_id=RequestId, callee_pids=Callees}=State) ->
+  send_message_to({error, call, RequestId, #{}, ErrorUri, Arguments, ArgumentsKw},Pid),
   case lists:delete(CalleePid,Callees) of
     [] ->
       {stop,normal,State#state{callee_pids=[]}};
@@ -165,7 +165,7 @@ code_change(_OldVsn, State, _Extra) ->
 do_cancel(#state{canceled=true}=State) ->
   State;
 do_cancel(#state{callee_pids=Callees}=State) ->
-  send_message_to({interrupt,set_request_id,[{invocation_pid,self()}]},Callees),
+  send_message_to({interrupt,set_request_id,#{invocation_pid => self()}},Callees),
   timer:send_after(?CANCEL_TIMEOUT,shutdown),
   State#state{canceled=true}.
 
@@ -183,15 +183,10 @@ check_and_create_state(Args) ->
       callee_pids := Callees
       } = Args,
 
-    Progressive = case lists:keyfind(receive_progress,1,Options) of
-                    {receive_progress,true} ->
-                      true;
-                    _ ->
-                      false
-                  end,
+    Progressive = maps:get(receive_progress,Options,false),
 
-    case lists:keyfind(timeout,1,Options) of
-      {timeout,Timeout} when Timeout > 0 ->
+    case maps:get(timeout,Options,0) of
+      Timeout when Timeout > 0 ->
         timer:send_after(Timeout,automatic_cancel);
       _ ->
         ok
@@ -264,20 +259,20 @@ call_result_test() ->
                caller_pid => self(),
                caller_id => 2393874,
                call_req_id => 124,
-               call_options => [],
+               call_options => #{},
                call_arguments => [1,4],
-               call_argumentskw => [{}],
+               call_argumentskw => #{},
                callee_pids => [self()]
                },
   {ok,Pid} = start(CallInfo),
   monitor(process,Pid),
 
   ok = receive
-         {erwa,{invocation,set_request_id,123,[{invocation_pid,Pid}],[1,4],[{}] }} -> ok
+         {erwa,{invocation,set_request_id,123,#{invocation_pid := Pid},[1,4],_}} -> ok
        end,
-  ok = yield(Pid,[],[5],undefined),
+  ok = yield(Pid,#{},[5],undefined),
   ok = receive
-         {erwa,{result, 124, [], [5], undefined}} -> ok
+         {erwa,{result, 124, #{}, [5], undefined}} -> ok
        end,
   ok = receive
          {'DOWN', _, process, Pid, _ } -> ok
@@ -292,20 +287,20 @@ call_error_test() ->
                caller_pid => self(),
                caller_id => 2393874,
                call_req_id => 124,
-               call_options => [],
+               call_options => #{},
                call_arguments => [1,4],
-               call_argumentskw => [{}],
+               call_argumentskw => #{},
                callee_pids => [self()]
                },
   {ok,Pid} = start(CallInfo),
   monitor(process,Pid),
 
   ok = receive
-         {erwa,{invocation,set_request_id,123,[{invocation_pid,Pid}],[1,4],[{}] }} -> ok
+         {erwa,{invocation,set_request_id,123,#{invocation_pid := Pid},[1,4],_ }} -> ok
        end,
-  ok = error(Pid,[{one,error}],<<"bad.error">>,undefined,undefined),
+  ok = error(Pid,#{one => error},<<"bad.error">>,undefined,undefined),
   ok = receive
-         {erwa,{error,call, 124, [{one,error}],<<"bad.error">>,undefined,undefined}} -> ok
+         {erwa,{error,call, 124, #{},<<"bad.error">>,undefined,undefined}} -> ok
        end,
   ok = receive
          {'DOWN', _, process, Pid, _ } -> ok
@@ -320,24 +315,24 @@ cancel_test() ->
                caller_pid => self(),
                caller_id => 2393874,
                call_req_id => 124,
-               call_options => [],
+               call_options => #{},
                call_arguments => [1,4],
-               call_argumentskw => [{}],
+               call_argumentskw => #{},
                callee_pids => [self()]
                },
   {ok,Pid} = start(CallInfo),
   monitor(process,Pid),
 
   ok = receive
-         {erwa,{invocation,set_request_id,123,[{invocation_pid,Pid}],[1,4],[{}] }} -> ok
+         {erwa,{invocation,set_request_id,123,#{invocation_pid := Pid},[1,4],_ }} -> ok
        end,
-  ok = cancel(Pid,[]),
+  ok = cancel(Pid,#{}),
   ok = receive
-         {erwa,{interrupt,_,[{invocation_pid,Pid}]}} -> ok
+         {erwa,{interrupt,_,#{invocation_pid := Pid}}} -> ok
        end,
-  ok = error(Pid,[{one,error}],canceled,undefined,undefined),
+  ok = error(Pid,#{},canceled,undefined,undefined),
   ok = receive
-         {erwa,{error,call, 124, [{one,error}],canceled,undefined,undefined}} -> ok
+         {erwa,{error,call, 124, #{},canceled,undefined,undefined}} -> ok
        end,
   ok = receive
          {'DOWN', _, process, Pid, _ } -> ok
@@ -350,19 +345,19 @@ timeout_test() ->
                caller_pid => self(),
                caller_id => 2393874,
                call_req_id => 124,
-               call_options => [{timeout,100}],
+               call_options => #{timeout => 100},
                call_arguments => [1,4],
-               call_argumentskw => [{}],
+               call_argumentskw => #{},
                callee_pids => [self()]
                },
   {ok,Pid} = start(CallInfo),
   monitor(process,Pid),
 
   ok = receive
-         {erwa,{invocation,set_request_id,123,[{invocation_pid,Pid}],[1,4],[{}] }} -> ok
+         {erwa,{invocation,set_request_id,123,#{invocation_pid := Pid},[1,4],_ }} -> ok
        end,
   ok = receive
-         {erwa,{interrupt,_,[{invocation_pid,Pid}]}} -> ok
+         {erwa,{interrupt,_,#{invocation_pid := Pid}}} -> ok
        end,
   ok = error(Pid,[{one,error}],canceled,undefined,undefined),
   ok = receive
@@ -380,9 +375,9 @@ failed_init_test() ->
                 caller_pid => self(),
                 caller_id => 2393874,
                 call_req_id => 124,
-                call_options => [],
+                call_options => #{},
                 call_arguments => [1,4],
-                call_argumentskw => [{}],
+                call_argumentskw => #{},
                 callee_pids => []
                 },
   {error,no_callees} = start(CallInfo1),
@@ -390,9 +385,9 @@ failed_init_test() ->
                 caller_pid => self(),
                 caller_id => 2393874,
                 call_req_id => 124,
-                call_options => [],
+                call_options => #{},
                 call_arguments => [1,4],
-                call_argumentskw => [{}],
+                call_argumentskw => #{},
                 callee_pids => [self(),self()]
                 },
   {error,multiple_callees} = start(CallInfo2),
@@ -400,9 +395,9 @@ failed_init_test() ->
                 % caller_pid => self(),
                 caller_id => 2393874,
                 call_req_id => 124,
-                call_options => [],
+                call_options => #{},
                 call_arguments => [1,4],
-                call_argumentskw => [{}],
+                call_argumentskw => #{},
                 callee_pids => [self()]
                 },
   {error,{badmatch,_}} = start(CallInfo3),
@@ -414,9 +409,9 @@ garbage_test() ->
                caller_pid => self(),
                caller_id => 2393874,
                call_req_id => 124,
-               call_options => [],
+               call_options => #{},
                call_arguments => [1,4],
-               call_argumentskw => [{}],
+               call_argumentskw => #{},
                callee_pids => [self()]
                },
   {ok,Pid} = start(CallInfo),

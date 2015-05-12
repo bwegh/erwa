@@ -160,9 +160,9 @@ check_out_message(Msg,State) ->
 hndl_msg({hello,RealmName,Details},#state{version=Version}=State) ->
   % Todo: middleware check
   MWResult = true,
-  R = lists:keyfind(roles,1,Details),
+  R = maps:get(roles,Details),
   case {MWResult,erwa_realms:get_routing(RealmName),R} of
-    {true,{ok, RoutingPid},{roles,Roles}} ->
+    {true,{ok, RoutingPid},Roles} ->
       {ok, SessionId} = erwa_sessions:register_session(),
       ok = erwa_routing:connect(RoutingPid),
       {ok,Broker} = erwa_routing:get_broker(RoutingPid),
@@ -172,13 +172,13 @@ hndl_msg({hello,RealmName,Details},#state{version=Version}=State) ->
       DealerFeat = erwa_dealer:get_features(Dealer),
       State1 = State#state{id=SessionId,mwl=MWL,realm_name=RealmName, routing_pid=RoutingPid,
                            is_auth=true, dealer=Dealer, broker=Broker, client_roles=Roles},
-      Msg ={welcome,SessionId,[{agent,Version},{roles,[BrokerFeat,DealerFeat]}]},
+      Msg ={welcome,SessionId,#{agent => Version, roles => #{broker => BrokerFeat, dealer => DealerFeat}}},
       {reply,Msg,State1};
     {_,{error,not_found},_} ->
-      Msg = {abort,[],no_such_realm},
+      Msg = {abort,#{},no_such_realm},
       {reply_stop,Msg,State};
     {false, _, _} ->
-      Msg = {abort,[],not_authorized},
+      Msg = {abort,#{},not_authorized},
       {reply_stop,Msg,State}
   end;
 
@@ -192,7 +192,7 @@ hndl_msg({goodbye,_Details,_Reason},#state{goodbye_sent=GBSent}=State) ->
     true ->
       {stop,#state{}};
     false ->
-      Msg = {goodbye,[],goodbye_and_out},
+      Msg = {goodbye,#{},goodbye_and_out},
       {reply_stop,Msg,#state{}}
   end;
 
@@ -207,7 +207,7 @@ hndl_msg(_Msg,_State) ->
 
 
 hndl_msg_authed({subscribe,RequestId,Options,Topic},#state{broker=Broker}=State) ->
-  {ok,SubscriptionId} = erwa_broker:subscribe(Topic,maps:from_list(Options),State,Broker),
+  {ok,SubscriptionId} = erwa_broker:subscribe(Topic,Options,State,Broker),
   {reply, {subscribed,RequestId,SubscriptionId}, State };
 
 hndl_msg_authed({unsubscribe,RequestId,SubscriptionId},#state{broker=Broker}=State) ->
@@ -215,9 +215,9 @@ hndl_msg_authed({unsubscribe,RequestId,SubscriptionId},#state{broker=Broker}=Sta
   {reply, {unsubscribed,RequestId},State};
 
 hndl_msg_authed({publish,RequestId,Options,Topic,Arguments,ArgumentsKw},#state{broker=Broker}=State) ->
-  {ok,PublicationId} = erwa_broker:publish(Topic,maps:from_list(Options),Arguments,ArgumentsKw,State,Broker),
-  case lists:keyfind(acknowledge,1,Options) of
-    {acknowledge,true} ->
+  {ok,PublicationId} = erwa_broker:publish(Topic,Options,Arguments,ArgumentsKw,State,Broker),
+  case maps:get(acknowledge,Options,false) of
+    true ->
       {reply,{published,RequestId,PublicationId},State};
     _ ->
       {ok,State}
@@ -238,23 +238,23 @@ hndl_msg_authed({call,RequestId,Options,ProcedureUri,Arguments,ArgumentsKw},#sta
     {ok,Pid} ->
       {ok,State#state{calls=[{RequestId,Pid}|Calls]}};
     {error,procedure_not_found} ->
-      {reply, {error,call,RequestId,[],no_such_procedure}, State};
+      {reply, {error,call,RequestId,#{},no_such_procedure}, State};
     {error,_} ->
       %% TODO: change the reply for eg partitioned calls
-      {reply, {error,call,RequestId,[],no_such_procedure}, State}
+      {reply, {error,call,RequestId,#{},no_such_procedure}, State}
   end;
 
 hndl_msg_authed({cancel,RequestId,Options},#state{calls=Calls}=State) ->
   case lists:keyfind(RequestId,1,Calls) of
     {RequestId,Pid} ->
       ok = erwa_invocation:cancel(Pid,Options),
-      {reply,{error,call,RequestId,[],canceled},State#state{calls=lists:keydelete(RequestId,1,Calls)}};
+      {reply,{error,call,RequestId,#{},canceled},State#state{calls=lists:keydelete(RequestId,1,Calls)}};
 
     false ->
-      {reply, {error,call,RequestId,[],no_such_procedure}, State};
+      {reply, {error,call,RequestId,#{},no_such_procedure}, State};
     {error,_} ->
       %% TODO: change the reply for eg partitioned calls
-      {reply, {error,call,RequestId,[],no_such_procedure}, State}
+      {reply, {error,call,RequestId,#{},no_such_procedure}, State}
   end;
 
 
@@ -289,20 +289,20 @@ hndl_msg_authed(_Msg,_State) ->
 
 hndl_info({invocation,set_request_id,ProcedureId,Options,Arguments,ArgumentsKw},
           #state{invocation_id=ID, invocations=Invs}=State) ->
-  {invocation_pid,Pid} = lists:keyfind(invocation_pid,1,Options),
-  Options1 = lists:keydelete(invocation_pid,1,Options),
+  Pid = maps:get(invocation_pid,Options),
+  Options1 = maps:remove(invocation_pid,Options),
   NewState = State#state{invocations=[{ID,Pid}|Invs],invocation_id=ID+1},
   {send,{invocation,ID,ProcedureId,Options1,Arguments,ArgumentsKw},NewState};
 
 hndl_info({interrupt,set_request_id,Options},#state{invocations=Invs, client_roles=Roles}=State) ->
-  {invocation_pid,Pid} = lists:keyfind(invocation_pid,1,Options),
+  Pid = maps:get(invocation_pid,Options),
   {InvocationId,Pid} = lists:keyfind(Pid,2,Invs),
-  [callee,Features] = lists:keyfind(callee,1,Roles),
-  case lists:keyfind(call_canceling,1,Features) of
-    {call_canceling,true} ->
+  Features = maps:get(features,maps:get(callee,Roles)),
+  case maps:get(call_canceling,Features,false) of
+    true ->
       {send,{interrupt,InvocationId,lists:keydelete(invocation_pid,1,Options)},State};
     _ ->
-      ok = erwa_invocation:error(Pid,[],canceled,undefined,undefined),
+      ok = erwa_invocation:error(Pid,#{},canceled,undefined,undefined),
       {ok,State#state{invocations=lists:keydelete(InvocationId,1,Invs)}}
   end;
 
@@ -312,11 +312,11 @@ hndl_info({result,CallRequestId,_,_,_}=Msg,#state{calls=Calls}=State) ->
 hndl_info({error,call,CallRequestId,_,_,_,_}=Msg,#state{calls=Calls}=State) ->
   {send,Msg,State#state{calls=lists:keydelete(CallRequestId,1,Calls)}};
 
-hndl_info({event,SubscriptionId,PublicationId,Details,Arguments,ArgumentsKw},State) ->
-  {send,{event,SubscriptionId,PublicationId,maps:to_list(Details),Arguments,ArgumentsKw},State};
+hndl_info({event,_,_,_,_,_}=Msg,State) ->
+  {send,Msg,State};
 
 hndl_info(routing_closing,#state{goodbye_sent=GBsent}=State) ->
-  Msg = {goodbye,[],close_realm},
+  Msg = {goodbye,#{},close_realm},
   case GBsent of
     false ->
       {send,Msg,State#state{goodbye_sent=true}};

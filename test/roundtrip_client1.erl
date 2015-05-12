@@ -65,8 +65,8 @@ init(Args) ->
        _ ->
         awre:connect(Con,Realm)
     end,
-  {ok,SubscriptionId} = awre:subscribe(Con,[{}],Event),
-  {ok,RegistrationId} = awre:register(Con,[{}],RPC),
+  {ok,SubscriptionId} = awre:subscribe(Con,#{},Event),
+  {ok,RegistrationId} = awre:register(Con,#{},RPC),
   ct:log("init of ~p done~n",[?MODULE]),
   {ok,#state{con=Con,session=SessionId,subscription=SubscriptionId,registration=RegistrationId,event_url=Event,remote_rpc=RemoteRpc}}.
 
@@ -77,16 +77,16 @@ handle_cast(_Msg,State) ->
   {noreply,State}.
 
 
-handle_info({erwa,{event,SubscriptionId,_PublicationId,_Details,_Arguments,_ArgumentsKw}},#state{con=Con,subscription=SubscriptionId,remote_rpc=RPC}=State) ->
+handle_info({awre,{event,SubscriptionId,_PublicationId,_Details,_Arguments,_ArgumentsKw}},#state{con=Con,subscription=SubscriptionId,remote_rpc=RPC}=State) ->
   ct:log("event at ~p~n",[?MODULE]),
-  {ok,_Details,[4],_} = awre:call(Con,[{}],RPC,[9,5]),
+  {ok,_Details,[4],_} = awre:call(Con,#{},RPC,[9,5]),
   ok = awre:unsubscribe(Con,SubscriptionId),
   {noreply,State#state{event_received=true}};
 
-handle_info({erwa,{invocation,RequestId,RegistrationId,_Details,[A,B],_ArgumentsKw}},#state{registration=RegistrationId,event_url=EventUrl,con=Con}=State) ->
+handle_info({awre,{invocation,RequestId,RegistrationId,_Details,[A,B],_ArgumentsKw}},#state{registration=RegistrationId,event_url=EventUrl,con=Con}=State) ->
   ct:log("invocation of ~p~n",[?MODULE]),
-  ok = awre:yield(Con,RequestId,[{}],[A+B]),
-  ok = awre:publish(Con,[{}],EventUrl,[3,4]),
+  ok = awre:yield(Con,RequestId,#{},[A+B]),
+  ok = awre:publish(Con,#{},EventUrl,[3,4]),
   awre:unregister(Con,RegistrationId),
   ok = awre:stop_client(Con),
   {noreply,State#state{been_called=true}};

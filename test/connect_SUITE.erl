@@ -81,7 +81,7 @@ tcp_subscribe(_) ->
   {ok,Con} = awre:start_client(),
   {ok,_,_} = awre:connect(Con,"localhost",5555,?REALM,raw_msgpack),
   Topic = <<"dev.erwa.event">>,
-  {ok,SubscriptionId} = awre:subscribe(Con,[],Topic),
+  {ok,SubscriptionId} = awre:subscribe(Con,#{},Topic),
   ok = awre:unsubscribe(Con,SubscriptionId),
   ok = awre:stop_client(Con),
   ok.
@@ -93,7 +93,7 @@ tcp_publish(_) ->
   Client = fun() ->
              {ok,Con} = awre:start_client(),
              {ok,_SessionId,_RouterDetails} = awre:connect(Con,"localhost",5555,?REALM,raw_msgpack),
-             {ok,SubscriptionId} = awre:subscribe(Con,[],Topic),
+             {ok,SubscriptionId} = awre:subscribe(Con,#{},Topic),
              MyPid ! ready_when_you_are,
              receive
                Msg ->
@@ -116,9 +116,9 @@ tcp_publish(_) ->
            ok
        after 1000 ->  timeout
        end,
-  ok = awre:publish(Con,[],Topic,[<<"test">>]),
+  ok = awre:publish(Con,#{},Topic,[<<"test">>]),
   ok = receive
-         {erwa,{event,_,_,[],[<<"test">>],undefined}} ->
+         {awre,{event,_,_,#{},[<<"test">>],undefined}} ->
            ok
        after 1000 ->
          timeout
@@ -136,7 +136,7 @@ tcp_register(_) ->
   {ok,Con} = awre:start_client(),
   {ok,_SessionId,_RouterDetails} = awre:connect(Con,"localhost",5555,?REALM,raw_msgpack),
   Topic = <<"dev.erwa.function">>,
-  {ok,RegistrationId} = awre:register(Con,[],Topic),
+  {ok,RegistrationId} = awre:register(Con,#{},Topic),
   ok = awre:unregister(Con,RegistrationId),
   ok = awre:stop_client(Con),
   ok.
@@ -148,14 +148,14 @@ tcp_call(_) ->
   Client = fun() ->
              {ok,Con} = awre:start_client(),
              {ok,_SessionId,_RouterDetails} = awre:connect(Con,"localhost",5555,?REALM,raw_msgpack),
-             {ok,RegistrationId} = awre:register(Con,[],Topic),
+             {ok,RegistrationId} = awre:register(Con,#{},Topic),
              MyPid ! ready_when_you_are,
              {ok,RequestId,A,B} = receive
-                                    {erwa,{invocation,Req,_,_,[In1,In2],undefined}} ->
+                                    {awre,{invocation,Req,_,_,[In1,In2],undefined}} ->
                                       {ok,Req,In1,In2}
                                   after 1000 ->  timeout
                                   end,
-             ok = awre:yield(Con,RequestId,[],[A+B]),
+             ok = awre:yield(Con,RequestId,#{},[A+B]),
              ok = awre:unregister(Con,RegistrationId),
              ok = awre:stop_client(Con),
              MyPid ! done
@@ -168,7 +168,7 @@ tcp_call(_) ->
          ready_when_you_are -> ok
        after 1000 ->  timeout
        end,
-  {ok,_,[9],_} = awre:call(Con,[],Topic,[4,5]),
+  {ok,_,[9],_} = awre:call(Con,#{},Topic,[4,5]),
   ok = receive
          done -> ok
        after 1000 ->  timeout

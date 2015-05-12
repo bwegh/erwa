@@ -57,19 +57,19 @@
 
 -export([get_data/1]).
 
--define(FEATURES,{broker,[{features,[
-                                      {event_history,                 false},
-                                      {partitioned_pubsub,            false},
-                                      {pattern_based_subscription,    false},
-                                      {publication_trustlevels,       false},
-                                      {publisher_exclusion,           true},
-                                      {publisher_identification,      true},
-                                      {subscriber_blackwhite_listing, true},
-                                      {subscriber_list,               false},
-                                      {subscriber_metaevents,         false}
-                                    ]}
-                          ]
-                  }
+-define(FEATURES,#{features => #{
+                                 event_history => false,
+                                 partitioned_pubsub => false,
+                                 pattern_based_subscription => false,
+                                 publication_trustlevels => false,
+                                 publisher_exclusion => true,
+                                 publisher_identification => true,
+                                 subscriber_blackwhite_listing => true,
+                                 subscriber_list => false,
+                                 subscriber_metaevents => false
+                                 }
+
+                   }
         ).
 
 
@@ -133,7 +133,7 @@ unsubscribe(SubscriptionId,#data{pid=Pid}) ->
 unsubscribe_all(#data{pid=Pid}) ->
   gen_server:call(Pid,unsubscribe_all).
 
--spec publish(Topic::binary(),Options::map(),Arguments :: list(), ArgumentsKw :: map() | list(), Session :: term(), Data::record(data)) ->
+-spec publish(Topic::binary(),Options::map(),Arguments :: list(), ArgumentsKw :: map(), Session :: term(), Data::record(data)) ->
   {ok, non_neg_integer()}.
 
 publish(TopicUri,Options,Arguments,ArgumentsKw,Session,#data{ets=Ets}) ->
@@ -339,16 +339,16 @@ publish_metaevent({_,<<"wamp.subscription.on_subscribe">>,_},_) ->
 publish_metaevent({_,<<"wamp.subscription.on_unsubscribe">>,_},_) ->
   ok;
 publish_metaevent({on_create,Uri,Id},#state{ets=Ets}) ->
-  {ok,_} = publish(<<"wamp.subscription.on_create">>,[],[],#{<<"uri">> => Uri ,<<"id">> => Id},no_session,#data{ets=Ets}),
+  {ok,_} = publish(<<"wamp.subscription.on_create">>,#{},[],#{<<"uri">> => Uri ,<<"id">> => Id},no_session,#data{ets=Ets}),
   ok;
 publish_metaevent({on_delete,Uri,Id},#state{ets=Ets}) ->
-  {ok,_} = publish(<<"wamp.subscription.on_delete">>,[],[],#{<<"uri">> => Uri ,<<"id">> => Id},no_session,#data{ets=Ets}),
+  {ok,_} = publish(<<"wamp.subscription.on_delete">>,#{},[],#{<<"uri">> => Uri ,<<"id">> => Id},no_session,#data{ets=Ets}),
   ok;
 publish_metaevent({on_subscribe,Uri,SessionId},#state{ets=Ets}) ->
-  {ok,_} = publish(<<"wamp.subscription.on_subscribe">>,[],[],#{<<"uri">> => Uri ,<<"session">> => SessionId},no_session,#data{ets=Ets}),
+  {ok,_} = publish(<<"wamp.subscription.on_subscribe">>,#{},[],#{<<"uri">> => Uri ,<<"session">> => SessionId},no_session,#data{ets=Ets}),
   ok;
 publish_metaevent({on_unsubscribe,Uri,SessionId},#state{ets=Ets}) ->
-  {ok,_} = publish(<<"wamp.subscription.on_unsubscribe">>,[],[],#{<<"uri">> => Uri ,<<"session">> => SessionId},no_session,#data{ets=Ets}),
+  {ok,_} = publish(<<"wamp.subscription.on_unsubscribe">>,#{},[],#{<<"uri">> => Uri ,<<"session">> => SessionId},no_session,#data{ets=Ets}),
   ok.
 
 
@@ -362,12 +362,6 @@ start_stop_test() ->
   {ok,Data} = get_data(Pid),
   0 = get_tablesize(Data),
   ok = enable_metaevents(Pid),
-  {ok,stopped} = stop(Data).
-
-features_test() ->
-  {ok,Pid} = start(),
-  {ok,Data} = get_data(Pid),
-  ?FEATURES = get_features(Data),
   {ok,stopped} = stop(Data).
 
 un_subscribe_test() ->
