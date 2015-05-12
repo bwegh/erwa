@@ -22,34 +22,83 @@
 
 -module(erwa_middleware).
 
--callback perm_connect(SessionId :: integer(), Realm :: binary(), Details :: list()) ->
-  true |
-  false |
-  {needs_auth, AuthMethod :: wampcra, Extra :: list()}.
+-callback perm_connect(Session :: term(), Realm :: binary(), Details :: map()) ->
+  {true, Details :: map() } |
+  {false, Details :: map()}.
 
 
--callback authenticate(SessionId :: integer() ,Signature :: binary() ,Extra :: list()) ->
-  {true,Details :: list()} |
-  false.
+-callback authenticate(Session :: term(), Signature :: binary(), Extra :: map()) ->
+  {true, Details :: map() } |
+  {false, Details :: map()}.
 
 
--callback perm_publish(SessionId :: integer() ,Options :: list() ,Topic :: binary(),
-                       Arguments :: list() | undefined ,ArgumentsKw :: list() | undefined) ->
-  true |
-  {false, Details :: list(), Error :: not_authorized }.
+-callback perm_publish(Session :: term(), Options :: map(), Topic :: binary(),
+                       Arguments :: list() | undefined ,ArgumentsKw :: map() | undefined) ->
+  {true, Details :: map() } |
+  {false, Details :: map()}.
 
 
--callback perm_subscribe(SessionId :: integer() ,Options :: list() ,Topic :: binary()) ->
-  true |
-  {false, Details :: list(), Error :: not_authorized }.
+-callback perm_subscribe(Session :: term(), Options :: map(), Topic :: binary()) ->
+  {true, Details :: map() } |
+  {false, Details :: map()}.
 
 
--callback perm_call(SessionId :: integer(), Options :: list(), Procedure :: binary(),
-                    Arguments :: list() | undefined, ArgumentsKw :: list() | undefined) ->
-  true |
-  {false, Details :: list(), Error :: not_authorized }.
+-callback perm_call(Session :: term(), Options :: map(), Procedure :: binary(),
+                    Arguments :: list() | undefined, ArgumentsKw :: map() | undefined) ->
+  {true, Details :: map() } |
+  {false, Details :: map()}.
 
 
--callback perm_register(SessionId :: integer() ,Options :: list() ,Procedure :: binary()) ->
-  true |
-  {false, Details :: list(), Error :: not_authorized }.
+-callback perm_register(Session :: term(), Options :: map(), Procedure :: binary()) ->
+  {true, Details :: map() } |
+  {false, Details :: map()}.
+
+
+-callback check_out_message(Session :: term(), MessageToBeSent :: term() ) ->
+  {false, Details :: map()} |
+   term().
+
+
+-export([validate_out_message/2]).
+-export([check_perm/2]).
+
+
+check_perm(Msg,Session) ->
+  {Method,Args} = case Msg of
+                    {hello,RealmName,Details} ->
+                      {perm_connect,[Session,RealmName,Details]};
+                    {authenticate,Signature,Extra} ->
+                      {authenticate,[Session,Signature,Extra]};
+                    {subscribe,_RequestId,Options,Topic} ->
+                      {perm_subscribe,[Session,Options,Topic]};
+                    {publish,_RequestId,Options,Topic,Arguments,ArgumentsKw} ->
+                      {perm_publish,[Session,Options,Topic,Arguments,ArgumentsKw]};
+                    {register,_RequestId,Options,ProcedureUri} ->
+                      {perm_register,[Session,Options,ProcedureUri]};
+                    {call,_RequestId,Options,ProcedureUri,Arguments,ArgumentsKw} ->
+                      {perm_call,[Session,Options,ProcedureUri,Arguments,ArgumentsKw]};
+                    {cancel,_RequestId,Options} ->
+                      {perm_cancel,[Session,Options]}
+                  end,
+  F = fun(MiddleWare,InResult) ->
+        case {InResult, apply(MiddleWare,Method,Args)} of
+          {{false,OutDetails}, _ } ->
+            {false,OutDetails};
+          {_,Res} ->
+            Res
+        end
+      end,
+  lists:foldl(F,{true,#{}},erwa_session:get_mwl(Session)).
+
+
+
+validate_out_message(Message,Session) ->
+  validate_out_message(Message,erwa_session:get_mwl(Session),Session).
+
+validate_out_message(false, _,_) ->
+  false;
+validate_out_message(Message, [],_) ->
+  Message;
+validate_out_message(Message, [MiddleWare|Tail],Session) ->
+  ChangedMessage = MiddleWare:check_out_message(Session,Message),
+  validate_out_message(ChangedMessage,Tail,Session).

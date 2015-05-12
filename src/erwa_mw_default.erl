@@ -33,36 +33,40 @@
 -export([perm_subscribe/3]).
 -export([perm_call/5]).
 -export([perm_register/3]).
+-export([check_out_message/2]).
 
-perm_connect(_SessionId, _Realm, _Details) ->
-  false.
+perm_connect(_Session, _Realm, _Details) ->
+  {true, #{}}.
 
-authenticate(_SessionId, _Signature, _Extra) ->
-  false.
+authenticate(_Session, _Signature, _Extra) ->
+  {true, #{}}.
 
-perm_publish(_SessionId, _Options, _Topic, _Arguments, _ArgumentsKw) ->
-  {false, [], not_authorized}.
+perm_publish(_Session, _Options, _Topic, _Arguments, _ArgumentsKw) ->
+  {true, #{}}.
 
-perm_subscribe(_SessionId, _Options, _Topic) ->
-  {false, [], not_authorized}.
+perm_subscribe(_Session, _Options, _Topic) ->
+  {true, #{}}.
 
-perm_call(_SessionId, _Options, _Procedure, _Arguments, _ArgumentsKw) ->
-  {false, [], not_authorized}.
+perm_call(_Session, _Options, _Procedure, _Arguments, _ArgumentsKw) ->
+  {true, #{}}.
 
-perm_register(_SessionId, _Options, _Procedure) ->
-  {false, [], not_authorized}.
+perm_register(_Session, _Options, _Procedure) ->
+  {true, #{}}.
 
+check_out_message(_Session, MessageToBeSent) ->
+  %TODO implement validation and remove all erwa atoms in dicts.
+  MessageToBeSent.
 
 
 -ifdef(TEST).
 
 simple_test() ->
-  false = perm_connect(0,<<"">>, []),
-  false = authenticate(0,<<"">>,[]),
-  {false, [], not_authorized} = perm_publish(0,[],<<"">>,[],[]),
-  {false, [], not_authorized} = perm_subscribe(0,[],<<"">>),
-  {false, [], not_authorized} = perm_call(0,[],<<"">>,[],[]),
-  {false, [], not_authorized} = perm_register(0,[],<<"">>).
+  {true, #{}} = perm_connect(0,<<"">>, #{}),
+  {true, #{}} = authenticate(0,<<"">>,#{}),
+  {true, #{}} = perm_publish(0,#{},<<"">>,[],#{}),
+  {true, #{}} = perm_subscribe(0,#{},<<"">>),
+  {true, #{}} = perm_call(0,#{},<<"">>,[],#{}),
+  {true, #{}} = perm_register(0,#{},<<"">>).
 
 
 
