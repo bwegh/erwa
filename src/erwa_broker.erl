@@ -88,6 +88,7 @@
 -record(topic, {
                 uri = unknown,
                 id = none,
+                match = exact,
                 subscribers = []}).
 
 -record(id_topic, {
@@ -228,12 +229,12 @@ code_change(_OldVsn, State, _Extra) ->
 -spec subscribe(Pid:: pid(),TopicUri :: binary(), Options :: map(), Session::term(), State :: record(state)) ->
   {ok, ID::non_neg_integer()} | {error, Reason :: term()}.
 subscribe(Pid,TopicUri,Options,Session,#state{ets=Ets}=State) ->
-  case maps:get(match,Options,not_used) of
+  case maps:get(match,Options,exact) of
     prefix ->
       {error,not_supported};
     wildcard ->
       {error,not_supported};
-    not_used ->
+    exact ->
       SubscriptionId = case ets:lookup(Ets,TopicUri) of
                          [#topic{id=SID,subscribers=Subs}=T] ->
                            NewSubs = [Pid|lists:delete(Pid,Subs)],
