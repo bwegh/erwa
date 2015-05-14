@@ -338,17 +338,14 @@ publish_metaevent({_,<<"wamp.subscription.on_subscribe">>,_},_) ->
   ok;
 publish_metaevent({_,<<"wamp.subscription.on_unsubscribe">>,_},_) ->
   ok;
-publish_metaevent({on_create,Uri,Id},#state{ets=Ets}) ->
-  {ok,_} = publish(<<"wamp.subscription.on_create">>,#{},[],#{<<"uri">> => Uri ,<<"id">> => Id},no_session,#data{ets=Ets}),
-  ok;
-publish_metaevent({on_delete,Uri,Id},#state{ets=Ets}) ->
-  {ok,_} = publish(<<"wamp.subscription.on_delete">>,#{},[],#{<<"uri">> => Uri ,<<"id">> => Id},no_session,#data{ets=Ets}),
-  ok;
-publish_metaevent({on_subscribe,Uri,SessionId},#state{ets=Ets}) ->
-  {ok,_} = publish(<<"wamp.subscription.on_subscribe">>,#{},[],#{<<"uri">> => Uri ,<<"session">> => SessionId},no_session,#data{ets=Ets}),
-  ok;
-publish_metaevent({on_unsubscribe,Uri,SessionId},#state{ets=Ets}) ->
-  {ok,_} = publish(<<"wamp.subscription.on_unsubscribe">>,#{},[],#{<<"uri">> => Uri ,<<"session">> => SessionId},no_session,#data{ets=Ets}),
+publish_metaevent({Event,Uri,Id},#state{ets=Ets}) ->
+  MetaTopic = case Event of
+                on_create -> <<"wamp.subscription.on_create">>;
+                on_subscribe -> <<"wamp.subscription.on_subscribe">>;
+                on_unsubscribe -> <<"wamp.subscription.on_unsubscribe">>;
+                on_delete -> <<"wamp.subscription.on_delete">>
+              end,
+  {ok,_} = publish(MetaTopic,#{},[],#{<<"uri">> => Uri ,<<"id">> => Id},no_session,#data{ets=Ets}),
   ok.
 
 

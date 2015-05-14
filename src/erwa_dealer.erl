@@ -327,17 +327,14 @@ publish_metaevent({_,<<"wamp.registration.on_register">>,_},_) ->
   ok;
 publish_metaevent({_,<<"wamp.registration.on_unregister">>,_},_) ->
   ok;
-publish_metaevent({on_create,Uri,Id},#state{broker=Broker}) ->
-  {ok,_} = erwa_broker:publish(<<"wamp.registration.on_create">>,#{},[],#{<<"uri">> => Uri, <<"id">> => Id},no_session,Broker) ,
-  ok;
-publish_metaevent({on_delete,Uri,Id},#state{broker=Broker}) ->
-  {ok,_} = erwa_broker:publish(<<"wamp.registration.on_delete">>,#{},[],#{<<"uri">> => Uri, <<"id">> => Id},no_session,Broker) ,
-  ok;
-publish_metaevent({on_register,Uri,SessionId},#state{broker=Broker}) ->
-  {ok,_} = erwa_broker:publish(<<"wamp.registration.on_register">>,#{},[],#{<<"uri">> => Uri, <<"id">> => SessionId},no_session,Broker) ,
-  ok;
-publish_metaevent({on_unregister,Uri,SessionId},#state{broker=Broker}) ->
-  {ok,_} = erwa_broker:publish(<<"wamp.registration.on_unregister">>,#{},[],#{<<"uri">> => Uri, <<"id">> => SessionId},no_session,Broker) ,
+publish_metaevent({Event,Uri,Id},#state{broker=Broker}) ->
+  MetaTopic = case Event of
+                on_create -> <<"wamp.registration.on_create">>;
+                on_register -> <<"wamp.registration.on_register">>;
+                on_unregister -> <<"wamp.registration.on_unregister">>;
+                on_delete -> <<"wamp.registration.on_delete">>
+              end,
+  {ok,_} = erwa_broker:publish(MetaTopic,#{},[],#{<<"uri">> => Uri, <<"id">> => Id},no_session,Broker),
   ok.
 
 -ifdef(TEST).
