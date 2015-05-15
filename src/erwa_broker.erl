@@ -89,6 +89,7 @@
                 uri = unknown,
                 id = none,
                 match = exact,
+                created = unknown,
                 subscribers = []}).
 
 -record(id_topic, {
@@ -229,22 +230,30 @@ code_change(_OldVsn, State, _Extra) ->
 -spec subscribe(Pid:: pid(),TopicUri :: binary(), Options :: map(), Session::term(), State :: record(state)) ->
   {ok, ID::non_neg_integer()} | {error, Reason :: term()}.
 subscribe(Pid,TopicUri,Options,Session,#state{ets=Ets}=State) ->
-  case maps:get(match,Options,exact) of
+  Match = maps:get(match,Options,exact),
+  case Match of
     prefix ->
       {error,not_supported};
     wildcard ->
       {error,not_supported};
     exact ->
-      SubscriptionId = case ets:lookup(Ets,TopicUri) of
-                         [#topic{id=SID,subscribers=Subs}=T] ->
-                           NewSubs = [Pid|lists:delete(Pid,Subs)],
-                           ets:insert(Ets,T#topic{subscribers=NewSubs}),
-                           SID;
-                         [] ->
-                           {ok,SID} = create_topic(TopicUri,[Pid],State),
-                           SID
-                       end,
+      {SubscriptionId,Created,TopicDetails} = case ets:lookup(Ets,TopicUri) of
+                                                [#topic{id=SID,subscribers=Subs}=T] ->
+                                                  NewSubs = [Pid|lists:delete(Pid,Subs)],
+                                                  ets:insert(Ets,T#topic{subscribers=NewSubs}),
+                                                  {SID,false,not_needed};
+                                                [] ->
+                                                  {ok,SID,TDetails} = create_topic(TopicUri,Match,[Pid],State),
+                                                  {SID,true,TDetails}
+                                              end,
       ok = add_topic_to_pid(TopicUri,Pid,Session,State),
+      SessionId = erwa_session:get_id(Session),
+      case Created of
+        true ->
+          publish_metaevent(on_create,TopicUri,SessionId,TopicDetails,State);
+        false -> nothing
+      end,
+      publish_metaevent(on_subscribe,TopicUri,SessionId,SubscriptionId,State),
       {ok,SubscriptionId}
   end.
 
@@ -260,6 +269,7 @@ unsubscribe(SubscriptionId,Pid,#state{ets=Ets}=State) when is_integer(Subscripti
   end;
 unsubscribe(TopicUri,Pid,#state{ets=Ets}=State) when is_binary(TopicUri) ->
   [#topic{subscribers=Subs,id=SubscriptionId,uri=TopicUri}=T] = ets:lookup(Ets,TopicUri),
+  SessionId = get_id_for_pid(Pid,State),
   case {lists:member(Pid,Subs),lists:delete(Pid,Subs)} of
     {false,_} ->
       {error, not_subscribed};
@@ -267,11 +277,13 @@ unsubscribe(TopicUri,Pid,#state{ets=Ets}=State) when is_binary(TopicUri) ->
       ok = remove_topic_from_pid(TopicUri,Pid,State),
       true = ets:delete(Ets,SubscriptionId),
       true = ets:delete(Ets,TopicUri),
-      publish_metaevent({on_delete,TopicUri,SubscriptionId},State),
+      publish_metaevent(on_unsubscribe,TopicUri,SessionId,SubscriptionId,State),
+      publish_metaevent(on_delete,TopicUri,SessionId,SubscriptionId,State),
       ok;
     {true,NewSubs} ->
       ok = remove_topic_from_pid(TopicUri,Pid,State),
       true = ets:insert(Ets,T#topic{subscribers=NewSubs}),
+      publish_metaevent(on_unsubscribe,TopicUri,SessionId,SubscriptionId,State),
       ok
   end.
 
@@ -291,62 +303,67 @@ unsubscribe_all_for(Pid,#state{ets=Ets}=State) ->
       ok
   end.
 
-create_topic(Uri,Pids,#state{ets=Ets}=State) ->
+create_topic(Uri,Match,Pids,#state{ets=Ets}=State) ->
   ID = gen_id(),
-  case ets:insert_new(Ets,[#id_topic{id=ID,topic=Uri},#topic{uri=Uri,id=ID,subscribers=Pids}]) of
+  Created = erlang:universaltime(),
+  Topic = #topic{uri=Uri,id=ID,match=Match,created=Created,subscribers=Pids},
+  case ets:insert_new(Ets,[#id_topic{id=ID,topic=Uri},Topic]) of
     true ->
-      publish_metaevent({on_create,Uri,ID},State),
-      {ok,ID};
+      {ok,ID,#{id => ID,
+               created => cowboy_clock:rfc1123(Created),
+               uri => Uri,
+               match => Match}};
     false ->
-      create_topic(Uri,Pids,State)
+      create_topic(Uri,Match,Pids,State)
   end.
 
-add_topic_to_pid(Topic,Pid,Session,#state{ets=Ets}=State) ->
+add_topic_to_pid(Topic,Pid,Session,#state{ets=Ets}) ->
   SessionId = erwa_session:get_id(Session),
-  ok = case ets:lookup(Ets,Pid) of
-         [#pid_info{topics=Topics} = PT] ->
-           true = ets:insert(Ets,PT#pid_info{topics=[Topic|lists:delete(Topic,Topics)]}),
-           ok;
-         [] ->
-           PT = #pid_info{pid=Pid,id=SessionId,topics=[Topic]},
-           true = ets:insert_new(Ets,PT),
-           ok
-       end,
-  publish_metaevent({on_subscribe,Topic,SessionId},State).
+  case ets:lookup(Ets,Pid) of
+    [#pid_info{topics=Topics} = PT] ->
+      true = ets:insert(Ets,PT#pid_info{topics=[Topic|lists:delete(Topic,Topics)]}),
+      ok;
+    [] ->
+      PT = #pid_info{pid=Pid,id=SessionId,topics=[Topic]},
+      true = ets:insert_new(Ets,PT),
+      ok
+  end.
 
 
-remove_topic_from_pid(Topic,Pid,#state{ets=Ets}=State) ->
-  [#pid_info{topics=Topics,id=SessionId} = PT] = ets:lookup(Ets,Pid),
+remove_topic_from_pid(Topic,Pid,#state{ets=Ets}) ->
+  [#pid_info{topics=Topics} = PT] = ets:lookup(Ets,Pid),
   case lists:delete(Topic,Topics) of
     [] ->
       true = ets:delete(Ets,Pid);
     NewTopics ->
       true = ets:insert(Ets,PT#pid_info{topics=NewTopics})
   end,
-  publish_metaevent({on_unsubscribe,Topic,SessionId},State).
+  ok.
+
+get_id_for_pid(Pid,#state{ets=Ets}) ->
+  [#pid_info{id=SessionId}] = ets:lookup(Ets,Pid),
+  SessionId.
+
 
 gen_id() ->
   crypto:rand_uniform(0,9007199254740992).
 
-publish_metaevent(_,#state{meta_events=disabled}) ->
+publish_metaevent(_,_,_,_,#state{meta_events=disabled}) ->
   ok;
-% no meta_events on meta stuff ...
-publish_metaevent({_,<<"wamp.subscription.on_create">>,_},_) ->
-  ok;
-publish_metaevent({_,<<"wamp.subscription.on_delete">>,_},_) ->
-  ok;
-publish_metaevent({_,<<"wamp.subscription.on_subscribe">>,_},_) ->
-  ok;
-publish_metaevent({_,<<"wamp.subscription.on_unsubscribe">>,_},_) ->
-  ok;
-publish_metaevent({Event,Uri,Id},#state{ets=Ets}) ->
-  MetaTopic = case Event of
-                on_create -> <<"wamp.subscription.on_create">>;
-                on_subscribe -> <<"wamp.subscription.on_subscribe">>;
-                on_unsubscribe -> <<"wamp.subscription.on_unsubscribe">>;
-                on_delete -> <<"wamp.subscription.on_delete">>
-              end,
-  {ok,_} = publish(MetaTopic,#{},[],#{<<"uri">> => Uri ,<<"id">> => Id},no_session,#data{ets=Ets}),
+publish_metaevent(Event,TopicUri,SessionId,SecondArg,#state{ets=Ets}) ->
+  case binary:part(TopicUri,{1,5}) == <<"wamp.">> of
+    true ->
+      % do not fire metaevents on wamp. uris
+      ok;
+    false ->
+      MetaTopic = case Event of
+                    on_create -> <<"wamp.subscription.on_create">>;
+                    on_subscribe -> <<"wamp.subscription.on_subscribe">>;
+                    on_unsubscribe -> <<"wamp.subscription.on_unsubscribe">>;
+                    on_delete -> <<"wamp.subscription.on_delete">>
+                  end,
+      {ok,_} = publish(MetaTopic,#{},[SessionId,SecondArg],undefined,no_session,#data{ets=Ets})
+  end,
   ok.
 
 
