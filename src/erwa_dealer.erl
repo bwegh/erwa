@@ -76,6 +76,9 @@
 -record(procedure,{
                    uri = none,
                    id = none,
+                   created = unknown,
+                   match = exact,
+                   invoke = single,
                    options = [],
                    pids = []
                    }).
@@ -220,27 +223,36 @@ code_change(_OldVsn, State, _Extra) ->
 
 
 
--spec register_procedure(ProcedureUrl :: binary(), Options :: map(), Pid :: pid(), Session::term(), State :: #state{}) ->
+-spec register_procedure(ProcedureUri :: binary(), Options :: map(), Pid :: pid(), Session::term(), State :: #state{}) ->
   {ok,non_neg_integer()} | {error,procedure_already_exists }.
-register_procedure(ProcedureUrl,Options,Pid,Session,#state{ets=Ets}=State) ->
-  case ets:lookup(Ets,ProcedureUrl) of
-    [#procedure{uri=ProcedureUrl}] ->
+register_procedure(ProcedureUri,Options,Pid,Session,#state{ets=Ets}=State) ->
+  SessionId = erwa_session:get_id(Session),
+  case ets:lookup(Ets,ProcedureUri) of
+    [#procedure{uri=ProcedureUri}] ->
       {error,procedure_already_exists};
     [] ->
-      {ok,ProcedureId} = create_procedure(ProcedureUrl,Options,Pid,State),
-      ok = add_proc_to_pid(ProcedureUrl,Pid,Session,State),
+      {ok,ProcedureId,ProcDetails} = create_procedure(ProcedureUri,Options,Pid,State),
+      ok = add_proc_to_pid(ProcedureUri,Pid,Session,State),
+      publish_metaevent(on_create,ProcedureUri,SessionId,ProcDetails,State),
+      publish_metaevent(on_register,ProcedureUri,SessionId,ProcedureId,State),
       {ok,ProcedureId}
   end.
 
 -spec create_procedure(Url :: binary(), Options :: map(), Pid :: pid(), State :: #state{} ) -> {ok,non_neg_integer()}.
 create_procedure(Uri,Options,Pid,#state{ets=Ets}=State) ->
   ProcedureId = gen_id(),
+  Invoke = maps:get(invoke,Options,single),
+  Match = maps:get(match,Options,exact),
+  Created = erlang:universaltime(),
   case ets:insert_new(Ets,[#id_procedure{id=ProcedureId,uri=Uri},
-                           #procedure{uri=Uri,id=ProcedureId,pids=[Pid],options=Options}]
+                           #procedure{uri=Uri,id=ProcedureId,pids=[Pid],match=Match,invoke=Invoke,options=Options,created=Created}]
                       ) of
     true ->
-      ok = publish_metaevent({on_create,Uri,ProcedureId},State),
-      {ok,ProcedureId};
+      {ok,ProcedureId,#{id => ProcedureId,
+                        created => cowboy_clock:rfc1123(Created),
+                        uri => Uri,
+                        invoke => Invoke,
+                        match => Match}};
     _ ->
       create_procedure(Uri,Options,Pid,State)
   end.
@@ -255,19 +267,22 @@ unregister_procedure(RegistrationId,Pid,#state{ets=Ets} = State) when is_integer
   end;
 unregister_procedure(Uri,Pid,#state{ets=Ets}=State) when is_binary(Uri) ->
   [#procedure{uri=Uri,id=ID,pids=Pids} = Proc] = ets:lookup(Ets,Uri),
+  SessionId = get_id_for_pid(Pid,State),
   case {lists:member(Pid,Pids),lists:delete(Pid,Pids)} of
     {false, _ } ->
       {error, not_registered};
     {true, [] } ->
 
       ok = remove_proc_from_pid(Uri,Pid,State),
+      publish_metaevent(on_unregister,Uri,SessionId,ID,State),
       true = ets:delete(Ets,ID),
       true = ets:delete(Ets,Uri),
-      ok = publish_metaevent({on_delete,Uri,ID},State),
+      publish_metaevent(on_delete,Uri,SessionId,ID,State),
       ok;
     {true, NewPids} ->
       ok = remove_proc_from_pid(Uri,Pid,State),
       true = ets:insert(Ets,Proc#procedure{pids=NewPids}),
+      publish_metaevent(on_unregister,Uri,SessionId,ID,State),
       ok
   end.
 
@@ -286,55 +301,55 @@ unregister_all_for(Pid,#state{ets=Ets}=State) ->
   end.
 
 
-add_proc_to_pid(Uri,Pid,Session,#state{ets=Ets}=State) ->
+add_proc_to_pid(Uri,Pid,Session,#state{ets=Ets}) ->
   SessionId = erwa_session:get_id(Session),
   case ets:lookup(Ets,Pid) of
-         [#pid_info{procs=Procs} = PI] ->
-           true = ets:insert(Ets,PI#pid_info{procs=[Uri|lists:delete(Uri,Procs)]}),
-           ok;
-         [] ->
-           PI = #pid_info{pid=Pid,id=SessionId,procs=[Uri]},
-           true = ets:insert_new(Ets,PI),
-           ok
-       end,
-  publish_metaevent({on_register,Uri,SessionId},State).
+    [#pid_info{procs=Procs} = PI] ->
+      true = ets:insert(Ets,PI#pid_info{procs=[Uri|lists:delete(Uri,Procs)]}),
+      ok;
+    [] ->
+      PI = #pid_info{pid=Pid,id=SessionId,procs=[Uri]},
+      true = ets:insert_new(Ets,PI),
+      ok
+  end.
 
 
 
-remove_proc_from_pid(Uri,Pid,#state{ets=Ets}=State) ->
-  [#pid_info{procs=Procs,id=SessionId} = PI] = ets:lookup(Ets,Pid),
+remove_proc_from_pid(Uri,Pid,#state{ets=Ets}) ->
+  [#pid_info{procs=Procs} = PI] = ets:lookup(Ets,Pid),
   case lists:delete(Uri,Procs) of
-         [] ->
-           true = ets:delete(Ets,Pid);
-         NewProcs ->
-           true = ets:insert(Ets,PI#pid_info{procs=NewProcs})
-       end,
-  publish_metaevent({on_unregister,Uri,SessionId},State).
+    [] ->
+      true = ets:delete(Ets,Pid);
+    NewProcs ->
+      true = ets:insert(Ets,PI#pid_info{procs=NewProcs})
+  end,
+  ok.
+
+get_id_for_pid(Pid,#state{ets=Ets}) ->
+  [#pid_info{id=SessionId}] = ets:lookup(Ets,Pid),
+  SessionId.
 
 gen_id() ->
   crypto:rand_uniform(0,9007199254740992).
 
-publish_metaevent(_,#state{broker=unknown}) ->
+publish_metaevent(_,_,_,_,#state{broker=unknown}) ->
   ok;
-publish_metaevent(_,#state{meta_events=disabled}) ->
+publish_metaevent(_,_,_,_,#state{meta_events=disabled}) ->
   ok;
-% no meta_events on meta stuff ...
-publish_metaevent({_,<<"wamp.registration.on_create">>,_},_) ->
-  ok;
-publish_metaevent({_,<<"wamp.registration.on_delete">>,_},_) ->
-  ok;
-publish_metaevent({_,<<"wamp.registration.on_register">>,_},_) ->
-  ok;
-publish_metaevent({_,<<"wamp.registration.on_unregister">>,_},_) ->
-  ok;
-publish_metaevent({Event,Uri,Id},#state{broker=Broker}) ->
-  MetaTopic = case Event of
+publish_metaevent(Event,ProcedureUri,SessionId,SecondArg,#state{broker=Broker}) ->
+  case binary:part(ProcedureUri,{1,5}) == <<"wamp.">> of
+    true ->
+      % do not fire metaevents on "wamp.*" uris
+      ok;
+    false ->
+      MetaTopic = case Event of
                 on_create -> <<"wamp.registration.on_create">>;
                 on_register -> <<"wamp.registration.on_register">>;
                 on_unregister -> <<"wamp.registration.on_unregister">>;
                 on_delete -> <<"wamp.registration.on_delete">>
               end,
-  {ok,_} = erwa_broker:publish(MetaTopic,#{},[],#{<<"uri">> => Uri, <<"id">> => Id},no_session,Broker),
+      {ok,_} = erwa_broker:publish(MetaTopic,#{},[SessionId,SecondArg],undefined,no_session,Broker)
+  end,
   ok.
 
 -ifdef(TEST).

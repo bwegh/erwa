@@ -156,20 +156,20 @@ publish(TopicUri,Options,Arguments,ArgumentsKw,Session,#data{ets=Ets}) ->
       ToExclude = maps:get(exclude,Options,[]),
       ToEligible = maps:get(eligible,Options,Subs),
       SendFilter = fun(Pid) ->
-                 case ets:lookup(Ets,Pid) of
-                   [#pid_info{id=SessionId}] ->
-                     case (not lists:member(SessionId,ToExclude)) and
-                       (lists:member(SessionId,ToEligible) or lists:member(Pid,ToEligible)) of
-                       true ->
-                         Pid ! {erwa,{event,SubscriptionId,PublicationID,Details,Arguments,ArgumentsKw}},
-                         true;
-                       false ->
+                     case ets:lookup(Ets,Pid) of
+                       [#pid_info{id=SessionId}] ->
+                         case (not lists:member(SessionId,ToExclude)) and
+                           (lists:member(SessionId,ToEligible) or lists:member(Pid,ToEligible)) of
+                           true ->
+                             Pid ! {erwa,{event,SubscriptionId,PublicationID,Details,Arguments,ArgumentsKw}},
+                             true;
+                           false ->
+                             false
+                         end;
+                       _ ->
                          false
-                     end;
-                   _ ->
-                     false
-                 end
-               end,
+                     end
+                   end,
       lists:filter(SendFilter,Receipients),
       {ok,PublicationID};
     [] ->
