@@ -33,14 +33,28 @@
 -export([local_connect/1]).
 -export([tcp_connect_msgpack/1]).
 -export([tcp_connect_json/1]).
+-export([local_subscribe/1]).
 -export([tcp_subscribe/1]).
+-export([local_publish/1]).
 -export([tcp_publish/1]).
+-export([local_register/1]).
 -export([tcp_register/1]).
+-export([local_call/1]).
 -export([tcp_call/1]).
 
 %% ct.
 all() ->
-	[tcp_connect_msgpack,tcp_connect_json,tcp_subscribe,tcp_publish,tcp_register,tcp_call].
+	[local_connect,
+   local_subscribe,
+   local_publish,
+   local_register,
+   local_call,
+   tcp_connect_msgpack,
+   tcp_connect_json,
+   tcp_subscribe,
+   tcp_publish,
+   tcp_register,
+   tcp_call].
 
 -define(REALM,<<"test">>).
 
@@ -60,26 +74,39 @@ end_per_suite(Config) ->
 
 
 local_connect(_) ->
-  {ok,Con} = awre:start_client(),
-  {ok,_,_} = awre:connect(Con,?REALM),
-  ok = awre:stop_client(Con),
-  ok.
+  perform_connect(false,raw_msgpack).
 
 tcp_connect_msgpack(_) ->
-  {ok,Con} = awre:start_client(),
-  {ok,_,_} = awre:connect(Con,"localhost",5555,?REALM,raw_msgpack),
-  ok = awre:stop_client(Con),
-  ok.
+  perform_connect(true,raw_msgpack).
 
 tcp_connect_json(_) ->
+  perform_connect(true,raw_json).
+
+perform_connect(TCP,Enc) ->
   {ok,Con} = awre:start_client(),
-  {ok,_,_} = awre:connect(Con,"localhost",5555,?REALM,raw_json),
+  {ok,_SessionId,_RouterDetails} = case TCP of
+                                     true ->
+                                       awre:connect(Con,"localhost",5555,?REALM,Enc);
+                                     _ ->
+                                       awre:connect(Con,?REALM)
+                                   end,
   ok = awre:stop_client(Con),
   ok.
 
 tcp_subscribe(_) ->
+  perform_subscribe(true).
+
+local_subscribe(_) ->
+  perform_subscribe(false).
+
+perform_subscribe(TCP) ->
   {ok,Con} = awre:start_client(),
-  {ok,_,_} = awre:connect(Con,"localhost",5555,?REALM,raw_msgpack),
+  {ok,_SessionId,_RouterDetails} = case TCP of
+                                     true ->
+                                       awre:connect(Con,"localhost",5555,?REALM,raw_msgpack);
+                                     _ ->
+                                       awre:connect(Con,?REALM)
+                                   end,
   Topic = <<"dev.erwa.event">>,
   {ok,SubscriptionId} = awre:subscribe(Con,#{},Topic),
   ok = awre:unsubscribe(Con,SubscriptionId),
@@ -88,11 +115,22 @@ tcp_subscribe(_) ->
 
 
 tcp_publish(_) ->
+  perform_publish(true).
+
+local_publish(_) ->
+  perform_publish(false).
+
+perform_publish(TCP) ->
   Topic = <<"dev.erwa.event">>,
   MyPid = self(),
   Client = fun() ->
              {ok,Con} = awre:start_client(),
-             {ok,_SessionId,_RouterDetails} = awre:connect(Con,"localhost",5555,?REALM,raw_msgpack),
+             {ok,_SessionId,_RouterDetails} = case TCP of
+                                                true ->
+                                                  awre:connect(Con,"localhost",5555,?REALM,raw_msgpack);
+                                                _ ->
+                                                  awre:connect(Con,?REALM)
+                                              end,
              {ok,SubscriptionId} = awre:subscribe(Con,#{},Topic),
              MyPid ! ready_when_you_are,
              receive
@@ -108,7 +146,12 @@ tcp_publish(_) ->
 
   spawn(Client),
   {ok,Con} = awre:start_client(),
-  {ok,_SessionId,_RouterDetails} = awre:connect(Con,"localhost",5555,?REALM,raw_msgpack),
+  {ok,_SessionId,_RouterDetails} = case TCP of
+                                     true ->
+                                       awre:connect(Con,"localhost",5555,?REALM,raw_msgpack);
+                                     _ ->
+                                       awre:connect(Con,?REALM)
+                                   end,
   {ok,_RPid} = erwa_realms:get_routing(?REALM),
 
   ok = receive
@@ -133,8 +176,21 @@ tcp_publish(_) ->
 
 
 tcp_register(_) ->
+  perform_register(true).
+
+
+local_register(_) ->
+  perform_register(false).
+
+
+perform_register(TCP) ->
   {ok,Con} = awre:start_client(),
-  {ok,_SessionId,_RouterDetails} = awre:connect(Con,"localhost",5555,?REALM,raw_msgpack),
+  {ok,_SessionId,_RouterDetails} = case TCP of
+                                     true ->
+                                       awre:connect(Con,"localhost",5555,?REALM,raw_msgpack);
+                                     _ ->
+                                       awre:connect(Con,?REALM)
+                                   end,
   Topic = <<"dev.erwa.function">>,
   {ok,RegistrationId} = awre:register(Con,#{},Topic),
   ok = awre:unregister(Con,RegistrationId),
@@ -143,11 +199,22 @@ tcp_register(_) ->
 
 
 tcp_call(_) ->
+  perform_call(true).
+
+local_call(_) ->
+  perform_call(false).
+
+perform_call(TCP) ->
   Topic = <<"dev.erwa.sum">>,
   MyPid = self(),
   Client = fun() ->
              {ok,Con} = awre:start_client(),
-             {ok,_SessionId,_RouterDetails} = awre:connect(Con,"localhost",5555,?REALM,raw_msgpack),
+             {ok,_SessionId,_RouterDetails} = case TCP of
+                                                true ->
+                                                  awre:connect(Con,"localhost",5555,?REALM,raw_msgpack);
+                                                _ ->
+                                                  awre:connect(Con,?REALM)
+                                              end,
              {ok,RegistrationId} = awre:register(Con,#{},Topic),
              MyPid ! ready_when_you_are,
              {ok,RequestId,A,B} = receive
@@ -163,7 +230,12 @@ tcp_call(_) ->
 
   spawn(Client),
   {ok,Con} = awre:start_client(),
-  {ok,_SessionId,_RouterDetails} = awre:connect(Con,"localhost",5555,?REALM,raw_msgpack),
+  {ok,_SessionId,_RouterDetails} = case TCP of
+                                     true ->
+                                       awre:connect(Con,"localhost",5555,?REALM,raw_msgpack);
+                                     _ ->
+                                       awre:connect(Con,?REALM)
+                                   end,
   ok = receive
          ready_when_you_are -> ok
        after 1000 ->  timeout
