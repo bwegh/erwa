@@ -40,6 +40,10 @@
 -export([get_broker/1]).
 -export([get_dealer/1]).
 
+
+-export([enable_metaevents/1]).
+-export([disable_metaevents/1]).
+
 %% gen_server
 -export([init/1]).
 -export([handle_call/3]).
@@ -93,6 +97,15 @@ disconnect(none) ->
 disconnect(Pid) ->
   gen_server:call(Pid, disconnect ).
 
+
+-spec enable_metaevents( pid() ) -> ok.
+enable_metaevents( Pid ) ->
+  gen_server:call(Pid,enable_metaevents).
+
+-spec disable_metaevents( pid() ) -> ok.
+disable_metaevents( Pid ) ->
+  gen_server:call(Pid,disable_metaevents).
+
 -spec shutdown(pid()) -> ok | {error,going_down}.
 shutdown(Pid) ->
   gen_server:call(Pid, shutdown ).
@@ -131,6 +144,10 @@ handle_call(disconnect, {Pid, _Ref}, #state{con_ets=Ets,going_down=GoDown,timer_
               _ -> TRef
             end,
   {reply,ok,State#state{timer_ref=NewTRef}};
+handle_call(enable_metaevents, _From, State) ->
+  {reply,ok,State#state{meta_events=enabled}};
+handle_call(disable_metaevents, _From, State) ->
+  {reply,ok,State#state{meta_events=disabled}};
 handle_call(_, _, #state{going_down=true} = State) ->
   {reply,{error,going_down},State};
 handle_call({connect,Session}, {Pid, _Ref}, #state{con_ets=Ets, realm_name=Realm} = State) ->
