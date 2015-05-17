@@ -55,6 +55,7 @@ init_per_suite(Config) ->
 
 end_per_suite(Config) ->
   {ok,_} = erwa:stop_realm(?REALM),
+  ok = ranch:stop_listener(erwa_tcp),
   Config.
 
 
