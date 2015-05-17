@@ -170,7 +170,7 @@ code_change(_OldVsn, State, _Extra) ->
 create_new_realm(Name,MW_List,#state{ets=Ets}) ->
   case ets:lookup(Ets,Name) of
     [] ->
-      {ok,Pid} = erwa_routing_sup:start_routing(),
+      {ok,Pid} = erwa_routing_sup:start_routing(Name),
       Ref = monitor(process,Pid),
       true = ets:insert_new(Ets,[{Name,active,Pid,Ref,MW_List},{Ref,Name}]),
       ok;

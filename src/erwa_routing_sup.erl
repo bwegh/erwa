@@ -31,7 +31,7 @@
 
 %% API.
 -export([start_link/0]).
--export([start_routing/0]).
+-export([start_routing/1]).
 
 %% supervisor.
 -export([init/1]).
@@ -43,9 +43,9 @@ start_link() ->
   supervisor:start_link({local, ?MODULE}, ?MODULE, []).
 
 
--spec start_routing() -> {ok, pid()}.
-start_routing() ->
-  supervisor:start_child(?MODULE,[]).
+-spec start_routing(Name :: binary()) -> {ok, pid()}.
+start_routing(Name) ->
+  supervisor:start_child(?MODULE,[Name]).
 
 %% supervisor.
 
