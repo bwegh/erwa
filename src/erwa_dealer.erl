@@ -41,6 +41,9 @@
 -export([enable_metaevents/1]).
 -export([disable_metaevents/1]).
 
+-export([get_registrations/1]).
+-export([get_registration/2]).
+
 %% gen_server
 -export([init/1]).
 -export([handle_call/3]).
@@ -110,13 +113,23 @@
 
 
 
--spec enable_metaevents( pid() ) -> ok.
-enable_metaevents( Pid ) ->
+-spec enable_metaevents( record(data) ) -> ok.
+enable_metaevents( #data{pid=Pid} ) ->
   gen_server:call(Pid,enable_metaevents).
 
--spec disable_metaevents( pid() ) -> ok.
-disable_metaevents( Pid ) ->
+-spec disable_metaevents(record(data) ) -> ok.
+disable_metaevents( #data{pid=Pid} ) ->
   gen_server:call(Pid,disable_metaevents).
+
+
+-spec get_registrations( record(data) ) -> map().
+get_registrations(#data{pid=Pid}) ->
+  gen_server:call(Pid,get_registrations).
+
+-spec get_registration( record(data), non_neg_integer() ) -> map().
+get_registration(#data{pid=Pid},RegistrationId) ->
+  gen_server:call(Pid,{get_registration,RegistrationId}).
+
 
 -spec register(ProcedureUri :: binary(), Options :: map(), Session::term(), record(data) ) -> {ok,RegistrationId :: non_neg_integer()}.
 register(ProcedureUri, Options, Session, #data{pid=Pid}) ->
@@ -197,6 +210,29 @@ handle_call({unregister,RegistrationId},{Pid,_Ref},State) ->
 handle_call(unregister_all,{Pid,_Ref},State) ->
   Result = unregister_all_for(Pid,State),
   {reply,Result,State};
+handle_call(get_registrations, _From, #state{ets=Ets} = State) ->
+  ExactUris = ets:match(Ets,#procedure{match = exact, id='$1', uri='$2', _='_'}),
+  Filter = fun([Id,Uri],List ) ->
+             ct:log("current Element: id=~p, uri=~p ~n",[Id,Uri]),
+             case binary:part(Uri,{0,5}) == <<"wamp.">> of
+               true ->
+                 List;
+               false ->
+                 [Id | List]
+             end
+           end,
+  Exact = lists:foldl(Filter,[],ExactUris),
+  Prefix = lists:flatten(ets:match(Ets,#procedure{match = prefix, id='$1', _='_'})),
+  Wildcard = lists:flatten(ets:match(Ets,#procedure{match = wildcard, id='$1', _='_'})),
+  {reply,{ok,#{exact => Exact, prefix => Prefix, wildcard => Wildcard}},State};
+handle_call({get_registration,Id}, _From, #state{ets=Ets} = State) ->
+  case ets:lookup(Ets,Id) of
+    [#id_procedure{id=Id,uri=Uri}] ->
+      [#procedure{uri=Uri, invoke=Invoke, id=Id, match=Match, created=Created}] = ets:lookup(Ets,Uri),
+      {reply,{ok,#{uri => Uri, invoke => Invoke, id => Id, match => Match, created => Created}},State};
+    [] ->
+      {reply,{error,not_found},State}
+  end;
 handle_call(get_data, _From, #state{ets=Ets} = State) ->
 	{reply,{ok,#data{ets=Ets,pid=self()}},State};
 handle_call(enable_metaevents, _From, State) ->
@@ -337,7 +373,7 @@ publish_metaevent(_,_,_,_,#state{broker=unknown}) ->
 publish_metaevent(_,_,_,_,#state{meta_events=disabled}) ->
   ok;
 publish_metaevent(Event,ProcedureUri,SessionId,SecondArg,#state{broker=Broker}) ->
-  case binary:part(ProcedureUri,{1,5}) == <<"wamp.">> of
+  case binary:part(ProcedureUri,{0,5}) == <<"wamp.">> of
     true ->
       % do not fire metaevents on "wamp.*" uris
       ok;
@@ -385,8 +421,8 @@ start_stop_test() ->
 set_metaevents_test() ->
   {ok,Pid} = start(),
   {ok,Data} = get_data(Pid),
-  enable_metaevents(Pid),
-  disable_metaevents(Pid),
+  enable_metaevents(Data),
+  disable_metaevents(Data),
   {ok,stopped} = stop(Data).
 
 un_register_test() ->

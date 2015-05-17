@@ -41,6 +41,9 @@
 -export([enable_metaevents/1]).
 -export([disable_metaevents/1]).
 
+-export([get_subscriptions/1]).
+-export([get_subscription/2]).
+
 %% gen_server
 -export([init/1]).
 -export([handle_call/3]).
@@ -114,13 +117,22 @@ get_data(Pid) ->
    gen_server:call(Pid, get_data).
 
 
--spec enable_metaevents( pid() ) -> ok.
-enable_metaevents( Pid ) ->
+-spec enable_metaevents(record(data) ) -> ok.
+enable_metaevents( #data{pid=Pid} ) ->
   gen_server:call(Pid,enable_metaevents).
 
--spec disable_metaevents( pid() ) -> ok.
-disable_metaevents( Pid ) ->
+-spec disable_metaevents( record(data) ) -> ok.
+disable_metaevents( #data{pid=Pid} ) ->
   gen_server:call(Pid,disable_metaevents).
+
+-spec get_subscriptions( record(data) ) -> map().
+get_subscriptions(#data{pid=Pid}) ->
+  gen_server:call(Pid,get_subscriptions).
+
+-spec get_subscription( record(data), non_neg_integer() ) -> map().
+get_subscription(#data{pid=Pid},SubscriptionId) ->
+  gen_server:call(Pid,{get_subscription,SubscriptionId}).
+
 
 
 -spec subscribe(Topic::binary(),Options::map(), Session :: term(), Data::record(data)) -> {ok, non_neg_integer()}.
@@ -203,6 +215,19 @@ handle_call(unsubscribe_all, {Pid, _Ref}, #state{ets=_Ets} = State) ->
 	{reply,Result,State};
 handle_call(get_data, _From, #state{ets=Ets} = State) ->
 	{reply,{ok,#data{ets=Ets, pid=self()}},State};
+handle_call(get_subscriptions, _From, #state{ets=Ets} = State) ->
+  Exact = lists:flatten(ets:match(Ets,#topic{match = exact, id='$1', _='_'})),
+  Prefix = lists:flatten(ets:match(Ets,#topic{match = prefix, id='$1', _='_'})),
+  Wildcard = lists:flatten(ets:match(Ets,#topic{match = wildcard, id='$1', _='_'})),
+  {reply,{ok,#{exact => Exact, prefix => Prefix, wildcard => Wildcard}},State};
+handle_call({get_subscription,SubscriptionId}, _From, #state{ets=Ets} = State) ->
+  case ets:lookup(Ets,SubscriptionId) of
+    [#id_topic{id=SubscriptionId,topic=Uri}] ->
+      [#topic{uri=Uri,match=Match,created=Created,id=Id}] = ets:lookup(Ets,Uri),
+      {reply,{ok,#{uri => Uri, id => Id, match => Match, created => Created}},State};
+    [] ->
+      {reply,{error,not_found},State}
+  end;
 handle_call(enable_metaevents, _From, State) ->
   {reply,ok,State#state{meta_events=enabled}};
 handle_call(disable_metaevents, _From, State) ->
@@ -351,7 +376,7 @@ gen_id() ->
 publish_metaevent(_,_,_,_,#state{meta_events=disabled}) ->
   ok;
 publish_metaevent(Event,TopicUri,SessionId,SecondArg,#state{ets=Ets}) ->
-  case binary:part(TopicUri,{1,5}) == <<"wamp.">> of
+  case binary:part(TopicUri,{0,5}) == <<"wamp.">> of
     true ->
       % do not fire metaevents on wamp. uris
       ok;
@@ -376,13 +401,13 @@ start_stop_test() ->
   {ok,Pid} = start(),
   {ok,Data} = get_data(Pid),
   0 = get_tablesize(Data),
-  ok = enable_metaevents(Pid),
+  ok = enable_metaevents(Data),
   {ok,stopped} = stop(Data).
 
 un_subscribe_test() ->
   {ok,Pid} = start(),
   {ok,Data} = get_data(Pid),
-  ok = disable_metaevents(Pid),
+  ok = disable_metaevents(Data),
   Session = erwa_session:create(),
   0 = get_tablesize(Data),
   {ok,ID1} = subscribe(<<"topic.test1">>,#{},Session,Data),
@@ -401,7 +426,7 @@ un_subscribe_test() ->
 unsubscribe_all_test() ->
   {ok,Pid} = start(),
   {ok,Data} = get_data(Pid),
-  ok = disable_metaevents(Pid),
+  ok = disable_metaevents(Data),
   Session = erwa_session:create(),
   0 = get_tablesize(Data),
   ok = unsubscribe_all(Data),
@@ -424,7 +449,7 @@ unsubscribe_all_test() ->
 multiple_un_subscribe_test() ->
   {ok,Pid} = start(),
   {ok,Data} = get_data(Pid),
-  ok = disable_metaevents(Pid),
+  ok = disable_metaevents(Data),
   Session = erwa_session:create(),
   0 = get_tablesize(Data),
   {ok,ID1} = subscribe(<<"topic.test1">>,#{},Session,Data),
@@ -475,7 +500,7 @@ publish_test() ->
   {ok,_} = erwa_publications:start(),
   {ok,Pid} = start(),
   {ok,Data} = get_data(Pid),
-  ok = disable_metaevents(Pid),
+  ok = disable_metaevents(Data),
   Session = erwa_session:create(),
   {ok,ID} = erwa_broker:subscribe(<<"topic.test1">>,#{},Session,Data),
   Session = erwa_session:create(),
@@ -512,7 +537,7 @@ exclude_test() ->
   {ok,_} = erwa_publications:start(),
   {ok,Pid} = start(),
   {ok,Data} = get_data(Pid),
-  ok = disable_metaevents(Pid),
+  ok = disable_metaevents(Data),
   SessionId1 = gen_id(),
   SessionId2 = gen_id(),
   Session = erwa_session:set_id(SessionId1,erwa_session:create()),
@@ -568,7 +593,7 @@ eligible_test() ->
   {ok,_} = erwa_publications:start(),
   {ok,Pid} = start(),
   {ok,Data} = get_data(Pid),
-  ok = disable_metaevents(Pid),
+  ok = disable_metaevents(Data),
   SessionId1 = gen_id(),
   SessionId2 = gen_id(),
   Session = erwa_session:set_id(SessionId1,erwa_session:create()),

@@ -122,6 +122,9 @@ init(RealmName) ->
 
   {ok,DealerPid} =erwa_dealer:start_link(#{broker=>Broker}),
   {ok,Dealer} = erwa_dealer:get_data(DealerPid),
+
+  {ok, _CalleePid} = erwa_callee:start_link(#{broker=>Broker, dealer=>Dealer}),
+
 	{ok, #state{con_ets=Ets, broker=Broker, dealer=Dealer, realm_name=RealmName}}.
 
 
@@ -241,29 +244,39 @@ publish_metaevent(Event,Arg,#state{broker=Broker}) ->
 -ifdef(TEST).
 
 start_stop_test() ->
+  erwa_sessions:start(),
   {ok,Pid} = start(),
-  {ok,stopped} = stop(Pid).
+  {ok,stopped} = stop(Pid),
+  erwa_sessions:stop().
 
 simple_routing_test() ->
+  erwa_sessions:start(),
   {ok,Pid} = start(),
   Session = erwa_session:set_id(234,erwa_session:create()),
   ok = connect(Pid,Session),
+  {ok,_} = get_dealer(Pid),
+  {ok,_} = get_broker(Pid),
   ok = disconnect(Pid),
-  {ok,stopped} = stop(Pid).
+  {ok,stopped} = stop(Pid),
+  erwa_sessions:stop().
 
 
 forced_connection_test() ->
+  erwa_sessions:start(),
   {ok,Pid} = start(),
   {error,not_connected} = get_broker(Pid),
   {error,not_connected} = get_dealer(Pid),
-  {ok,stopped} = stop(Pid).
+  {ok,stopped} = stop(Pid),
+  erwa_sessions:stop().
 
 garbage_test() ->
+  erwa_sessions:start(),
   {ok,Pid} = start(),
   ignored = gen_server:call(Pid,some_garbage),
   ok = gen_server:cast(Pid,some_garbage),
   Pid ! some_garbage,
-  {ok,stopped} = stop(Pid).
+  {ok,stopped} = stop(Pid),
+  erwa_sessions:stop().
 
 
 -endif.

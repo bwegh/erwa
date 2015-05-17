@@ -24,14 +24,14 @@
 
 -ifdef(TEST).
 -include_lib("eunit/include/eunit.hrl").
--export([set_id/2]).
 -endif.
 
 -export([create/0]).
 -export([
         set_peer/2,
         set_ssl/2,
-        set_source/2
+        set_source/2,
+        set_id/2
         ]).
 -export([
         get_peer/1,
@@ -116,6 +116,9 @@ get_source(#state{source=Source}) ->
 
 get_ssl(#state{ssl=SSL}) ->
   SSL.
+
+set_id(Id,State) ->
+  State#state{id=Id}.
 
 get_id(#state{id=ID}) ->
   ID.
@@ -380,8 +383,7 @@ close_session(#state{broker=Broker,dealer=Dealer,routing_pid=RoutingPid}) ->
 
 -ifdef(TEST).
 
-set_id(Id,State) ->
-  State#state{id=Id}.
+
 
 
 -endif.
