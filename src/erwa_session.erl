@@ -136,7 +136,15 @@ get_mwl(#state{mwl=MWL}) ->
 handle_message(InMsg,State) ->
   case hndl_msg(InMsg,State) of
     {Result, OutMsg, State1} ->
+      case Result of
+        send_stop ->
+          close_session(State1);
+        _ -> ok
+      end,
       check_out_message(Result, OutMsg, State1);
+    {stop,NewState} ->
+      close_session(NewState),
+      {stop,NewState};
     Other -> Other
   end.
 
@@ -149,7 +157,15 @@ handle_message(InMsg,State) ->
 handle_info(Info,State) ->
   case hndl_info(Info,State) of
     {Result, OutMsg, State1} ->
+      case Result of
+        send_stop ->
+          close_session(State1);
+        _ -> ok
+      end,
       check_out_message(Result, OutMsg, State1);
+    {stop,NewState} ->
+      close_session(NewState),
+      {stop,NewState};
     Other -> Other
   end.
 
@@ -208,12 +224,14 @@ hndl_msg({authenticate,_Signature,_Extra}=Msg,#state{}=State) ->
       {reply_stop,Msg,State}
   end;
 
+hndl_msg({abort,_Details,_ErrorUrl}=Msg,#state{is_auth=false}=State) ->
+  {stop,State#state{is_auth=false}};
+
 hndl_msg(Msg,#state{is_auth=true}=State) ->
   hndl_msg_authed(Msg,State);
 
-hndl_msg(_Msg,_State) ->
-  erwa_sessions:unregister_session(),
-  {stop,#state{}}.
+hndl_msg(_Msg,State) ->
+  {stop,State}.
 
 
 
@@ -309,18 +327,16 @@ hndl_msg_authed({yield,InvocationId,Options,Arguments,ArgumentsKw},#state{invoca
   end;
 
 hndl_msg_authed({goodbye,_Details,_Reason},#state{goodbye_sent=GBSent}=State) ->
-  ok = close_session(State),
   case GBSent of
     true ->
-      {stop,#state{}};
+      {stop,State};
     false ->
       Msg = {goodbye,#{},goodbye_and_out},
       {reply_stop,Msg,#state{}}
   end;
 
-hndl_msg_authed(_Msg,_State) ->
-  erwa_sessions:unregister_session(),
-  {stop, #state{} }.
+hndl_msg_authed(_Msg, State) ->
+  {stop, State }.
 
 
 
@@ -359,9 +375,8 @@ hndl_info(routing_closing,#state{goodbye_sent=GBsent}=State) ->
   Msg = {goodbye,#{},close_realm},
   case GBsent of
     false ->
-      {send,Msg,State#state{goodbye_sent=true}};
+      {send_stop,Msg,State#state{goodbye_sent=true}};
     _ ->
-      ok = close_session(State),
       {stop,State}
   end;
 
@@ -375,9 +390,21 @@ hndl_info(Info, State) ->
 
 
 close_session(#state{broker=Broker,dealer=Dealer,routing_pid=RoutingPid}) ->
-  ok = erwa_broker:unsubscribe_all(Broker),
-  ok = erwa_dealer:unregister_all(Dealer),
-  ok = erwa_routing:disconnect(RoutingPid),
+  ok = case Broker of
+         none -> ok;
+         Broker ->
+           erwa_broker:unsubscribe_all(Broker)
+       end,
+  ok = case Dealer of
+         none -> ok;
+         Dealer ->
+           erwa_dealer:unregister_all(Dealer)
+       end,
+  ok = case RoutingPid of
+         none -> ok;
+         RoutingPid ->
+           erwa_routing:disconnect(RoutingPid)
+       end,
   ok = erwa_sessions:unregister_session(),
   ok.
 
