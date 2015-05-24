@@ -53,6 +53,9 @@
                  {<<"wamp.registration.list">>,fun registration_list/4},
                  %{<<"wamp.registration.match">>,fun registration_match/4},
                  {<<"wamp.registration.lookup">>,fun registration_lookup/4}
+                 %{<<"wamp.session.count">>,fun registration_lookup/4},
+                 %{<<"wamp.session.list">>,fun registration_lookup/4},
+                 %{<<"wamp.session.get">>,fun registration_lookup/4}
                  ]).
 
 start(Args) ->

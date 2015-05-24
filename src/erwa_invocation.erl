@@ -185,6 +185,8 @@ check_and_create_state(Args) ->
 
     Progressive = maps:get(receive_progress,Options,false),
 
+    _CallerExclusion = maps:get(caller_exclusion,Options,true),
+
     case maps:get(timeout,Options,0) of
       Timeout when Timeout > 0 ->
         timer:send_after(Timeout,automatic_cancel);
