@@ -52,6 +52,7 @@
                ok,
                closed,
                error,
+               erlbin_number = undefined,
                enc = undefined,
                length = infitity,
                buffer = <<"">>,
@@ -72,12 +73,16 @@ start_link(Ref, Socket, Transport, Opts) ->
     proc_lib:start_link(?MODULE, init, [Ref, Socket, Transport, Opts]).
 
 init(Ref, Socket, Transport, _Opts = []) ->
-    ok = proc_lib:init_ack({ok, self()}),
-    ok = ranch:accept_ack(Ref),
-    {Ok,Closed, Error} = Transport:messages(),
-    ok = Transport:setopts(Socket, [{active, once}]),
-    Session = erwa_session:create(),
-    gen_server:enter_loop(?MODULE, [], #state{socket=Socket,transport=Transport,ok=Ok,closed=Closed,error=Error,session=Session}).
+  ok = proc_lib:init_ack({ok, self()}),
+  ok = ranch:accept_ack(Ref),
+  {Ok,Closed, Error} = Transport:messages(),
+  ok = Transport:setopts(Socket, [{active, once}]),
+  Session = erwa_session:create(),
+  ErlBinNumber = application:get_env(erwa,erlbin_number,undefined),
+  State = #state{socket=Socket,transport=Transport,
+                 ok=Ok,closed=Closed,error=Error,
+                 session=Session,erlbin_number=ErlBinNumber},
+  gen_server:enter_loop(?MODULE, [], State).
 
 %%%% TCP - gen_server
 
@@ -92,7 +97,7 @@ handle_cast(_Request, State) ->
 
 %%% incomming TCP %%%%%%
 handle_info({OK,Socket,<<127,L:4,S:4,0,0>>},
-	  #state{ok=OK,socket=Socket,transport=Transport,enc=undefined,session=Session}=State) ->
+	  #state{ok=OK,socket=Socket,transport=Transport,enc=undefined,session=Session,erlbin_number=EBin}=State) ->
   % there is no special case for extra data comming along the line as this is against the spec.
   % the client waits for the reply ... if not then kill the line.
   MaxLength = round(math:pow(2,9+L)),
@@ -103,6 +108,8 @@ handle_info({OK,Socket,<<127,L:4,S:4,0,0>>},
                     {raw_json,<<127,?MAXLENGTH:4,S:4,0,0>>};
                   2 ->
                     {raw_msgpack,<<127,?MAXLENGTH:4,S:4,0,0>>};
+                  EBin ->
+                    {raw_erlbin,<<127,?MAXLENGTH:4,S:4,0,0>>};
                   _ ->
                     {undefined,<<127,0,0,0>>}
                 end,

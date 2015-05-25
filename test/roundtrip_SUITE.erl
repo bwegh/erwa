@@ -45,6 +45,8 @@ all() ->
 
 
 init_per_suite(Config) ->
+  ok = application:set_env(awre,erlbin_number,5),
+  ok = application:set_env(erwa,erlbin_number,5),
   {ok,_} = application:ensure_all_started(awre),
   {ok,_} = application:ensure_all_started(erwa),
   {ok,_} = application:ensure_all_started(ranch),
@@ -97,7 +99,7 @@ pubsub_tcp(_) ->
   RpcUrl2 = <<"com.test.tcp.diff">>,
   EventUrl = <<"com.test.tcp.event">>,
 
-  C1 = [{rpc_url,RpcUrl1},{remote_rpc,RpcUrl2},{event_url,EventUrl},{realm,?REALM},{tcp,true},{enc,raw_msgpack}],
+  C1 = [{rpc_url,RpcUrl1},{remote_rpc,RpcUrl2},{event_url,EventUrl},{realm,?REALM},{tcp,true},{enc,raw_erlbin}],
   C2 = [{rpc_url,RpcUrl2},{remote_rpc,RpcUrl1},{event_url,EventUrl},{realm,?REALM},{tcp,true},{enc,raw_msgpack}],
 
   {ok,Con1} = gen_server:start(roundtrip_client1,C1,[]),
