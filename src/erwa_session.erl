@@ -224,7 +224,7 @@ hndl_msg({authenticate,_Signature,_Extra}=Msg,#state{}=State) ->
       {reply_stop,Msg,State}
   end;
 
-hndl_msg({abort,_Details,_ErrorUrl}=Msg,#state{is_auth=false}=State) ->
+hndl_msg({abort,_Details,_ErrorUrl},#state{is_auth=false}=State) ->
   {stop,State#state{is_auth=false}};
 
 hndl_msg(Msg,#state{is_auth=true}=State) ->

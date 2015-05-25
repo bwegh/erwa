@@ -41,6 +41,10 @@
 -export([get_dealer/1]).
 
 
+-export([get_session_count/1]).
+-export([get_session_ids/1]).
+%-export([get_session_details/2]).
+
 -export([enable_metaevents/1]).
 -export([disable_metaevents/1]).
 
@@ -87,6 +91,14 @@ get_broker(Pid) ->
 get_dealer( Pid) ->
    gen_server:call(Pid, get_dealer).
 
+-spec get_session_count(pid()) -> {ok,non_neg_integer()}.
+get_session_count(Pid) ->
+  gen_server:call(Pid,get_session_count).
+
+-spec get_session_ids(pid()) -> {ok,[non_neg_integer()]}.
+get_session_ids(Pid) ->
+  gen_server:call(Pid,get_session_ids).
+
 -spec connect(pid(),Session :: term()) -> ok | {error,going_down}.
 connect(Pid,Session) ->
   gen_server:call(Pid, {connect,Session} ).
@@ -123,7 +135,7 @@ init(RealmName) ->
   {ok,DealerPid} =erwa_dealer:start_link(#{broker=>Broker}),
   {ok,Dealer} = erwa_dealer:get_data(DealerPid),
 
-  {ok, _CalleePid} = erwa_callee:start_link(#{broker=>Broker, dealer=>Dealer}),
+  {ok, _CalleePid} = erwa_callee:start_link(#{broker=>Broker, dealer=>Dealer, routing=>self()}),
 
 	{ok, #state{con_ets=Ets, broker=Broker, dealer=Dealer, realm_name=RealmName}}.
 
@@ -192,6 +204,15 @@ handle_call(shutdown, _From, #state{con_ets=Ets} = State) ->
       {ok,TRef} = timer:send_after(?SHUTDOWN_TIMEOUT,timeout_force_close),
       {reply,ok,State#state{going_down=true, timer_ref=TRef}}
   end;
+handle_call(get_session_count, _From, #state{con_ets=Ets} = State) ->
+  Count = ets:info(Ets,size),
+  {reply,{ok,Count},State};
+handle_call(get_session_ids, _From, #state{con_ets=Ets} = State) ->
+  ExtractId = fun(#pid_info{id=Id},IdList) ->
+                [Id|IdList]
+              end,
+  Ids = ets:foldl(ExtractId,[],Ets),
+  {reply,{ok,Ids},State};
 handle_call(_Request, _From, State) ->
 	{reply, ignored, State}.
 
@@ -266,6 +287,18 @@ forced_connection_test() ->
   {ok,Pid} = start(),
   {error,not_connected} = get_broker(Pid),
   {error,not_connected} = get_dealer(Pid),
+  {ok,stopped} = stop(Pid),
+  erwa_sessions:stop().
+
+
+meta_api_test() ->
+  erwa_sessions:start(),
+  {ok,Pid} = start(),
+  Session = erwa_session:set_id(234,erwa_session:create()),
+  ok = connect(Pid,Session),
+  {ok,1} = get_session_count(Pid),
+  {ok,[234]} = get_session_ids(Pid),
+  ok = disconnect(Pid),
   {ok,stopped} = stop(Pid),
   erwa_sessions:stop().
 

@@ -43,19 +43,20 @@
 -record(state,{
                dealer = unknown,
                broker = unknown,
+               routing = unknown,
                session = none,
                mapping = #{}
                }).
 
--define(METHODS,[{<<"wamp.subscription.list">>,fun subscription_list/4},
+-define(PROCEDURES,[{<<"wamp.subscription.list">>,fun subscription_list/4},
                  %{<<"wamp.subscription.match">>,fun subscription_match/4},
                  {<<"wamp.subscription.lookup">>,fun subscription_lookup/4},
                  {<<"wamp.registration.list">>,fun registration_list/4},
                  %{<<"wamp.registration.match">>,fun registration_match/4},
-                 {<<"wamp.registration.lookup">>,fun registration_lookup/4}
-                 %{<<"wamp.session.count">>,fun registration_lookup/4},
-                 %{<<"wamp.session.list">>,fun registration_lookup/4},
-                 %{<<"wamp.session.get">>,fun registration_lookup/4}
+                 {<<"wamp.registration.lookup">>,fun registration_lookup/4},
+                 {<<"wamp.session.count">>,fun session_count/4},
+                 {<<"wamp.session.list">>,fun session_list/4}
+                 %{<<"wamp.session.get">>,fun session_get/4}
                  ]).
 
 start(Args) ->
@@ -69,15 +70,15 @@ stop(Pid) ->
 
 
 init(Args) ->
-  #{dealer := Dealer, broker:=Broker} = Args,
+  #{dealer := Dealer, broker:=Broker, routing:=Routing} = Args,
   {ok,SessionId} = erwa_sessions:register_session(),
   Session = erwa_session:set_id(SessionId,erwa_session:create()),
   F = fun({Method,Fun},Map) ->
         {ok,RegId} = erwa_dealer:register(Method, #{invoke => single}, Session, Dealer),
         maps:put(RegId,Fun,Map)
       end,
-  Mapping = lists:foldl(F,#{},?METHODS),
-  {ok,#state{dealer = Dealer, broker = Broker, session=Session, mapping=Mapping}}.
+  Mapping = lists:foldl(F,#{},?PROCEDURES),
+  {ok,#state{dealer = Dealer, broker = Broker, session=Session, mapping=Mapping, routing=Routing}}.
 
 
 handle_call(_Msg,_From,State) ->
@@ -98,6 +99,15 @@ handle_info({erwa,{invocation,_,ProcedureId,Options,Arguments,ArgumentsKw}},#sta
   {noreply,State};
 handle_info(_Info, State) ->
 	{noreply, State}.
+
+
+session_count(_Options,_Arguments,_ArgumentsKw,#state{routing=Routing}) ->
+  {ok,Count} = erwa_routing:get_session_count(Routing),
+  {ok,#{},[Count],undefined}.
+
+session_list(_Options,_Arguments,_ArgumentsKw,#state{routing=Routing}) ->
+  {ok,Ids} = erwa_routing:get_session_ids(Routing),
+  {ok,#{},Ids,undefined}.
 
 subscription_list(_Options,_Arguments,_ArgumentsKw,#state{broker=Broker}) ->
   {ok,List} = erwa_broker:get_subscriptions(Broker),

@@ -43,19 +43,20 @@ init_per_suite(Config) ->
   {ok,_} = application:ensure_all_started(ranch),
   {ok,_} = application:ensure_all_started(sasl),
   {ok,_} = application:ensure_all_started(erwa),
-  {ok,_} = ranch:start_listener(erwa_tcp, 5, ranch_tcp, [{port,5555}], erwa_in_tcp, []),
   ok = erwa:start_realm(?REALM),
   Config.
 
 end_per_suite(Config) ->
   {ok,_} = erwa:stop_realm(?REALM),
-  ok = ranch:stop_listener(erwa_tcp),
   Config.
 
 
 api_call(_) ->
   SubList = <<"wamp.subscription.list">>,
   RegList = <<"wamp.registration.list">>,
+  SessionCount = <<"wamp.session.count">>,
+  SessionList = <<"wamp.session.list">>,
+
   {ok,Con} = awre:start_client(),
   {ok,_SessionId,_RouterDetails} = awre:connect(Con,?REALM),
 
@@ -65,6 +66,11 @@ api_call(_) ->
   {ok,_,RegResult,undefined} = awre:call(Con,#{},RegList),
   [#{exact := [], wildcard := [], prefix := []}] = RegResult,
 
+  {ok,_,CountResult,undefined} = awre:call(Con,#{},SessionCount),
+  [1] = CountResult,
+
+  {ok,_,Ids,undefined} = awre:call(Con,#{},SessionList),
+  1 = length(Ids),
   ok = awre:stop_client(Con),
   ok.
 
