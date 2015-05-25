@@ -213,7 +213,6 @@ handle_call(unregister_all,{Pid,_Ref},State) ->
 handle_call(get_registrations, _From, #state{ets=Ets} = State) ->
   ExactUris = ets:match(Ets,#procedure{match = exact, id='$1', uri='$2', _='_'}),
   Filter = fun([Id,Uri],List ) ->
-             ct:log("current Element: id=~p, uri=~p ~n",[Id,Uri]),
              case binary:part(Uri,{0,5}) == <<"wamp.">> of
                true ->
                  List;
