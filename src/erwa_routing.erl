@@ -248,7 +248,7 @@ close_routing(#state{broker=Broker, dealer=Dealer, timer_ref=TRef}=State) ->
 
 
 send_all_clients(Msg,#state{con_ets=Con}) ->
-  ok = ets:foldl(fun(#pid_info{pid=Pid},ok) -> Pid ! {erwa_info,Msg}, ok end, ok, Con).
+  ok = ets:foldl(fun(#pid_info{pid=Pid},ok) -> Pid ! {erwa,Msg}, ok end, ok, Con).
 
 publish_metaevent(_,_,#state{broker=unknown}) ->
   ok;
