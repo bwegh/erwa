@@ -135,7 +135,7 @@ init(RealmName) ->
   {ok,DealerPid} =erwa_dealer:start_link(#{broker=>Broker}),
   {ok,Dealer} = erwa_dealer:get_data(DealerPid),
 
-  {ok, _CalleePid} = erwa_callee:start_link(#{broker=>Broker, dealer=>Dealer, routing=>self()}),
+  {ok, _CalleePid} = erwa_callee:start_link(#{broker=>Broker, dealer=>Dealer, routing=>self(), realm=>RealmName}),
 
 	{ok, #state{con_ets=Ets, broker=Broker, dealer=Dealer, realm_name=RealmName}}.
 

@@ -70,8 +70,8 @@ stop(Pid) ->
 
 
 init(Args) ->
-  #{dealer := Dealer, broker:=Broker, routing:=Routing} = Args,
-  {ok,SessionId} = erwa_sessions:register_session(),
+  #{dealer := Dealer, broker:=Broker, routing:=Routing, realm:=Realm} = Args,
+  {ok,SessionId} = erwa_sessions:register_session(Realm),
   Session = erwa_session:set_id(SessionId,erwa_session:create()),
   F = fun({Method,Fun},Map) ->
         {ok,RegId} = erwa_dealer:register(Method, #{invoke => single}, Session, Dealer),

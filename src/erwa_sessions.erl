@@ -32,10 +32,15 @@
 -export([start_link/0]).
 -export([stop/0]).
 
--export([register_session/0]).
+-export([register_session/1]).
 -export([unregister_session/0]).
--export([set_realm/1]).
+-export([send_message_to/2]).
 
+
+%% for router to router communication
+-export([preregister_session/1]).
+-export([update_registration/3]).
+-export([delete_preregistration/1]).
 
 %% gen_server
 -export([init/1]).
@@ -50,6 +55,8 @@
                ets=none
                }).
 
+-define(TAB,erwa_sessions_tab).
+
 -spec start() -> {ok,pid()}.
 start() ->
   gen_server:start({local, ?MODULE}, ?MODULE, [], []).
@@ -57,18 +64,39 @@ start() ->
 start_link() ->
   gen_server:start_link({local, ?MODULE}, ?MODULE, [], []).
 
+-spec send_message_to(Msg :: term(), SessionId :: non_neg_integer()) -> ok | {error, unknown}.
+send_message_to(Msg,SessionId) ->
+  case ets:lookup(?TAB,SessionId) of
+    [{SessionId,unknown,_MonitorRef,_Realm}] ->
+      {error, unknown};
+    [{SessionId,Pid,_MonitorRef,_Realm}] ->
+      Pid ! {erwa,Msg},
+      ok;
+    [] ->
+      {error,unknown}
+  end.
 
--spec register_session() -> {ok,non_neg_integer()}.
-register_session() ->
-  gen_server:call(?MODULE, register_session).
+
+-spec register_session(Realm :: binary()) -> {ok,non_neg_integer()}.
+register_session(Realm) ->
+  gen_server:call(?MODULE, {register_session,Realm}).
+
+-spec preregister_session(Id :: non_neg_integer()) -> true | false.
+preregister_session(Id) ->
+  gen_server:call(?MODULE,{preregister_session,Id}).
+
+-spec update_registration(Id :: non_neg_integer(),Pid :: pid() ,Realm :: binary()) -> ok.
+update_registration(Id,Pid,Realm) ->
+  gen_server:call({update_registration,Id,Pid,Realm}).
+
+
+-spec delete_preregistration(Id :: non_neg_integer()) -> ok.
+delete_preregistration(Id) ->
+  gen_server:call(?MODULE,{delete_preregistration,Id}).
 
 -spec unregister_session() -> ok.
 unregister_session() ->
   gen_server:call(?MODULE, unregister_session).
-
--spec set_realm(Name :: binary()) -> ok.
-set_realm(Name) ->
-  gen_server:call(?MODULE, {set_realm,Name}).
 
 -spec stop() -> {ok,stopped}.
 stop() ->
@@ -76,18 +104,27 @@ stop() ->
 
   %% gen_server.
 
+
+
 init([]) ->
-  Ets = ets:new(sessions,[set]),
+  Ets = ets:new(?TAB,[set, named_table]),
 	{ok, #state{ets=Ets}}.
 
 
-handle_call(register_session, {Pid,_Ref}, #state{ets=Ets}=State) ->
-  ID = add_session(Pid,Ets),
+handle_call({register_session, Realm}, {Pid,_Ref}, #state{ets=Ets}=State) ->
+  ID = add_session(Pid,Realm,Ets),
   {reply, {ok,ID} , State};
 
-handle_call({set_realm,Name}, {Pid,_Ref} , #state{ets=Ets}=State) ->
-  Res = set_realm(Name,Pid,Ets),
-  {reply, Res , State};
+handle_call({preregister_session,Id},_,#state{ets=Ets}=State) ->
+  {reply, ets:insert_new(Ets,{Id,unknown,none,unknown}),State};
+
+handle_call({update_registration,Id,Pid,Realm},_,#state{ets=Ets}=State) ->
+  ets:insert(Ets,{Id,Pid,none,Realm}),
+  {reply,ok,State};
+
+handle_call({delete_preregistration,Id},_,#state{ets=Ets}=State) ->
+  delete_session(Id,Ets),
+  {reply,ok,State};
 
 handle_call(unregister_session, {Pid,_Ref}, #state{ets=Ets}=State) ->
   ID = get_id_from_pid(Pid,Ets),
@@ -120,24 +157,15 @@ code_change(_OldVsn, State, _Extra) ->
 	{ok, State}.
 
 
-add_session(Pid,Ets) ->
+add_session(Pid,Realm,Ets) ->
   ID = crypto:rand_uniform(0,9007199254740992),
-  case ets:insert_new(Ets,{ID,Pid,unknown,no_realm}) of
+  case ets:insert_new(Ets,{ID,Pid,none,Realm}) of
     true ->
       MonitorRef = monitor(process, Pid),
-      true = ets:insert(Ets,[{ID,Pid,MonitorRef,no_realm},{Pid,ID}]),
+      true = ets:insert(Ets,[{ID,Pid,MonitorRef,Realm},{Pid,ID}]),
       ID;
     false ->
-      add_session(Pid,Ets)
-  end.
-
-set_realm(Name,Pid,Ets) ->
-  ID = get_id_from_pid(Pid,Ets),
-  case ets:lookup(Ets,ID) of
-    [{ID,Pid,Ref,no_realm}] ->
-      ets:insert(Ets,{ID,Pid,Ref,Name}),
-      ok;
-    _ -> error
+      add_session(Pid,Realm,Ets)
   end.
 
 get_id_from_pid(Pid,Ets) ->
@@ -153,7 +181,11 @@ delete_session(not_found,_Ets) ->
 delete_session(ID,Ets) ->
   case ets:lookup(Ets,ID) of
     [{ID,Pid,MonitorRef,_Realm}] ->
-      true = demonitor(MonitorRef),
+      true = case MonitorRef of
+               none -> true;
+               MonitorRef ->
+                 demonitor(MonitorRef)
+             end,
       true = ets:delete(Ets,ID),
       true = ets:delete(Ets,Pid),
       ok;
@@ -189,10 +221,7 @@ stat_stop_test() ->
 simple_test() ->
   {ok, _ } = start(),
   0 = get_tablesize(),
-  {ok,_} = register_session(),
-  2 = get_tablesize(),
-  ok = set_realm(<<"cool_realm">>),
-  error = set_realm(<<"another_cool_realm">>),
+  {ok,_} = register_session(<<"cool_realm">>),
   2 = get_tablesize(),
   ok = unregister_session(),
   0 = get_tablesize(),
@@ -203,7 +232,7 @@ die_test() ->
   {ok, _ } = start(),
   0 = get_tablesize(),
   F = fun() ->
-        erwa_sessions:register_session(),
+        erwa_sessions:register_session(<<"cool_realm">>),
         receive
         after 200 -> ok
         end

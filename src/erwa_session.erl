@@ -236,7 +236,7 @@ hndl_msg(_Msg,State) ->
 
 
 create_session(RoutingPid,RealmName,Roles,State) ->
-  {ok, SessionId} = erwa_sessions:register_session(),
+  {ok, SessionId} = erwa_sessions:register_session(RealmName),
   ok = erwa_routing:connect(RoutingPid,State),
   {ok,Broker} = erwa_routing:get_broker(RoutingPid),
   {ok,Dealer} = erwa_routing:get_dealer(RoutingPid),
