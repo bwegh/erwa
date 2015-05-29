@@ -221,11 +221,6 @@ handle_cast(_Request, State) ->
 
 
 
-%handle_info({'DOWN',_Ref,process,Pid,_Reason},#state{connected=Con}=State) ->
-%  NewCon = lists:delete(Pid,Con),
-%  {noreply,State#state{connected=NewCon}};
-
-
 handle_info(timeout_force_close, State) ->
   close_routing(State),
   {stop,normal,State};
@@ -248,6 +243,8 @@ close_routing(#state{broker=Broker, dealer=Dealer, timer_ref=TRef}=State) ->
 
 
 send_all_clients(Msg,#state{con_ets=Con}) ->
+  % should here erwa_session:send_message_to be used?
+  % yet routing should never be sending anything to another router ... so not for now
   ok = ets:foldl(fun(#pid_info{pid=Pid},ok) -> Pid ! {erwa,Msg}, ok end, ok, Con).
 
 publish_metaevent(_,_,#state{broker=unknown}) ->

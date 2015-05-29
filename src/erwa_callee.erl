@@ -44,7 +44,7 @@
                dealer = unknown,
                broker = unknown,
                routing = unknown,
-               session = none,
+               sess_id = unknown,
                mapping = #{}
                }).
 
@@ -72,13 +72,12 @@ stop(Pid) ->
 init(Args) ->
   #{dealer := Dealer, broker:=Broker, routing:=Routing, realm:=Realm} = Args,
   {ok,SessionId} = erwa_sessions:register_session(Realm),
-  Session = erwa_session:set_id(SessionId,erwa_session:create()),
   F = fun({Method,Fun},Map) ->
-        {ok,RegId} = erwa_dealer:register(Method, #{invoke => single}, Session, Dealer),
+        {ok,RegId} = erwa_dealer:register(Method, #{invoke => single}, SessionId, Dealer),
         maps:put(RegId,Fun,Map)
       end,
   Mapping = lists:foldl(F,#{},?PROCEDURES),
-  {ok,#state{dealer = Dealer, broker = Broker, session=Session, mapping=Mapping, routing=Routing}}.
+  {ok,#state{sess_id = SessionId, dealer = Dealer, broker = Broker, mapping=Mapping, routing=Routing}}.
 
 
 handle_call(_Msg,_From,State) ->
@@ -87,14 +86,14 @@ handle_call(_Msg,_From,State) ->
 handle_cast(_Msg,State) ->
   {noreply,State}.
 
-handle_info({erwa,{invocation,_,ProcedureId,Options,Arguments,ArgumentsKw}},#state{mapping=Mapping}=State) ->
+handle_info({erwa,{invocation,_,ProcedureId,Options,Arguments,ArgumentsKw}},#state{sess_id=SessionId,mapping=Mapping}=State) ->
   #{invocation_pid := InvocPid} = Options,
   Fun = maps:get(ProcedureId,Mapping,fun empty_result/4),
   case Fun(Options,Arguments,ArgumentsKw,State) of
     {ok,OutOptions,OutArguments,OutArgumentsKw} ->
-      ok = erwa_invocation:yield(InvocPid,OutOptions,OutArguments,OutArgumentsKw);
+      ok = erwa_invocation:yield(InvocPid,OutOptions,OutArguments,OutArgumentsKw,SessionId);
     {error,ErrDetails,ErrorUri,ErrArguments,ErrArgumentsKw} ->
-      ok = erwa_invocation:error(InvocPid,ErrDetails,ErrorUri,ErrArguments,ErrArgumentsKw)
+      ok = erwa_invocation:error(InvocPid,ErrDetails,ErrorUri,ErrArguments,ErrArgumentsKw,SessionId)
   end,
   {noreply,State};
 handle_info(_Info, State) ->
