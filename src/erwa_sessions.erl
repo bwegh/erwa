@@ -221,7 +221,7 @@ stat_stop_test() ->
 simple_test() ->
   {ok, _ } = start(),
   0 = get_tablesize(),
-  {ok,_} = register_session(<<"cool_realm">>),
+  {ok,_} = register_session(<<"test_realm">>),
   2 = get_tablesize(),
   ok = unregister_session(),
   0 = get_tablesize(),
@@ -232,7 +232,7 @@ die_test() ->
   {ok, _ } = start(),
   0 = get_tablesize(),
   F = fun() ->
-        erwa_sessions:register_session(<<"cool_realm">>),
+        erwa_sessions:register_session(<<"test_realm">>),
         receive
         after 200 -> ok
         end
