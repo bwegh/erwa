@@ -21,9 +21,9 @@
 %%
 
 {application, erwa, [
-	{id, "erwa"},
+	{id, "git"},
 	{description, "a simple wamp library"},
-	{vsn, "0.1.0"},
+	{vsn,"2.0.0_pre"},
 	{modules, []},
 	{registered, [
     erwa_con_sup,
