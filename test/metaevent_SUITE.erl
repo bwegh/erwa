@@ -20,7 +20,8 @@
 %% SOFTWARE.
 %%
 
--module(callee_SUITE).
+
+-module(metaevent_SUITE).
 
 -include_lib("common_test/include/ct.hrl").
 
@@ -30,48 +31,66 @@
 -export([end_per_suite/1]).
 
 %% Tests.
--export([api_call/1]).
-
--define(REALM,<<"test2">>).
+-export([session_meta/1]).
 
 %% ct.
 all() ->
-	[api_call].
+	[
+	session_meta
+	].
+
+-define(REALM,<<"meta_event">>).
 
 init_per_suite(Config) ->
   {ok,_} = application:ensure_all_started(awre),
   {ok,_} = application:ensure_all_started(ranch),
   {ok,_} = application:ensure_all_started(sasl),
   {ok,_} = application:ensure_all_started(erwa),
+  {ok,_} = ranch:start_listener(erwa_tcp, 5, ranch_tcp, [{port,5555}], erwa_in_tcp, []),
   ok = erwa:start_realm(?REALM),
   Config.
 
 end_per_suite(Config) ->
   {ok,_} = erwa:stop_realm(?REALM),
-  ranch:stop_listener(erwa_tcp),
+  ok = ranch:stop_listener(erwa_tcp),
   Config.
 
 
-api_call(_) ->
-  SubList = <<"wamp.subscription.list">>,
-  RegList = <<"wamp.registration.list">>,
-  SessionCount = <<"wamp.session.count">>,
-  SessionList = <<"wamp.session.list">>,
+session_meta(_) ->
+	Topic1 = <<"wamp.session.on_join">>,
+	Topic2 = <<"wamp.session.on_leave">>,
+  Client = fun() ->
+             {ok,Con} = awre:start_client(),
+             {ok,_SessionId,_RouterDetails} = awre:connect(Con,"localhost",5555,?REALM,json), 
+             ok = receive
+             after 100 ->
+		ok
+             end,
+             ok = awre:stop_client(Con)
+           end,
 
   {ok,Con} = awre:start_client(),
-  {ok,_SessionId,_RouterDetails} = awre:connect(Con,?REALM),
+  {ok,_SessionId,_RouterDetails} = awre:connect(Con,?REALM ),
+  {ok,SubscriptionId1} = awre:subscribe(Con,#{},Topic1),
+  {ok,SubscriptionId2} = awre:subscribe(Con,#{},Topic2),
+  spawn(Client),
+  ok = receive
+         {awre,{event,SubscriptionId1,_,_,_,_}} ->
+           ok;
+		Msg ->
+			ct:log("received message ~p instead of 'on_join'~n",[Msg])
+       after 500 ->
+         timeout
+       end,
+  ok = receive
+         {awre,{event,SubscriptionId2,_,_,_,_}} ->
+	ok;
+		M2 ->
+			ct:log("received message ~p instead of 'on_leave'~n",[M2])
+       after 500 ->
+         timeout
+       end,
 
-  {ok,_,SubResult,undefined} = awre:call(Con,#{},SubList),
-  [#{exact := [], wildcard := [], prefix := []}] = SubResult,
-
-  {ok,_,RegResult,undefined} = awre:call(Con,#{},RegList),
-  [#{exact := [], wildcard := [], prefix := []}] = RegResult,
-
-  {ok,_,CountResult,undefined} = awre:call(Con,#{},SessionCount),
-  [1] = CountResult,
-
-  {ok,_,Ids,undefined} = awre:call(Con,#{},SessionList),
-  1 = length(Ids),
   ok = awre:stop_client(Con),
   ok.
 

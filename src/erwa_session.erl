@@ -137,7 +137,7 @@ handle_message(InMsg,State) ->
   case hndl_msg(InMsg,State) of
     {Result, OutMsg, State1} ->
       case Result of
-        send_stop ->
+        reply_stop ->
           close_session(State1);
         _ -> ok
       end,
@@ -145,7 +145,7 @@ handle_message(InMsg,State) ->
     {stop,NewState} ->
       close_session(NewState),
       {stop,NewState};
-    Other -> Other
+		Other -> Other
   end.
 
 -spec handle_info( term() , record(state)) ->
@@ -332,7 +332,7 @@ hndl_msg_authed({goodbye,_Details,_Reason},#state{goodbye_sent=GBSent}=State) ->
       {stop,State};
     false ->
       Msg = {goodbye,#{},goodbye_and_out},
-      {reply_stop,Msg,#state{}}
+      {reply_stop,Msg,State}
   end;
 
 hndl_msg_authed(_Msg, State) ->
