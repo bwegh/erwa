@@ -1,5 +1,5 @@
 PROJECT = erwa
-CT_SUITES = eunit connect roundtrip callee metaevent
+CT_SUITES = connect roundtrip callee metaevent
 CT_OPTS = -cover test/cover.spec
 ERLC_OPTS = +debug_info
 

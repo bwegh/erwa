@@ -6,4 +6,4 @@ otp_release:
    - 17.3
    - 17.1
 install: true
-script: "make && make ct" 
+script: "make && make tests" 
