@@ -5,6 +5,7 @@ logs/
 _rel/
 relx
 *.beam
+*.swp
 .erwa.plt
 .erlang.mk.*
 .rebar/
