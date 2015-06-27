@@ -6,4 +6,4 @@ otp_release:
    - 17.3
    - 17.1
 install: true
-script: "make eunit && make ct-connect && make ct-roundtrip && make ct-callee"
+script: "make && make ct" 

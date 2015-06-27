@@ -10,3 +10,4 @@ relx
 .erlang.mk.*
 .rebar/
 .eunit/
+.erlang.mk
