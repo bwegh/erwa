@@ -1921,8 +1921,8 @@ define str-join
 endef
 
 # Core targets.
-
-tests:: eunit
+# remove unit tests from default -> using ct
+#tests:: eunit
 
 help::
 	@printf "%s\n" "" \

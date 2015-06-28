@@ -283,7 +283,11 @@ garbage_test() ->
   {ok,stopped} = stop().
 
 add_remove_test() ->
-  {ok,_} = erwa_sup:start_link(),
+	ok = case erwa_sup:start_link() of
+		{ok,_} -> ok;
+		{already_started, _ } -> ok;
+		_ -> error
+	end,
   Name1 = <<"com.doesnotexist.wamp">>,
   Name2 = <<"com.doesnotexist.pamw">>,
   MWL = [erwa_mw_allow],
