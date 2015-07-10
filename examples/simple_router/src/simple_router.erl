@@ -20,6 +20,7 @@ start_link() ->
 %% supervisor.
 
 init([]) ->
+  erwa_realms:set_autocreate(true),
   Dispatch = cowboy_router:compile([
                                     {'_', [
                                            {"/", cowboy_static, {priv_file, simple_router, "index.html"}},
