@@ -405,7 +405,10 @@ close_session(#state{broker=Broker,dealer=Dealer,routing_pid=RoutingPid,id=Sessi
          RoutingPid ->
            erwa_routing:disconnect(RoutingPid)
        end,
-  ok = erwa_sessions:unregister_session(),
+	ok = case SessionId of
+		none -> ok;
+		_ -> erwa_sessions:unregister_session() 
+	end,
   ok.
 
 -ifdef(TEST).
