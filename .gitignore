@@ -11,3 +11,6 @@ relx
 .rebar/
 .eunit/
 .erlang.mk
+
+erwa.iml
+.idea

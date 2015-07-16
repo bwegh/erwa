@@ -7,11 +7,12 @@ COMPILE_FIRST = erwa_middleware.erl
 
 DEPS = cowboy ranch wamper
 dep_cowboy = git https://github.com/ninenines/cowboy.git master
-dep_wamper = git https://github.com/bwegh/wamper master
+dep_ranch = git https://github.com/ninenines/ranch.git master
+dep_wamper = git https://github.com/comtihon/wamper master
 
 
 TEST_DEPS = awre
-dep_awre = git https://github.com/bwegh/awre master
+dep_awre = git https://github.com/comtihon/awre master
 
 
 include erlang.mk
