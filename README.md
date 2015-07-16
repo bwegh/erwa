@@ -56,36 +56,31 @@ Erwa has the following features:
 
 Router
 ======
-The router implementation in Erwa uses the great [ranch](https://github.com/extend/ranch)
-and [cowboy](https://github.com/extend/cowboy) from [Loïc Hoguin (essen)](https://github.com/essen)
+The router implementation in Erwa uses the great [ranch](https://github.com/ninenines/ranch)
+and [cowboy](https://github.com/ninenines/cowboy) from [Loïc Hoguin (essen)](https://github.com/essen)
 to handle the incomming connections and the webserver part for the websockets.
 Erwa has two modules to work either as a protocol for ranch on incomming TCP connections, or
 as websocket handler with cowboy on incomming websocket connections.
 
 All you need to do to get a simple WAMP router up and running is to add a dispatch rule to
-ranch and/or cowboy:
-
+ranch and/or cowboy.  
 A WAMP router on websockets:
-* using erwa_in_handler as the websocket handler, by dispatching a certain path to conditions
-* starting cowboy on a certain port (here 8080) and add the dispatch rule
-```Erlang
-%% a rule to dispatch incomming connections to any host with the path /wamp to the erwa_in_handler
-Dispatch = cowboy_router:compile([ {'_', [ {"/wamp", erwa_in_handler, []}, ]} ]),
-%% fire up cowboy with the dispatch rule for the wamp connection
-{ok, _} = cowboy:start_http(http, 100, [{port, 8080}],[{env, [{dispatch, Dispatch}]}]),
-```
+
+    ok = erwa:start_websocket("/wamp", 8080, 100).
+Which starts `cowboy` on 8080 port with 100 acceptors and use `erwa_in_handler` for `"/wamp"` path.  
+If you wan't (for some reason) to use your own path on the same port - you can use `erwa:start_websocket/4` 
+and pass a list of rules as a fourth parameter:  
+
+    ok = erwa:start_websocket("/wamp", 8080, 100, [{"/example", example_handler, []}]).
 In the examples directory you can find the simple_router which includes just the above
 and starts a WAMP router, including a simple javascript client,
 using [wampy.js](https://github.com/KSDaemon/wampy.js).
 
-The other possibility is to start Erwa as a TCP router:
-Erwa implements a protocol for ranch in the erwa_in_handler modules.
-So starting and tcp router is done by starting ranch with
-erwa_in_handler as the protocol:
-```Erlang
-%% start ranch with the wamp protocol by using erwa_in_handler on port 555
-{ok,_} = ranch:start_listener(erwa_tcp, 5, ranch_tcp, [{port,5555}], erwa_in_handler, []),
-```
+The other possibility is to start Erwa as a TCP router.  
+A WAMP router on tcp sockets:  
+
+    ok = erwa:start_socket(5555, 5).
+Which starts `ranch` on 5555 port with 5 acceptors with `erwa_in_handler`.
 This is also included in the simple_router example in the examples directory.
 
 By default Erwa does not automatically create realms. This is activated by the boolean
