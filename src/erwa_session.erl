@@ -199,8 +199,8 @@ check_out_message(Result, Msg,State) ->
 hndl_msg({hello,RealmName,Details}, #state{trans=Transport} = State) ->
   AuthId = maps:get(authid, Details, anonymous),
   Roles = maps:get(roles, Details, []),
-  case AuthId of 
-    anonymous -> 
+  case ( AuthId == anonymous ) or ( AuthId == <<"anonymous">> ) of 
+    true -> 
       case erwa_user_db:allow_anonymous(RealmName,Transport) of
         true -> 
           case erwa_realms:get_routing(RealmName) of
@@ -221,7 +221,7 @@ hndl_msg({hello,RealmName,Details}, #state{trans=Transport} = State) ->
         false -> 
           {reply_stop, {abort, #{}, no_such_realm}, State}
       end;
-    _ ->
+    false ->
       AuthMethods = maps:get(authmethods, Details, []),
       authenticate(AuthMethods, RealmName, Details, State)
   end;
