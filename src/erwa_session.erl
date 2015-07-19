@@ -31,14 +31,18 @@
         set_peer/2,
         set_ssl/2,
         set_source/2,
-        set_id/2
+        set_id/2,
+        set_trans/2
         ]).
 -export([
         get_peer/1,
         get_ssl/1,
         get_source/1,
         get_id/1,
-        get_mwl/1
+        get_mwl/1,
+	get_authid/1,
+	get_role/1,
+  get_trans/1
         ]).
 -export([handle_message/2]).
 -export([handle_info/2]).
@@ -49,21 +53,20 @@
                 is_auth = false,
                 realm_name = none,
                 mwl = [],
-                version = none,
                 client_roles = unknown,
-
                 routing_pid = none,
                 broker = none,
                 dealer = none,
-
                 source = unknown,
                 peer = unknown,
                 ssl = false,
-
+                trans = unknown,
                 goodbye_sent = false,
-
                 calls = [],
-
+                session_data = #{},
+                authid = anonymous,
+                role = guest,
+                will_pass = false,
                 invocation_id = 1,
                 invocations = []
                 }).
@@ -96,8 +99,7 @@
 
 
 create() ->
-  Version = erwa:get_version(),
-  #state{version=Version}.
+  #state{}.
 
 set_peer(Peer,State) ->
   State#state{peer=Peer}.
@@ -108,6 +110,9 @@ set_source(Source,State) ->
 set_ssl(SSL,State) ->
   State#state{ssl=SSL}.
 
+set_trans(Transport, State) ->
+  State#state{trans=Transport}.
+
 get_peer(#state{peer=Peer}) ->
   Peer.
 
@@ -117,6 +122,9 @@ get_source(#state{source=Source}) ->
 get_ssl(#state{ssl=SSL}) ->
   SSL.
 
+get_trans(#state{trans=Transport}) ->
+  Transport.
+
 set_id(Id,State) ->
   State#state{id=Id}.
 
@@ -125,6 +133,13 @@ get_id(#state{id=ID}) ->
 
 get_mwl(#state{mwl=MWL}) ->
   MWL.
+
+get_authid(#state{authid=AuthId}) ->
+	AuthId.
+
+get_role(#state{role=Role}) ->
+	Role.
+
 
 -spec handle_message( term() , record(state)) ->
   { ok, record(state) } |
@@ -172,57 +187,59 @@ handle_info(Info,State) ->
 
 -spec check_out_message(atom(), term(), record(state) ) -> {atom(), term(), record(state)} | {ok, record(state)}.
 check_out_message(Result, Msg,State) ->
-  case erwa_middleware:validate_out_message(Msg,State) of
-    false ->
-      {ok,State};
-    OutMsg ->
-      {Result,OutMsg,State}
-  end.
+  %% case erwa_middleware:validate_out_message(Msg,State) of
+  %%   false ->
+  %%     {ok,State};
+  %%   OutMsg ->
+  %%     {Result,OutMsg,State}
+  %% end.
+  {Result, Msg, State}.
 
 
-
-hndl_msg({hello,RealmName,Details}=InMsg,#state{version=Version}=State) ->
-  Roles = maps:get(roles,Details),
-  case erwa_realms:get_routing(RealmName) of
-    {ok,RoutingPid} ->
-      State1 = create_session(RoutingPid,RealmName,Roles,State),
-      case erwa_middleware:check_perm(InMsg,State1) of
-        {true,_Details} ->
-          #state{id = SessionId, broker = Broker, dealer = Dealer} = State1,
-          BrokerFeat = erwa_broker:get_features(Broker),
-          DealerFeat = erwa_dealer:get_features(Dealer),
-          WelcomeMsg ={welcome,SessionId,#{agent => Version, roles => #{broker => BrokerFeat, dealer => DealerFeat}}},
-          {reply,WelcomeMsg,State1#state{is_auth=true}};
-        {false,Details} ->
-          case maps:get(auth_method,Details,none) of
-            none ->
-              OutDetails = maps:get(details,Details,#{}),
-              Error = maps:get(error,Details,not_authorized),
-              {reply_stop,{abort,OutDetails,Error},State};
-            AuthMethod ->
-              OutExtras = maps:get(extras,Details,#{}),
-              NewState = create_session(RoutingPid,RealmName,Roles,State),
-              {reply,{challenge,AuthMethod,OutExtras},NewState}
-          end
+hndl_msg({hello,RealmName,Details}, #state{trans=Transport} = State) ->
+  AuthId = maps:get(authid, Details, anonymous),
+  Roles = maps:get(roles, Details, []),
+  case AuthId of 
+    anonymous -> 
+      case erwa_user_db:allow_anonymous(RealmName,Transport) of
+        true -> 
+          case erwa_realms:get_routing(RealmName) of
+            {ok,RoutingPid} ->
+              % the realm does exist
+              State1 = create_session(RoutingPid,RealmName,Roles,State),
+              #state{id=SessionId, broker=Broker, dealer=Dealer}=State1,
+              BrokerFeat = erwa_broker:get_features(Broker),
+              DealerFeat = erwa_dealer:get_features(Dealer),
+              SessionData = #{authid => anonymous, role => anonymous, session =>
+                              SessionId},
+              WelcomeMsg ={welcome,SessionId,#{agent => erwa:get_version(), roles => #{broker => BrokerFeat, dealer => DealerFeat}}},
+              {reply,WelcomeMsg,State1#state{is_auth=true,
+                                             session_data=SessionData}}; 
+            {error,_} ->
+              {reply_stop, {abort, #{}, no_such_realm},State}
+          end;
+        false -> 
+          {reply_stop, {abort, #{}, no_such_realm}, State}
       end;
-    {error,_} ->
-      {reply_stop,{abort,#{},no_such_realm},State}
+    _ ->
+      AuthMethods = maps:get(authmethods, Details, []),
+      authenticate(AuthMethods, RealmName, Details, State)
   end;
 
 hndl_msg({authenticate,_Signature,_Extra}=Msg,#state{}=State) ->
-  case erwa_middleware:check_perm(Msg,State) of
-    {true,_} ->
-      #state{id=SessionId,version=Version,broker=Broker,dealer=Dealer} = State,
+  % case erwa_middleware:check_perm(Msg,State) of
+  %  {true,_} ->
+      #state{id=SessionId,broker=Broker,dealer=Dealer} = State,
       BrokerFeat = erwa_broker:get_features(Broker),
       DealerFeat = erwa_dealer:get_features(Dealer),
-      Msg ={welcome,SessionId,#{agent => Version, roles => #{broker => BrokerFeat, dealer => DealerFeat}}},
+      Msg ={welcome,SessionId,#{agent => erwa:get_version(), roles => #{broker => BrokerFeat, dealer => DealerFeat}}},
       {reply,Msg,State#state{is_auth=true}};
-    {false,Details} ->
-      OutDetails = maps:get(details,Details,#{}),
-      Error = maps:get(error,Details,#{}),
-      Msg = {abort,OutDetails,Error},
-      {reply_stop,Msg,State}
-  end;
+  %%   {false,Details} ->
+  %%     OutDetails = maps:get(details,Details,#{}),
+  %%     Error = maps:get(error,Details,#{}),
+  %%     Msg = {abort,OutDetails,Error},
+  %%     {reply_stop,Msg,State}
+  %% end;
 
 hndl_msg({abort,_Details,_ErrorUrl},#state{is_auth=false}=State) ->
   {stop,State#state{is_auth=false}};
@@ -232,6 +249,44 @@ hndl_msg(Msg,#state{is_auth=true}=State) ->
 
 hndl_msg(_Msg,State) ->
   {stop,State}.
+
+
+
+
+authenticate([], _RealmName, _Details, State) ->
+  {reply_stop, {abort, #{}, no_such_realm}, State};
+authenticate([wampcra|_], RealmName, Details, #state{trans=Transport
+                                                     }=State) -> 
+  AuthId = maps:get(authid, Details, anonymous),
+  Roles = maps:get(roles, Details, []),
+  case erwa_user_db:can_join(AuthId, RealmName, Transport ) of 
+    {true, Role} -> 
+      case erwa_realms:get_routing(RealmName) of
+        {ok,RoutingPid} ->
+          % the realm does exist
+          State1 = create_session(RoutingPid,RealmName,Roles,State),
+          #state{id = SessionId} = State1,
+          % a user that needs to authenticate
+          % need to create a a challenge  
+          SessionData = #{authid => AuthId, role => Role, session =>
+                          SessionId},
+          {Result, ChallengeData} = erwa_user_db:wampcra_challenge(SessionData),
+          ChallengeMsg = {challenge, wampcra, ChallengeData},
+          WillPass = case Result of 
+                       ok -> true;
+                       _ -> false
+                     end,
+          {reply, ChallengeMsg, State1#state{authid=AuthId, role=Role,
+                                             will_pass=WillPass,
+                                             session_data=SessionData}};
+        {error,_} ->
+          {reply_stop,{abort,#{},no_such_realm},State}
+      end;
+    false ->
+      {reply_stop,{abort,#{},no_such_realm}, State}
+  end;
+authenticate([_|Tail], RealmName, Details, State) ->
+  authenticate(Tail, RealmName, Details, State).
 
 
 
@@ -247,16 +302,16 @@ create_session(RoutingPid,RealmName,Roles,State) ->
 
 
 
-hndl_msg_authed({subscribe,RequestId,Options,Topic}=Msg,#state{broker=Broker,id=SessionId}=State) ->
-  case erwa_middleware:check_perm(Msg,State) of
-    {true, _ } ->
+hndl_msg_authed({subscribe,RequestId,Options,Topic},#state{broker=Broker,id=SessionId}=State) ->
+  %% case erwa_middleware:check_perm(Msg,State) of
+  %%   {true, _ } ->
       {ok,SubscriptionId} = erwa_broker:subscribe(Topic,Options,SessionId,Broker),
       {reply, {subscribed,RequestId,SubscriptionId}, State };
-    {false,Details} ->
-      OutDetails = maps:get(details,Details,#{}),
-      Error = maps:get(error,Details,not_authorized),
-      {reply, {error,subscribe,RequestId,OutDetails,Error}}
-  end;
+  %%   {false,Details} ->
+  %%     OutDetails = maps:get(details,Details,#{}),
+  %%     Error = maps:get(error,Details,not_authorized),
+  %%     {reply, {error,subscribe,RequestId,OutDetails,Error}}
+  %% end;
 
 hndl_msg_authed({unsubscribe,RequestId,SubscriptionId},#state{broker=Broker,id=SessionId}=State) ->
   ok = erwa_broker:unsubscribe(SubscriptionId,SessionId,Broker),
