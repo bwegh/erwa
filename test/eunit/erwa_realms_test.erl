@@ -1,11 +1,24 @@
-%%%-------------------------------------------------------------------
-%%% @author tihon
-%%% @copyright (C) 2015, <COMPANY>
-%%% @doc
-%%%
-%%% @end
-%%% Created : 20. Jul 2015 14:11
-%%%-------------------------------------------------------------------
+%%
+%% Copyright (c) 2014-2015 Bas Wegh
+%%
+%% Permission is hereby granted, free of charge, to any person obtaining a copy
+%% of this software and associated documentation files (the "Software"), to deal
+%% in the Software without restriction, including without limitation the rights
+%% to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+%% copies of the Software, and to permit persons to whom the Software is
+%% furnished to do so, subject to the following conditions:
+%%
+%% The above copyright notice and this permission notice shall be included in all
+%% copies or substantial portions of the Software.
+%%
+%% THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+%% IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+%% FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+%% AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+%% LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+%% OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+%% SOFTWARE.
+%%
 -module(erwa_realms_test).
 -author("tihon").
 
@@ -34,32 +47,32 @@ add_remove_test() ->  %TODO functional?
   Name1 = <<"com.doesnotexist.wamp">>,
   Name2 = <<"com.doesnotexist.pamw">>,
   MWL = [erwa_mw_allow],
-  ok = erwa_realms:set_autocreate(false),
+  ok = erwa_realms_man:set_autocreate(false),
   0 = get_tablesize(),
-  {error, not_found} = erwa_realms:get_routing(Name1),
+  {error, not_found} = erwa_realms_man:get_routing(Name1),
   0 = get_tablesize(),
-  {error, not_running} = erwa_realms:kill(Name1),
+  {error, not_running} = erwa_realms_man:kill(Name1),
   0 = get_tablesize(),
-  ok = erwa_realms:add(Name1),
+  ok = erwa_realms_man:add(Name1),
   2 = get_tablesize(),
-  {error, already_exists} = erwa_realms:add(Name1),
+  {error, already_exists} = erwa_realms_man:add(Name1),
   2 = get_tablesize(),
-  ok = erwa_realms:add(Name2, MWL),
+  ok = erwa_realms_man:add(Name2, MWL),
   4 = get_tablesize(),
-  {ok, _} = erwa_realms:get_routing(Name1),
-  {ok, _} = erwa_realms:get_middleware_list(Name1),
-  {ok, _} = erwa_realms:get_routing(Name2),
-  {ok, killed} = erwa_realms:kill(Name1),
+  {ok, _} = erwa_realms_man:get_routing(Name1),
+  {ok, _} = erwa_realms_man:get_middleware_list(Name1),
+  {ok, _} = erwa_realms_man:get_routing(Name2),
+  {ok, killed} = erwa_realms_man:kill(Name1),
   ok = ensure_tablesize(2, 5000),
-  {error, not_found} = erwa_realms:get_routing(Name1),
-  {ok, shutting_down} = erwa_realms:shutdown(Name2),
+  {error, not_found} = erwa_realms_man:get_routing(Name1),
+  {ok, shutting_down} = erwa_realms_man:shutdown(Name2),
   ok = ensure_tablesize(0, 5000),
-  {error, not_found} = erwa_realms:get_routing(Name2),
-  ok = erwa_realms:set_autocreate(true),
-  {ok, _} = erwa_realms:get_routing(Name1),
-  ok = erwa_realms:set_autocreate(false),
+  {error, not_found} = erwa_realms_man:get_routing(Name2),
+  ok = erwa_realms_man:set_autocreate(true),
+  {ok, _} = erwa_realms_man:get_routing(Name1),
+  ok = erwa_realms_man:set_autocreate(false),
   2 = get_tablesize(),
-  {ok, killed} = erwa_realms:kill(Name1),
+  {ok, killed} = erwa_realms_man:kill(Name1),
   ok = ensure_tablesize(0, 5000),
   timeout = ensure_tablesize(5, 10),
   {ok, stopped} = erwa_realms:stop().

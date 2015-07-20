@@ -23,10 +23,6 @@
 -module(erwa_sessions).
 -behaviour(gen_server).
 
--ifdef(TEST).
--include_lib("eunit/include/eunit.hrl").
--endif.
-
 %% API
 -export([start/0]).
 -export([start_link/0]).
@@ -76,7 +72,6 @@ send_message_to(Msg, SessionId) ->
       {error, unknown}
   end.
 
-
 -spec register_session(Realm :: binary()) -> {ok, non_neg_integer()}.
 register_session(Realm) ->
   gen_server:call(?MODULE, {register_session, Realm}).
@@ -88,7 +83,6 @@ preregister_session(Id) ->
 -spec update_registration(Id :: non_neg_integer(), Pid :: pid(), Realm :: binary()) -> ok.
 update_registration(Id, Pid, Realm) ->
   gen_server:call(?MODULE, {update_registration, Id, Pid, Realm}).
-
 
 -spec delete_preregistration(Id :: non_neg_integer()) -> ok.
 delete_preregistration(Id) ->
@@ -104,40 +98,29 @@ stop() ->
 
 %% gen_server.
 
-
-
 init([]) ->
   Ets = ets:new(?TAB, [set, named_table]),
   {ok, #state{ets = Ets}}.
 
-
 handle_call({register_session, Realm}, {Pid, _Ref}, #state{ets = Ets} = State) ->
   ID = add_session(Pid, Realm, Ets),
   {reply, {ok, ID}, State};
-
 handle_call({preregister_session, Id}, _, #state{ets = Ets} = State) ->
   {reply, ets:insert_new(Ets, {Id, unknown, none, unknown}), State};
-
 handle_call({update_registration, Id, Pid, Realm}, _, #state{ets = Ets} = State) ->
   ets:insert(Ets, {Id, Pid, none, Realm}),
   {reply, ok, State};
-
 handle_call({delete_preregistration, Id}, _, #state{ets = Ets} = State) ->
   delete_session(Id, Ets),
   {reply, ok, State};
-
 handle_call(unregister_session, {Pid, _Ref}, #state{ets = Ets} = State) ->
   ID = get_id_from_pid(Pid, Ets),
   Result = delete_session(ID, Ets),
   {reply, Result, State};
-
 handle_call(stop, _From, State) ->
   {stop, normal, {ok, stopped}, State};
-
 handle_call(_Request, _From, State) ->
   {reply, ignored, State}.
-
-
 
 handle_cast(_Request, State) ->
   {noreply, State}.
@@ -146,7 +129,6 @@ handle_info({'DOWN', _Ref, process, Pid, _Reason}, #state{ets = Ets} = State) ->
   ID = get_id_from_pid(Pid, Ets),
   delete_session(ID, Ets),
   {noreply, State};
-
 handle_info(_Info, State) ->
   {noreply, State}.
 
@@ -157,6 +139,7 @@ code_change(_OldVsn, State, _Extra) ->
   {ok, State}.
 
 
+%% @private
 add_session(Pid, Realm, Ets) ->
   ID = crypto:rand_uniform(0, 9007199254740992),
   case ets:insert_new(Ets, {ID, Pid, none, Realm}) of
@@ -168,6 +151,7 @@ add_session(Pid, Realm, Ets) ->
       add_session(Pid, Realm, Ets)
   end.
 
+%% @private
 get_id_from_pid(Pid, Ets) ->
   case ets:lookup(Ets, Pid) of
     [{Pid, ID}] ->
@@ -176,8 +160,8 @@ get_id_from_pid(Pid, Ets) ->
       not_found
   end.
 
-delete_session(not_found, _Ets) ->
-  not_found;
+%% @private
+delete_session(not_found, _Ets) -> not_found;
 delete_session(ID, Ets) ->
   case ets:lookup(Ets, ID) of
     [{ID, Pid, MonitorRef, _Realm}] ->
@@ -192,62 +176,3 @@ delete_session(ID, Ets) ->
     _ ->
       not_found
   end.
-
--ifdef(TEST).
-
-get_tablesize() ->
-  Pid = whereis(?MODULE),
-  Tables = ets:all(),
-  [Table] = lists:filter(fun(T) -> ets:info(T, owner) == Pid end, Tables),
-  ets:info(Table, size).
-
-ensure_tablesize(_Number, MaxTime) when MaxTime =< 0 ->
-  timeout;
-ensure_tablesize(Number, MaxTime) ->
-  case get_tablesize() of
-    Number -> ok;
-    _ ->
-      receive
-      after 10 -> ok
-      end,
-      NewTime = MaxTime - 10,
-      ensure_tablesize(Number, NewTime)
-  end.
-
-stat_stop_test() ->
-  {ok, _} = start(),
-  {ok, stopped} = stop().
-
-simple_test() ->
-  {ok, _} = start(),
-  0 = get_tablesize(),
-  {ok, _} = register_session(<<"test_realm">>),
-  2 = get_tablesize(),
-  ok = unregister_session(),
-  0 = get_tablesize(),
-  {ok, stopped} = stop().
-
-
-die_test() ->
-  {ok, _} = start(),
-  0 = get_tablesize(),
-  F = fun() ->
-    erwa_sessions:register_session(<<"test_realm">>),
-    receive
-    after 200 -> ok
-    end
-  end,
-  spawn(F),
-  ok = ensure_tablesize(2, 500),
-  ok = ensure_tablesize(0, 5000),
-  {ok, stopped} = stop().
-
-garbage_test() ->
-  {ok, Pid} = start(),
-  ignored = gen_server:call(?MODULE, some_garbage),
-  ok = gen_server:cast(?MODULE, some_garbage),
-  Pid ! some_garbage,
-  {ok, stopped} = stop().
-
--endif.
-

@@ -62,6 +62,7 @@
   canceled = false
 }).
 
+-include_lib("eunit/include/eunit.hrl").
 
 start(Args) ->
   gen_server:start(?MODULE, Args, []).
@@ -105,7 +106,6 @@ init(Args) ->
       {stop, Reason}
   end.
 
-
 handle_call({cancel, _Options}, _From, State) ->
   NewState = do_cancel(State),
   {reply, ok, NewState};
@@ -113,8 +113,6 @@ handle_call(stop, _From, State) ->
   {stop, normal, {ok, stopped}, State};
 handle_call(_Request, _From, State) ->
   {reply, ignored, State}.
-
-
 
 handle_cast({yield, Options, Arguments, ArgumentsKw, CalleeId},
     #state{caller_id = CallerId, call_req_id = RequestId, callee_ids = Callees, progressive = Progressive} = State) ->
@@ -135,7 +133,8 @@ handle_cast({yield, Options, Arguments, ArgumentsKw, CalleeId},
           {noreply, State#state{callee_ids = NewCallees}}
       end
   end;
-handle_cast({error, _Details, ErrorUri, Arguments, ArgumentsKw, CalleeId}, #state{caller_id = CallerId, call_req_id = RequestId, callee_ids = Callees} = State) ->
+handle_cast({error, _Details, ErrorUri, Arguments, ArgumentsKw, CalleeId},
+    #state{caller_id = CallerId, call_req_id = RequestId, callee_ids = Callees} = State) ->
   send_message_to({error, call, RequestId, #{}, ErrorUri, Arguments, ArgumentsKw}, CallerId),
   case lists:delete(CalleeId, Callees) of
     [] ->
@@ -145,7 +144,6 @@ handle_cast({error, _Details, ErrorUri, Arguments, ArgumentsKw, CalleeId}, #stat
   end;
 handle_cast(_Request, State) ->
   {noreply, State}.
-
 
 handle_info(automatic_cancel, State) ->
   NewState = do_cancel(State),
@@ -162,6 +160,7 @@ code_change(_OldVsn, State, _Extra) ->
   {ok, State}.
 
 
+%% @private
 do_cancel(#state{canceled = true} = State) ->
   State;
 do_cancel(#state{callee_ids = Callees} = State) ->
@@ -169,8 +168,7 @@ do_cancel(#state{callee_ids = Callees} = State) ->
   timer:send_after(?CANCEL_TIMEOUT, shutdown),
   State#state{canceled = true}.
 
-
-
+%% @private
 check_and_create_state(Args) ->
   try
     #{procedure_id := ProcedureId,
@@ -187,7 +185,7 @@ check_and_create_state(Args) ->
 
     case maps:get(timeout, Options, 0) of
       Timeout when Timeout > 0 ->
-        timer:send_after(Timeout, automatic_cancel);
+        erlang:send_after(self(), Timeout, automatic_cancel);
       _ ->
         ok
     end,
@@ -202,7 +200,6 @@ check_and_create_state(Args) ->
       progressive = Progressive,
       callee_ids = Callees
     },
-
 
     case length(Callees) of
       0 ->
@@ -219,7 +216,7 @@ check_and_create_state(Args) ->
     {error, Reason}
   end.
 
-
+%% @private
 -spec send_message_to(Msg :: term(), Peer :: list() | non_neg_integer()) -> ok.
 send_message_to(Msg, SessionId) when is_integer(SessionId) ->
   send_message_to(Msg, [SessionId]);
@@ -231,188 +228,12 @@ send_message_to(Msg, Peers) when is_list(Peers) ->
   lists:foldl(Send, [], Peers),
   ok.
 
-
 %%
 %% **********  UNIT TESTING   *************************
 %%
 
 -ifdef(TEST).
 
-flush() ->
-  receive
-    _ ->
-      flush()
-  after 0 ->
-    ok
-  end.
 
-
-
-call_result_test() ->
-  flush(),
-  erwa_sessions:start_link(),
-  {ok, SessionId} = erwa_sessions:register_session(<<"erwa.test">>),
-  CallInfo = #{procedure_id => 123,
-    caller_id => SessionId,
-    call_req_id => 124,
-    call_options => #{},
-    call_arguments => [1, 4],
-    call_argumentskw => #{},
-    callee_ids => [SessionId]
-  },
-  {ok, Pid} = start(CallInfo),
-  monitor(process, Pid),
-
-  ok = receive
-         {erwa, {invocation, set_request_id, 123, #{invocation_pid := Pid}, [1, 4], _}} -> ok
-       end,
-  ok = yield(Pid, #{}, [5], undefined, SessionId),
-  ok = receive
-         {erwa, {result, 124, #{}, [5], undefined}} -> ok
-       end,
-  ok = receive
-         {'DOWN', _, process, Pid, _} -> ok
-       end,
-  ok.
-
-
-
-call_error_test() ->
-  flush(),
-  erwa_sessions:start_link(),
-  {ok, SessionId} = erwa_sessions:register_session(<<"erwa.test">>),
-  CallInfo = #{procedure_id => 123,
-    caller_id => SessionId,
-    call_req_id => 124,
-    call_options => #{},
-    call_arguments => [1, 4],
-    call_argumentskw => #{},
-    callee_ids => [SessionId]
-  },
-  {ok, Pid} = start(CallInfo),
-  monitor(process, Pid),
-
-  ok = receive
-         {erwa, {invocation, set_request_id, 123, #{invocation_pid := Pid}, [1, 4], _}} -> ok
-       end,
-  ok = error(Pid, #{one => error}, <<"bad.error">>, undefined, undefined, SessionId),
-  ok = receive
-         {erwa, {error, call, 124, #{}, <<"bad.error">>, undefined, undefined}} -> ok
-       end,
-  ok = receive
-         {'DOWN', _, process, Pid, _} -> ok
-       end,
-  ok.
-
-
-
-cancel_test() ->
-  flush(),
-  erwa_sessions:start_link(),
-  {ok, SessionId} = erwa_sessions:register_session(<<"erwa.test">>),
-  CallInfo = #{procedure_id => 123,
-    caller_id => SessionId,
-    call_req_id => 124,
-    call_options => #{},
-    call_arguments => [1, 4],
-    call_argumentskw => #{},
-    callee_ids => [SessionId]
-  },
-  {ok, Pid} = start(CallInfo),
-  monitor(process, Pid),
-
-  ok = receive
-         {erwa, {invocation, set_request_id, 123, #{invocation_pid := Pid}, [1, 4], _}} -> ok
-       end,
-  ok = cancel(Pid, #{}),
-  ok = receive
-         {erwa, {interrupt, _, #{invocation_pid := Pid}}} -> ok
-       end,
-  ok = error(Pid, #{}, canceled, undefined, undefined, SessionId),
-  ok = receive
-         {erwa, {error, call, 124, #{}, canceled, undefined, undefined}} -> ok
-       end,
-  ok = receive
-         {'DOWN', _, process, Pid, _} -> ok
-       end,
-  ok.
-
-timeout_test() ->
-  flush(),
-  erwa_sessions:start_link(),
-  {ok, SessionId} = erwa_sessions:register_session(<<"erwa.test">>),
-  CallInfo = #{procedure_id => 123,
-    caller_id => SessionId,
-    call_req_id => 124,
-    call_options => #{timeout => 100},
-    call_arguments => [1, 4],
-    call_argumentskw => #{},
-    callee_ids => [SessionId]
-  },
-  {ok, Pid} = start(CallInfo),
-  monitor(process, Pid),
-
-  ok = receive
-         {erwa, {invocation, set_request_id, 123, #{invocation_pid := Pid}, [1, 4], _}} -> ok
-       end,
-  ok = receive
-         {erwa, {interrupt, _, #{invocation_pid := Pid}}} -> ok
-       end,
-  ok = error(Pid, [{one, error}], canceled, undefined, undefined, SessionId),
-  ok = receive
-         {erwa, {error, call, _, _, _, _, _}} -> ok
-       end,
-  ok = receive
-         {'DOWN', _, process, Pid, _} -> ok
-       end,
-  ok.
-
-
-
-failed_init_test() ->
-  CallInfo1 = #{procedure_id => 123,
-    caller_id => 2393874,
-    call_req_id => 124,
-    call_options => #{},
-    call_arguments => [1, 4],
-    call_argumentskw => #{},
-    callee_ids => []
-  },
-  {error, no_callees} = start(CallInfo1),
-  CallInfo2 = #{procedure_id => 123,
-    caller_id => 2393874,
-    call_req_id => 124,
-    call_options => #{},
-    call_arguments => [1, 4],
-    call_argumentskw => #{},
-    callee_ids => [234, 345]
-  },
-  {error, multiple_callees} = start(CallInfo2),
-  CallInfo3 = #{procedure_id => 123,
-    %caller_id => 2393874,
-    call_req_id => 124,
-    call_options => #{},
-    call_arguments => [1, 4],
-    call_argumentskw => #{},
-    callee_ids => [2343]
-  },
-  {error, {badmatch, _}} = start(CallInfo3),
-  ok.
-
-
-garbage_test() ->
-  CallInfo = #{procedure_id => 123,
-    caller_id => 2393874,
-    call_req_id => 124,
-    call_options => #{},
-    call_arguments => [1, 4],
-    call_argumentskw => #{},
-    callee_ids => [232]
-  },
-  {ok, Pid} = start(CallInfo),
-  ignored = gen_server:call(Pid, some_garbage),
-  ok = gen_server:cast(Pid, some_garbage),
-  Pid ! some_garbage,
-  {ok, stopped} = stop(Pid).
 
 -endif.

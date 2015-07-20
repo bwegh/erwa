@@ -23,10 +23,7 @@
 -module(erwa_dealer).
 -behaviour(gen_server).
 
--ifdef(TEST).
--include_lib("eunit/include/eunit.hrl").
--endif.
-
+-include("erwa_model.hrl").
 
 %% API
 -export([register/4]).
@@ -59,64 +56,12 @@
 
 -export([get_data/1]).
 
-
--define(FEATURES,
-  #{
-    features =>
-    #{
-      call_canceling => true,
-      call_timeout => true,
-      call_trustlevels => false,
-      callee_blackwhite_listing => false,
-      caller_exclusion => false,
-      caller_identification => false,
-      partitioned_rpc => false,
-      pattern_based_registration => false,
-      progressive_call_results => true
-    }
-  }
-).
-
--record(procedure,
-{
-  uri = none,
-  id = none,
-  created = unknown,
-  match = exact,
-  invoke = single,
-  options = [],
-  ids = []
-}).
-
-
--record(id_procedure,
-{
-  id = none,
-  uri = none
-}).
-
--record(id_info,
-{
-  id = unknown,
-  procs = []
-}).
-
 -record(state,
 {
   ets = none,
   meta_events = enabled,
   broker = unknown
 }).
-
-
--record(data, {
-  pid = unknown,
-  ets = none,
-  features = ?FEATURES
-}).
-
-
-
 
 
 -spec enable_metaevents(#data{}) -> ok.
@@ -177,10 +122,8 @@ call(Uri, RequestId, Options, Arguments, ArgumentsKw, SessionId, #data{ets = Ets
 get_features(#data{features = F}) ->
   F.
 
-
 start() ->
   gen_server:start(?MODULE, #{broker => unknown}, []).
-
 
 start(Args) ->
   gen_server:start(?MODULE, Args, []).
@@ -191,7 +134,6 @@ start_link(Args) ->
 -spec get_data(pid()) -> {ok, #data{}}.
 get_data(Pid) ->
   gen_server:call(Pid, get_data).
-
 
 stop(#data{pid = Pid}) ->
   stop(Pid);
@@ -204,7 +146,6 @@ init(Args) ->
   Ets = ets:new(rpc, [set, {keypos, 2}]),
   #{broker := Broker} = Args,
   {ok, #state{ets = Ets, broker = Broker}}.
-
 
 handle_call({register, ProcedureUri, Options, SessionId}, _From, State) ->
   Result = register_procedure(ProcedureUri, Options, SessionId, State),
@@ -238,7 +179,7 @@ handle_call({get_registration, Id}, _From, #state{ets = Ets} = State) ->
       {reply, {error, not_found}, State}
   end;
 handle_call(get_data, _From, #state{ets = Ets} = State) ->
-  {reply, {ok, #data{ets = Ets, pid = self()}}, State};
+  {reply, {ok, #data{ets = Ets, pid = self(), features = ?DIALER_FEATURES}}, State};
 handle_call(enable_metaevents, _From, State) ->
   {reply, ok, State#state{meta_events = enabled}};
 handle_call(disable_metaevents, _From, State) ->
@@ -262,7 +203,7 @@ code_change(_OldVsn, State, _Extra) ->
   {ok, State}.
 
 
-
+%% @private
 -spec register_procedure(ProcedureUri :: binary(), Options :: map(), SessionId :: non_neg_integer(), State :: #state{}) ->
   {ok, non_neg_integer()} | {error, procedure_already_exists}.
 register_procedure(ProcedureUri, Options, SessionId, #state{ets = Ets} = State) ->
@@ -277,9 +218,10 @@ register_procedure(ProcedureUri, Options, SessionId, #state{ets = Ets} = State) 
       {ok, ProcedureId}
   end.
 
+%% @private
 -spec create_procedure(Url :: binary(), Options :: map(), SessionId :: non_neg_integer(), State :: #state{}) -> {ok, non_neg_integer()}.
 create_procedure(Uri, Options, SessionId, #state{ets = Ets} = State) ->
-  ProcedureId = gen_id(),
+  ProcedureId = erwa_support:gen_id(),
   Invoke = maps:get(invoke, Options, single),
   Match = maps:get(match, Options, exact),
   Created = erlang:universaltime(),
@@ -296,7 +238,7 @@ create_procedure(Uri, Options, SessionId, #state{ets = Ets} = State) ->
       create_procedure(Uri, Options, SessionId, State)
   end.
 
-
+%% @private
 unregister_procedure(RegistrationId, SessionId, #state{ets = Ets} = State) when is_integer(RegistrationId) ->
   case ets:lookup(Ets, {proc, RegistrationId}) of
     [] ->
@@ -323,10 +265,11 @@ unregister_procedure(Uri, SessionId, #state{ets = Ets} = State) when is_binary(U
       ok
   end.
 
+%% @private
 -spec unregister_all_for(Pid :: pid(), State :: #state{}) -> ok | {error, Reason :: term()}.
 unregister_all_for(SessionId, #state{ets = Ets} = State) ->
   case ets:lookup(Ets, {sess, SessionId}) of
-    [#id_info{procs = Procs}] ->
+    [#id_dialer_info{procs = Procs}] ->
       F = fun(Uri, []) ->
         ok = unregister_procedure(Uri, SessionId, State),
         []
@@ -337,37 +280,32 @@ unregister_all_for(SessionId, #state{ets = Ets} = State) ->
       ok
   end.
 
-
+%% @private
 add_proc_to_id(Uri, SessionId, #state{ets = Ets}) ->
   case ets:lookup(Ets, {sess, SessionId}) of
-    [#id_info{procs = Procs} = IdInf] ->
-      true = ets:insert(Ets, IdInf#id_info{procs = [Uri | lists:delete(Uri, Procs)]}),
+    [#id_dialer_info{procs = Procs} = IdInf] ->
+      true = ets:insert(Ets, IdInf#id_dialer_info{procs = [Uri | lists:delete(Uri, Procs)]}),
       ok;
     [] ->
-      IdInf = #id_info{id = {sess, SessionId}, procs = [Uri]},
+      IdInf = #id_dialer_info{id = {sess, SessionId}, procs = [Uri]},
       true = ets:insert_new(Ets, IdInf),
       ok
   end.
 
-
-
+%% @private
 remove_proc_from_id(Uri, SessionId, #state{ets = Ets}) ->
-  [#id_info{procs = Procs} = IdInf] = ets:lookup(Ets, {sess, SessionId}),
+  [#id_dialer_info{procs = Procs} = IdInf] = ets:lookup(Ets, {sess, SessionId}),
   case lists:delete(Uri, Procs) of
     [] ->
       true = ets:delete(Ets, {sess, SessionId});
     NewProcs ->
-      true = ets:insert(Ets, IdInf#id_info{procs = NewProcs})
+      true = ets:insert(Ets, IdInf#id_dialer_info{procs = NewProcs})
   end,
   ok.
 
-gen_id() ->
-  crypto:rand_uniform(0, 9007199254740992).
-
-publish_metaevent(_, _, _, _, #state{broker = unknown}) ->
-  ok;
-publish_metaevent(_, _, _, _, #state{meta_events = disabled}) ->
-  ok;
+%% @private
+publish_metaevent(_, _, _, _, #state{broker = unknown}) ->  ok;
+publish_metaevent(_, _, _, _, #state{meta_events = disabled}) ->  ok;
 publish_metaevent(Event, ProcedureUri, SessionId, SecondArg, #state{broker = Broker}) ->
   case binary:part(ProcedureUri, {0, 5}) == <<"wamp.">> of
     true ->
@@ -383,383 +321,3 @@ publish_metaevent(Event, ProcedureUri, SessionId, SecondArg, #state{broker = Bro
       {ok, _} = erwa_broker:publish(MetaTopic, #{}, [SessionId, SecondArg], undefined, no_session, Broker)
   end,
   ok.
-
-
-%*************************************************************************************************
-%********************************          TESTS              ************************************
-%*************************************************************************************************
-
--ifdef(TEST).
-
-flush() ->
-  receive
-    _ ->
-      flush()
-  after 0 ->
-    ok
-  end.
-
-get_tablesize(#data{ets = Ets}) ->
-  ets:info(Ets, size).
-
-ensure_tablesize(_Number, _Data, MaxTime) when MaxTime =< 0 ->
-  timeout;
-ensure_tablesize(Number, Data, MaxTime) ->
-  case get_tablesize(Data) of
-    Number -> ok;
-    _ ->
-      receive
-      after 10 -> ok
-      end,
-      NewTime = MaxTime - 10,
-      ensure_tablesize(Number, Data, NewTime)
-  end.
-
-start_stop_test() ->
-  {ok, Pid} = start(),
-  {ok, stopped} = stop(Pid).
-
-set_metaevents_test() ->
-  {ok, Pid} = start(),
-  {ok, Data} = get_data(Pid),
-  enable_metaevents(Data),
-  disable_metaevents(Data),
-  {ok, stopped} = stop(Data).
-
-un_register_test() ->
-  {ok, Pid} = start(),
-  {ok, Data} = get_data(Pid),
-  SessionId = 123,
-  0 = get_tablesize(Data),
-  {ok, ID1} = register(<<"proc.test1">>, #{}, SessionId, Data),
-  3 = get_tablesize(Data),
-  {ok, ID2} = register(<<"proc.test2">>, #{}, SessionId, Data),
-  5 = get_tablesize(Data),
-  ok = unregister(ID1, SessionId, Data),
-  3 = get_tablesize(Data),
-  {error, not_found} = unregister(ID1, SessionId, Data),
-  ok = unregister(ID2, SessionId, Data),
-  0 = get_tablesize(Data),
-  {error, not_found} = unregister(ID2, SessionId, Data),
-  0 = get_tablesize(Data),
-  {ok, stopped} = stop(Data).
-
-unregister_all_test() ->
-  {ok, Pid} = start(),
-  {ok, Data} = get_data(Pid),
-  SessionId = 123,
-  0 = get_tablesize(Data),
-  ok = unregister_all(SessionId, Data),
-  0 = get_tablesize(Data),
-  {ok, ID1} = register(<<"proc.test1">>, #{}, SessionId, Data),
-  3 = get_tablesize(Data),
-  {ok, ID2} = register(<<"proc.test2">>, #{}, SessionId, Data),
-  5 = get_tablesize(Data),
-  ok = unregister_all(SessionId, Data),
-  0 = get_tablesize(Data),
-  {error, not_found} = unregister(ID1, SessionId, Data),
-  0 = get_tablesize(Data),
-  {error, not_found} = unregister(ID2, SessionId, Data),
-  0 = get_tablesize(Data),
-  ok = unregister_all(SessionId, Data),
-  0 = get_tablesize(Data),
-  {ok, stopped} = stop(Data).
-
-multiple_un_register_test() ->
-  flush(),
-  {ok, Pid} = start(),
-  {ok, Data} = get_data(Pid),
-  SessionId = 123,
-  0 = get_tablesize(Data),
-  {ok, ID1} = register(<<"proc.test1">>, #{}, SessionId, Data),
-  % procedure       x 1
-  % id_procedure    x 1
-  % id_info         x 1
-  3 = get_tablesize(Data),
-  {ok, ID2} = register(<<"proc.test2">>, #{}, SessionId, Data),
-  % procedure       x 2
-  % id_procedure    x 2
-  % id_info         x 1
-  5 = get_tablesize(Data),
-  MyPid = self(),
-  F = fun() ->
-    {error, procedure_already_exists} = erwa_dealer:register(<<"proc.test1">>, #{}, 456, Data),
-    MyPid ! error_received,
-    ok = receive
-           try_again -> ok
-         end,
-    {ok, _} = erwa_dealer:register(<<"proc.test1">>, #{}, 456, Data),
-    MyPid ! second_subscription_passed,
-    ok = receive
-           clean -> ok
-         end,
-    ok = erwa_dealer:unregister_all(456, Data),
-    MyPid ! done,
-    ok
-  end,
-  CPid = spawn(F),
-  receive
-    error_received ->
-      ok
-  end,
-  % procedure       x 2
-  % id_procedure    x 2
-  % id_info         x 1
-  5 = get_tablesize(Data),
-  ok = unregister(ID1, SessionId, Data),
-  % procedure       x 1
-  % id_procedure    x 1
-  % id_info         x 1
-  3 = get_tablesize(Data),
-  CPid ! try_again,
-  ok = receive
-         second_subscription_passed -> ok
-       end,
-  % procedure       x 2
-  % id_procedure    x 2
-  % id_info         x 2
-  6 = get_tablesize(Data),
-  CPid ! clean,
-  ok = receive
-         done -> ok
-       end,
-  % procedure       x 1
-  % id_procedure    x 1
-  % id_info         x 1
-  ok = ensure_tablesize(3, Data, 1000),
-  ok = unregister(ID2, SessionId, Data),
-  % procedure       x 0
-  % id_procedure    x 0
-  % id_info         x 0
-  0 = get_tablesize(Data),
-  ok = unregister_all(SessionId, Data),
-  % procedure       x 0
-  % id_procedure    x 0
-  % id_info         x 0
-  0 = get_tablesize(Data),
-  flush(),
-  {ok, stopped} = stop(Data).
-
-
-call_test() ->
-  erwa_invocation_sup:start_link(),
-  erwa_sessions:start_link(),
-  flush(),
-  {ok, Pid} = start(),
-  {ok, Data} = get_data(Pid),
-  Realm = <<"erwa.test">>,
-  MyPid = self(),
-  F = fun() ->
-    {ok, SessionId} = erwa_sessions:register_session(Realm),
-    {ok, ProcId} = erwa_dealer:register(<<"proc.sum">>, #{}, SessionId, Data),
-    MyPid ! subscribed,
-    {ok, A, B, InvocationPid} = receive
-                                  {erwa, {invocation, set_request_id, ProcId, #{invocation_pid := InvPid}, [In1, In2], undefined}} ->
-                                    {ok, In1, In2, InvPid}
-                                end,
-    ok = erwa_invocation:yield(InvocationPid, #{}, [A + B], undefined, SessionId),
-    ok = erwa_dealer:unregister_all(SessionId, Data),
-    ok
-  end,
-  CPid = spawn(F),
-  {ok, SessionId} = erwa_sessions:register_session(Realm),
-  monitor(process, CPid),
-  ok = receive
-         subscribed -> ok
-       end,
-  RequestId = gen_id(),
-  A = gen_id(),
-  B = gen_id(),
-  C = A + B,
-  {ok, InvocationPid} = call(<<"proc.sum">>, RequestId, #{}, [A, B], undefined, SessionId, Data),
-  monitor(process, InvocationPid),
-  ok = receive
-         {erwa, {result, RequestId, #{}, [C], undefined}} -> ok
-       end,
-
-  ok = receive
-         {'DOWN', _, process, CPid, normal} ->
-           ok
-       end,
-  ok = receive
-         {'DOWN', _, process, InvocationPid, _} ->
-           ok
-       end,
-  flush(),
-  erwa_sessions:stop(),
-  ok.
-
-
-caller_identification_test() ->
-  erwa_invocation_sup:start_link(),
-  erwa_sessions:start_link(),
-  flush(),
-  Realm = <<"erwa.test">>,
-  {ok, Pid} = start(),
-  {ok, Data} = get_data(Pid),
-  {ok, SessionId} = erwa_sessions:register_session(Realm),
-  MyPid = self(),
-  F = fun() ->
-    {ok, LocalSessId} = erwa_sessions:register_session(Realm),
-    {ok, ProcId} = erwa_dealer:register(<<"proc.sum">>, #{}, LocalSessId, Data),
-    MyPid ! subscribed,
-    {ok, A, B, InOptions} = receive
-                              {erwa, {invocation, set_request_id, ProcId, Opts, [In1, In2], undefined}} ->
-                                {ok, In1, In2, Opts}
-                            end,
-    SessionId = maps:get(caller, InOptions),
-    InvocationPid = maps:get(invocation_pid, InOptions),
-    ok = erwa_invocation:yield(InvocationPid, #{}, [A + B], undefined, LocalSessId),
-    ok = erwa_dealer:unregister_all(LocalSessId, Data),
-    receive
-    after 100 ->
-      MyPid ! done
-    end,
-    ok
-  end,
-  spawn(F),
-
-  ok = receive
-         subscribed -> ok
-       end,
-  RequestId = gen_id(),
-  A = gen_id(),
-  B = gen_id(),
-  C = A + B,
-  {ok, InvocationPid} = call(<<"proc.sum">>, RequestId, #{disclose_me => true}, [A, B], undefined, SessionId, Data),
-  monitor(process, InvocationPid),
-  ok = receive
-         {erwa, {result, RequestId, #{}, [C], undefined}} -> ok
-       end,
-  ok = receive
-         {'DOWN', _, process, InvocationPid, _} ->
-           ok
-       end,
-  ok = receive
-         done -> ok
-       end,
-  flush(),
-  erwa_sessions:stop(),
-  ok.
-
-
-call_cancel_test() ->
-  erwa_invocation_sup:start_link(),
-  erwa_sessions:start_link(),
-  flush(),
-  Realm = <<"erwa.test">>,
-  {ok, Pid} = start(),
-  {ok, Data} = get_data(Pid),
-
-  MyPid = self(),
-  F = fun() ->
-    {ok, SessionId} = erwa_sessions:register_session(Realm),
-    {ok, ProcId} = erwa_dealer:register(<<"proc.sum">>, #{}, SessionId, Data),
-    MyPid ! subscribed,
-    {ok, InOptions} = receive
-                        {erwa, {invocation, set_request_id, ProcId, Opts, _, _}} ->
-                          {ok, Opts}
-                      end,
-    InvocationPid = maps:get(invocation_pid, InOptions),
-    ok = receive
-           {erwa, {interrupt, set_request_id, #{invocation_pid := InvocationPid}}} ->
-             ok
-         end,
-    ok = erwa_invocation:error(InvocationPid, #{}, canceled, undefined, undefined, SessionId),
-    ok = erwa_dealer:unregister_all(SessionId, Data),
-    receive
-    after 100 ->
-      MyPid ! done
-    end,
-    ok
-  end,
-  spawn(F),
-  {ok, SessionId} = erwa_sessions:register_session(Realm),
-  ok = receive
-         subscribed -> ok
-       end,
-  RequestId = gen_id(),
-  A = gen_id(),
-  B = gen_id(),
-  {ok, InvocationPid} = call(<<"proc.sum">>, RequestId, #{}, [A, B], undefined, SessionId, Data),
-  monitor(process, InvocationPid),
-  receive
-  after 100 ->
-    ok
-  end,
-  erwa_invocation:cancel(InvocationPid, []),
-  ok = receive
-         {erwa, {error, call, _, _, _, _, _}} -> ok
-       end,
-  ok = receive
-         {'DOWN', _, process, InvocationPid, _} ->
-           ok
-       end,
-  ok = receive
-         done -> ok
-       end,
-  flush(),
-  erwa_sessions:stop(),
-  ok.
-
-
-call_progressive_test() ->
-  erwa_invocation_sup:start_link(),
-  erwa_sessions:start_link(),
-  flush(),
-  Realm = <<"erwa.test">>,
-  {ok, Pid} = start(),
-  {ok, Data} = get_data(Pid),
-
-  MyPid = self(),
-  F = fun() ->
-    {ok, SessionId} = erwa_sessions:register_session(Realm),
-    {ok, ProcId} = erwa_dealer:register(<<"proc.sum">>, #{}, SessionId, Data),
-    MyPid ! subscribed,
-    {ok, InOptions} = receive
-                        {erwa, {invocation, set_request_id, ProcId, Opts, _, _}} ->
-                          {ok, Opts}
-                      end,
-    InvocationPid = maps:get(invocation_pid, InOptions),
-    ok = erwa_invocation:yield(InvocationPid, #{progress => true}, [234], undefined, SessionId),
-    receive
-    after 50 ->
-      ok
-    end,
-    ok = erwa_invocation:yield(InvocationPid, #{}, [567], undefined, SessionId),
-    ok = erwa_dealer:unregister_all(SessionId, Data),
-    ok
-  end,
-  spawn(F),
-  {ok, SessionId} = erwa_sessions:register_session(Realm),
-  ok = receive
-         subscribed -> ok
-       end,
-  RequestId = gen_id(),
-  A = gen_id(),
-  B = gen_id(),
-  {ok, InvocationPid} = call(<<"proc.sum">>, RequestId, #{receive_progress => true}, [A, B], undefined, SessionId, Data),
-  monitor(process, InvocationPid),
-  ok = receive
-         {erwa, {result, RequestId, #{progress := true}, [234], undefined}} -> ok
-       end,
-  ok = receive
-         {erwa, {result, RequestId, #{}, [567], undefined}} -> ok
-       end,
-  ok = receive
-         {'DOWN', _, process, InvocationPid, _} ->
-           ok
-       end,
-  flush(),
-  erwa_sessions:stop(),
-  ok.
-
-garbage_test() ->
-  {ok, Pid} = start(),
-  ignored = gen_server:call(Pid, some_garbage),
-  ok = gen_server:cast(Pid, some_garbage),
-  Pid ! some_garbage,
-  {ok, stopped} = stop(Pid).
-
-
--endif.

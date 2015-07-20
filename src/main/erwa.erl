@@ -25,11 +25,6 @@
 %% start a router or connect to another router either local or remote.
 -module(erwa).
 
--ifdef(TEST).
--include_lib("eunit/include/eunit.hrl").
--endif.
-
-
 %% API for router
 -export([start_realm/1, start_realm/2, stop_realm/1, get_routing_for_realm/1]).
 -export([get_version/0]).
@@ -86,6 +81,3 @@ stop_realm(Name) ->
 -spec get_routing_for_realm(Realm :: binary()) -> {ok, Pid :: pid()} | {error, not_found}.
 get_routing_for_realm(Realm) ->
 	erwa_realms_man:get_routing(Realm).
-
-
-

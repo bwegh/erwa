@@ -22,10 +22,6 @@
 
 -module(erwa_session).
 
--ifdef(TEST).
--include_lib("eunit/include/eunit.hrl").
--endif.
-
 -include("erwa_model.hrl").
 
 -export([handle_message/2]).

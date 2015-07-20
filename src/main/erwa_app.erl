@@ -24,11 +24,6 @@
 -module(erwa_app).
 -behaviour(application).
 
--ifdef(TEST).
--include_lib("eunit/include/eunit.hrl").
--endif.
-
-
 %% API.
 -export([start/2]).
 -export([stop/1]).
@@ -38,8 +33,5 @@
 start(_Type, _Args) ->
   erwa_sup:start_link().
 
-
 stop(_State) ->
 	ok.
-
-

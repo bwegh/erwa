@@ -24,7 +24,7 @@
 
 -include("erwa_model.hrl").
 
--callback perm_connect(Session :: term(), Realm :: binary(), Details :: map()) ->
+-callback perm_connect(Session :: term(), Realm :: binary(), Details :: map()) -> %TODO move all callbacks to interface
   {true, Details :: map()} |
   {false, Details :: map()}.
 
@@ -64,7 +64,7 @@
 -export([validate_out_message/2]).
 -export([check_perm/2]).
 
-
+%% @private
 check_perm(Msg, Session) ->
   {Method, Args} = case Msg of
                      {hello, RealmName, Details} ->
@@ -92,15 +92,13 @@ check_perm(Msg, Session) ->
   end,
   lists:foldl(F, {true, #{}}, Session#session.mwl).
 
-
-
+%% @private
 validate_out_message(Message, Session) ->
   validate_out_message(Message, Session#session.mwl, Session).
 
-validate_out_message(false, _, _) ->
-  false;
-validate_out_message(Message, [], _) ->
-  Message;
+%% @private
+validate_out_message(false, _, _) -> false;
+validate_out_message(Message, [], _) -> Message;
 validate_out_message(Message, [MiddleWare | Tail], Session) ->
   ChangedMessage = MiddleWare:check_out_message(Session, Message),
   validate_out_message(ChangedMessage, Tail, Session).

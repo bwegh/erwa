@@ -23,10 +23,6 @@
 -module(erwa_callee).
 -behaviour(gen_server).
 
--ifdef(TEST).
--include_lib("eunit/include/eunit.hrl").
--endif.
-
 -export([start/1]).
 -export([start_link/1]).
 -export([stop/1]).

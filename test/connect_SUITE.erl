@@ -152,7 +152,7 @@ perform_publish(TCP) ->
                                      _ ->
                                        awre:connect(Con,?REALM)
                                    end,
-  {ok,_RPid} = erwa_realms:get_routing(?REALM),
+  {ok,_RPid} = erwa_realms_man:get_routing(?REALM),
 
   ok = receive
          ready_when_you_are ->

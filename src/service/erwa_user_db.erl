@@ -23,10 +23,6 @@
 -module(erwa_user_db).
 -behaviour(gen_server).
 
--ifdef(TEST).
--include_lib("eunit/include/eunit.hrl").
--endif.
-
 %% API
 -export([start/0]).
 -export([start_link/0]).
@@ -76,7 +72,6 @@ start() ->
 start_link() ->
   gen_server:start_link({local, ?MODULE}, ?MODULE, [], []).
 
-
 -spec allow_anonymous(Realm :: binary(), Transport :: atom()) -> true | false.
 allow_anonymous(Realm, Transport) ->
   %% case can_join(anonymous, Realm, Transport) of 
@@ -98,8 +93,6 @@ can_join(AuthId, Realm, Transport) ->
       end
   end.
 
-
-
 -spec wampcra_challenge(SessionData :: map()) -> {atom(), map()}.
 wampcra_challenge(#{authid := AuthId, role := Role, session := SessionNbr}) ->
   case ets:lookup(?USERTAB, AuthId) of
@@ -116,7 +109,7 @@ create_wampcra_data(AuthId, Role, SessionNbr, Salt, KeyLen,
   {{Year, Month, Day}, {Hour, Minute, Seconds}} = calendar:universal_time(),
   Timestamp = list_to_binary(io_lib:format("~.10B-~2.10.0B-~2.10.0BT~2.10.0B:~2.10.0B:~2.10.0B.000Z", [Year, Month, Day, Hour, Minute, Seconds])),
 
-  Challenge = jsx:encode([{<<"nonce">>, nonce()}, {<<"authprovider">>, AuthProvider},
+  Challenge = jsx:encode([{<<"nonce">>, erwa_support:nonce()}, {<<"authprovider">>, AuthProvider},
     {<<"authid">>, AuthId}, {<<"timestamp">>, Timestamp},
     {<<"authrole">>, Role}, {<<"authmethod">>, <<"wampcra">>},
     {<<"session">>, SessionNbr}]),
@@ -129,16 +122,11 @@ create_wampcra_data(AuthId, Role, SessionNbr, Salt, KeyLen,
   end.
 
 
-nonce() ->
-  base64:encode(crypto:strong_rand_bytes(15)).
-
-
 %% gen_server
 init([]) ->
   UserTab = ets:new(?USERTAB, [set, {keypos, 2}, named_table]),
   PermTab = ets:new(?PERMTAB, [set, {keypos, 2}, named_table]),
   {ok, #state{userdb = UserTab, permdb = PermTab}}.
-
 
 handle_call({add_user, AuthId, Secret, Salt, Iterations, KeyLen, Roles}, _From,
     #state{userdb = Udb} = State) ->
@@ -177,7 +165,6 @@ handle_call({add_dyn_perm, Realm, Role, Transport,
 handle_call(_Request, _From, State) ->
   {reply, ignored, State}.
 
-
 handle_cast(_Request, State) ->
   {noreply, State}.
 
@@ -190,11 +177,10 @@ terminate(_Reason, _State) ->
 code_change(_OldVsn, State, _Extra) ->
   {ok, State}.
 
-get_role([], _, _) ->
-  none;
+%% @private
+get_role([], _, _) -> none;
 get_role([Role | Roles], Realm, Transport) ->
   case ets:member(?PERMTAB, {Role, Realm, Transport}) of
     true -> Role;
     false -> get_role(Roles, Realm, Transport)
   end.
-

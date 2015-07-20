@@ -23,10 +23,6 @@
 -module(erwa_routing).
 -behaviour(gen_server).
 
--ifdef(TEST).
--include_lib("eunit/include/eunit.hrl").
--endif.
-
 -include("erwa_model.hrl").
 
 
@@ -132,14 +128,10 @@ init(RealmName) ->
   Ets = ets:new(connections, [set, {keypos, 2}, protected]),
   {ok, BrokerPid} = erwa_broker:start_link(),
   {ok, Broker} = erwa_broker:get_data(BrokerPid),
-
   {ok, DealerPid} = erwa_dealer:start_link(#{broker=>Broker}),
   {ok, Dealer} = erwa_dealer:get_data(DealerPid),
-
   {ok, _CalleePid} = erwa_callee:start_link(#{broker=>Broker, dealer=>Dealer, routing=>self(), realm=>RealmName}),
-
   {ok, #state{con_ets = Ets, broker = Broker, dealer = Dealer, realm_name = RealmName}}.
-
 
 handle_call(stop, _From, State) ->
   ok = close_routing(State),
@@ -219,8 +211,6 @@ handle_call(_Request, _From, State) ->
 
 handle_cast(_Request, State) ->
   {noreply, State}.
-
-
 
 handle_info(timeout_force_close, State) ->
   close_routing(State),
