@@ -43,7 +43,7 @@ init([]) ->
   Sessions = ?CHILD(erwa_sessions, worker),
   Publications = ?CHILD(erwa_publications, worker),
   InvocationSup = ?CHILD(erwa_invocation_sup, supervisor),
-  RealmsSup = ?CHILD(realms_sup, supervisor),
-  Realms = ?CHILD(realms, worker),
-  UserDB = ?CHILD(user_db, worker),
+  RealmsSup = ?CHILD(erwa_routing_sup, supervisor),
+  Realms = ?CHILD(erwa_realms, worker),
+  UserDB = ?CHILD(erwa_user_db, worker),
   {ok, {{one_for_one, 10, 10}, [Sessions, Publications, InvocationSup, RealmsSup, Realms, UserDB]}}.
