@@ -14,21 +14,20 @@
 	is_auth = false,
 	realm_name = none,
 	mwl = [],
-	version = erwa:get_version(),
 	client_roles = unknown,
-
 	routing_pid = none,
 	broker = none,
 	dealer = none,
-
 	source = unknown,
 	peer = unknown,
 	ssl = false,
-
+	trans = unknown,
 	goodbye_sent = false,
-
 	calls = [],
-
+	session_data = #{},
+	authid = anonymous,
+	role = guest,
+	will_pass = false,
 	invocation_id = 1,
 	invocations = []
 }).
