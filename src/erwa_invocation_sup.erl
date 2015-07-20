@@ -45,14 +45,14 @@ start_link() ->
 
 -spec start_invocation(Args :: map()) -> {ok, pid()}.
 start_invocation(Args) ->
-  supervisor:start_child(?MODULE,[Args]).
+  supervisor:start_child(?MODULE, [Args]).
 
 %% supervisor.
 
 init([]) ->
-Procs = [
-		{invocation, {erwa_invocation, start_link, []},
-			temporary, 5000, worker, []}
-	],
-	{ok, {{simple_one_for_one, 1000, 10}, Procs}}.
+  Procs = [
+    {invocation, {erwa_invocation, start_link, []},
+      temporary, 5000, worker, []}
+  ],
+  {ok, {{simple_one_for_one, 1000, 10}, Procs}}.
 

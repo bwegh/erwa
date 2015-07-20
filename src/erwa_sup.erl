@@ -44,6 +44,7 @@ Procs = [{sessions,{erwa_sessions,start_link,[]},permanent,5000,worker,[]},
          {publications,{erwa_publications,start_link,[]},permanent,5000,worker,[]},
          {invocation_sup,{erwa_invocation_sup,start_link,[]},permanent,5000,supervisor,[]},
          {realms_sup,{erwa_routing_sup,start_link,[]},permanent,5000,supervisor,[]},
-         {realms,{erwa_realms,start_link,[]},permanent,5000,worker,[]}
+         {realms,{erwa_realms,start_link,[]},permanent,5000,worker,[]},
+         {user_db,{erwa_user_db,start_link,[]},permanent,5000,worker,[]}
         ],
 {ok, {{one_for_one, 10, 10}, Procs}}.

@@ -61,12 +61,12 @@ check_out_message(_Session, MessageToBeSent) ->
 -ifdef(TEST).
 
 simple_test() ->
-  {true, #{}} = perm_connect(0,<<"">>, #{}),
-  {true, #{}} = authenticate(0,<<"">>,#{}),
-  {true, #{}} = perm_publish(0,#{},<<"">>,[],#{}),
-  {true, #{}} = perm_subscribe(0,#{},<<"">>),
-  {true, #{}} = perm_call(0,#{},<<"">>,[],#{}),
-  {true, #{}} = perm_register(0,#{},<<"">>).
+  {true, #{}} = perm_connect(0, <<"">>, #{}),
+  {true, #{}} = authenticate(0, <<"">>, #{}),
+  {true, #{}} = perm_publish(0, #{}, <<"">>, [], #{}),
+  {true, #{}} = perm_subscribe(0, #{}, <<"">>),
+  {true, #{}} = perm_call(0, #{}, <<"">>, [], #{}),
+  {true, #{}} = perm_register(0, #{}, <<"">>).
 
 
 
