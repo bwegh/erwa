@@ -32,6 +32,8 @@
 -include_lib("eunit/include/eunit.hrl").
 -endif.
 
+-include("erwa_model.hrl").
+
 %% for tcp
 -export([start_link/4]).
 -export([init/4]).
@@ -77,7 +79,7 @@ init(Ref, Socket, Transport, []) ->
 	ok = ranch:accept_ack(Ref),
 	{Ok, Closed, Error} = Transport:messages(),
 	ok = Transport:setopts(Socket, [{active, once}]),
-	Session = erwa_session:create(),
+	Session = #session{},
 	ErlBinNumber = application:get_env(erwa, erlbin_number, undefined),
 	State = #state{socket = Socket, transport = Transport,
 		ok = Ok, closed = Closed, error = Error,
@@ -121,9 +123,8 @@ handle_info({OK, Socket, <<127, L:4, S:4, 0, 0>>}, State = #state{ok = OK, socke
 		undefined -> {stop, normal, State};
 		_ ->
 			Transport:setopts(Socket, [{active, once}]),
-			Session1 = erwa_session:set_source(tcp, Session),
-			Session2 = erwa_session:set_peer(Peer, Session1),
-			{noreply, State#state{enc = Enc, length = MaxLength, session = Session2}}
+			USession = Session#session{source = tcp, peer = Peer},
+			{noreply, State#state{enc = Enc, length = MaxLength, session = USession}}
 	end;
 handle_info({OK, Socket, <<127, _L:4, _S:4, _, _>>},
 		State = #state{ok = OK, socket = Socket, transport = Transport, enc = undefined}) ->
@@ -211,7 +212,7 @@ get_peer(_) ->
 
 handshake_hello_test() ->
 	{ok, Socket} = erwa_tcp_mock:start(),
-	Session = erwa_session:create(),
+	Session = #session{},
 	State1 = #state{ok = ok, transport = erwa_tcp_mock, socket = Socket, closed = closed, error = error, session = Session},
 
 	{stop, normal, _} = handle_info({ok, Socket, <<127, 1:4, 0:4, 0, 0>>}, State1), %illegal

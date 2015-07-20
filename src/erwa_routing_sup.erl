@@ -45,14 +45,14 @@ start_link() ->
 
 -spec start_routing(Name :: binary()) -> {ok, pid()}.
 start_routing(Name) ->
-  supervisor:start_child(?MODULE,[Name]).
+  supervisor:start_child(?MODULE, [Name]).
 
 %% supervisor.
 
 init([]) ->
-Procs = [
-		{routing, {erwa_routing, start_link, []},
-			transient, 5000, worker, []}
-	],
-	{ok, {{simple_one_for_one, 1000, 10}, Procs}}.
+  Procs = [
+    {routing, {erwa_routing, start_link, []},
+      transient, 5000, worker, []}
+  ],
+  {ok, {{simple_one_for_one, 1000, 10}, Procs}}.
 

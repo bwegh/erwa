@@ -27,6 +27,8 @@
 -include_lib("eunit/include/eunit.hrl").
 -endif.
 
+-include("erwa_model.hrl").
+
 
 %% API
 -export([start/0]).
@@ -58,23 +60,23 @@
 
 
 -record(state, {
-                realm_name = unknown,
-                broker = unknown,
-                dealer = unknown,
+  realm_name = unknown,
+  broker = unknown,
+  dealer = unknown,
 
-                %api_pid = unknown,
-                con_ets=none,
-                going_down = false,
-                timer_ref = none,
-                meta_events = enabled
-                }).
+  %api_pid = unknown,
+  con_ets = none,
+  going_down = false,
+  timer_ref = none,
+  meta_events = enabled
+}).
 
 -record(pid_info, {
-                   pid = unknown,
-                   id = unknown
-                   }).
+  pid = unknown,
+  id = unknown
+}).
 
--define(SHUTDOWN_TIMEOUT,30000).
+-define(SHUTDOWN_TIMEOUT, 30000).
 
 start() ->
   gen_server:start(?MODULE, [], []).
@@ -83,91 +85,90 @@ start_link(RealmName) ->
   gen_server:start_link(?MODULE, RealmName, []).
 
 
--spec get_broker( pid() ) -> {ok,term()} | {error,going_down}.
+-spec get_broker(pid()) -> {ok, term()} | {error, going_down}.
 get_broker(Pid) ->
-   gen_server:call(Pid, get_broker).
+  gen_server:call(Pid, get_broker).
 
--spec get_dealer( pid() ) -> {ok,term()} | {error,going_down}.
-get_dealer( Pid) ->
-   gen_server:call(Pid, get_dealer).
+-spec get_dealer(pid()) -> {ok, term()} | {error, going_down}.
+get_dealer(Pid) ->
+  gen_server:call(Pid, get_dealer).
 
--spec get_session_count(pid()) -> {ok,non_neg_integer()}.
+-spec get_session_count(pid()) -> {ok, non_neg_integer()}.
 get_session_count(Pid) ->
-  gen_server:call(Pid,get_session_count).
+  gen_server:call(Pid, get_session_count).
 
--spec get_session_ids(pid()) -> {ok,[non_neg_integer()]}.
+-spec get_session_ids(pid()) -> {ok, [non_neg_integer()]}.
 get_session_ids(Pid) ->
-  gen_server:call(Pid,get_session_ids).
+  gen_server:call(Pid, get_session_ids).
 
--spec connect(pid(),Session :: term()) -> ok | {error,going_down}.
-connect(Pid,Session) ->
-  gen_server:call(Pid, {connect,Session} ).
+-spec connect(pid(), Session :: term()) -> ok | {error, going_down}.
+connect(Pid, Session) ->
+  gen_server:call(Pid, {connect, Session}).
 
--spec disconnect(pid() | none) -> ok | {error,going_down}.
+-spec disconnect(pid() | none) -> ok | {error, going_down}.
 disconnect(none) ->
   ok;
 disconnect(Pid) ->
-  gen_server:call(Pid, disconnect ).
+  gen_server:call(Pid, disconnect).
 
 
--spec enable_metaevents( pid() ) -> ok.
-enable_metaevents( Pid ) ->
-  gen_server:call(Pid,enable_metaevents).
+-spec enable_metaevents(pid()) -> ok.
+enable_metaevents(Pid) ->
+  gen_server:call(Pid, enable_metaevents).
 
--spec disable_metaevents( pid() ) -> ok.
-disable_metaevents( Pid ) ->
-  gen_server:call(Pid,disable_metaevents).
+-spec disable_metaevents(pid()) -> ok.
+disable_metaevents(Pid) ->
+  gen_server:call(Pid, disable_metaevents).
 
--spec shutdown(pid()) -> ok | {error,going_down}.
+-spec shutdown(pid()) -> ok | {error, going_down}.
 shutdown(Pid) ->
-  gen_server:call(Pid, shutdown ).
+  gen_server:call(Pid, shutdown).
 
 stop(Pid) ->
   gen_server:call(Pid, stop).
 
-  %% gen_server.
+%% gen_server.
 
 init(RealmName) ->
-  Ets = ets:new(connections,[set,{keypos,2},protected]),
-  {ok,BrokerPid} =erwa_broker:start_link(),
-  {ok,Broker} = erwa_broker:get_data(BrokerPid),
+  Ets = ets:new(connections, [set, {keypos, 2}, protected]),
+  {ok, BrokerPid} = erwa_broker:start_link(),
+  {ok, Broker} = erwa_broker:get_data(BrokerPid),
 
-  {ok,DealerPid} =erwa_dealer:start_link(#{broker=>Broker}),
-  {ok,Dealer} = erwa_dealer:get_data(DealerPid),
+  {ok, DealerPid} = erwa_dealer:start_link(#{broker=>Broker}),
+  {ok, Dealer} = erwa_dealer:get_data(DealerPid),
 
   {ok, _CalleePid} = erwa_callee:start_link(#{broker=>Broker, dealer=>Dealer, routing=>self(), realm=>RealmName}),
 
-	{ok, #state{con_ets=Ets, broker=Broker, dealer=Dealer, realm_name=RealmName}}.
+  {ok, #state{con_ets = Ets, broker = Broker, dealer = Dealer, realm_name = RealmName}}.
 
 
 handle_call(stop, _From, State) ->
   ok = close_routing(State),
-	{stop,normal,{ok,stopped},State};
-handle_call(disconnect, {Pid, _Ref}, #state{con_ets=Ets,going_down=GoDown,timer_ref=TRef} = State) ->
-  case ets:lookup(Ets,Pid) of
-    [#pid_info{pid=Pid,id=SessionId}] ->
-      publish_metaevent(on_leave,SessionId,State);
+  {stop, normal, {ok, stopped}, State};
+handle_call(disconnect, {Pid, _Ref}, #state{con_ets = Ets, going_down = GoDown, timer_ref = TRef} = State) ->
+  case ets:lookup(Ets, Pid) of
+    [#pid_info{pid = Pid, id = SessionId}] ->
+      publish_metaevent(on_leave, SessionId, State);
     _ ->
       ok
   end,
-  true = ets:delete(Ets,Pid),
-  NewTRef = case { GoDown, ets:info(Ets,size) } of
-              {true,0} ->
+  true = ets:delete(Ets, Pid),
+  NewTRef = case {GoDown, ets:info(Ets, size)} of
+              {true, 0} ->
                 _ = timer:cancel(TRef),
-                {ok,TR} = timer:send_after(1,timeout_force_close),
+                {ok, TR} = timer:send_after(1, timeout_force_close),
                 TR;
               _ -> TRef
             end,
-  {reply,ok,State#state{timer_ref=NewTRef}};
+  {reply, ok, State#state{timer_ref = NewTRef}};
 handle_call(enable_metaevents, _From, State) ->
-  {reply,ok,State#state{meta_events=enabled}};
+  {reply, ok, State#state{meta_events = enabled}};
 handle_call(disable_metaevents, _From, State) ->
-  {reply,ok,State#state{meta_events=disabled}};
-handle_call(_, _, #state{going_down=true} = State) ->
-  {reply,{error,going_down},State};
-handle_call({connect,Session}, {Pid, _Ref}, #state{con_ets=Ets, realm_name=Realm} = State) ->
-  SessionId = erwa_session:get_id(Session),
-  case ets:lookup(Ets,Pid) of
+  {reply, ok, State#state{meta_events = disabled}};
+handle_call(_, _, #state{going_down = true} = State) ->
+  {reply, {error, going_down}, State};
+handle_call({connect, #session{id = SessionId}}, {Pid, _Ref}, #state{con_ets = Ets, realm_name = Realm} = State) ->
+  case ets:lookup(Ets, Pid) of
     [] ->
       %TODO: more data should be sent, which are really needed and useful:
       % - authid
@@ -175,137 +176,137 @@ handle_call({connect,Session}, {Pid, _Ref}, #state{con_ets=Ets, realm_name=Realm
       % - authprovider
       % - authrole
       % - transport
-      publish_metaevent(on_join,#{realm => Realm, session => SessionId},State);
+      publish_metaevent(on_join, #{realm => Realm, session => SessionId}, State);
     _ -> ok
   end,
-  true = ets:insert(Ets,#pid_info{pid=Pid,id=SessionId}),
-	{reply,ok,State};
-handle_call(get_broker, {Pid,_}, #state{broker=Broker,con_ets=Ets} = State) ->
-  case ets:lookup(Ets,Pid) of
+  true = ets:insert(Ets, #pid_info{pid = Pid, id = SessionId}),
+  {reply, ok, State};
+handle_call(get_broker, {Pid, _}, #state{broker = Broker, con_ets = Ets} = State) ->
+  case ets:lookup(Ets, Pid) of
     [] ->
-      {reply,{error,not_connected},State};
+      {reply, {error, not_connected}, State};
     _ ->
-	    {reply,{ok,Broker},State}
+      {reply, {ok, Broker}, State}
   end;
-handle_call(get_dealer, {Pid,_}, #state{dealer=Dealer,con_ets=Ets} = State) ->
-  case ets:lookup(Ets,Pid) of
+handle_call(get_dealer, {Pid, _}, #state{dealer = Dealer, con_ets = Ets} = State) ->
+  case ets:lookup(Ets, Pid) of
     [] ->
-      {reply,{error,not_connected},State};
+      {reply, {error, not_connected}, State};
     _ ->
-	    {reply,{ok,Dealer},State}
+      {reply, {ok, Dealer}, State}
   end;
-handle_call(shutdown, _From, #state{con_ets=Ets} = State) ->
-  case ets:info(Ets,size) of
+handle_call(shutdown, _From, #state{con_ets = Ets} = State) ->
+  case ets:info(Ets, size) of
     0 ->
-      {ok,TRef} = timer:send_after(1,timeout_force_close),
-      {reply,ok,State#state{going_down=true, timer_ref=TRef}};
+      {ok, TRef} = timer:send_after(1, timeout_force_close),
+      {reply, ok, State#state{going_down = true, timer_ref = TRef}};
     _ ->
-      ok = send_all_clients(routing_closing,State),
-      {ok,TRef} = timer:send_after(?SHUTDOWN_TIMEOUT,timeout_force_close),
-      {reply,ok,State#state{going_down=true, timer_ref=TRef}}
+      ok = send_all_clients(routing_closing, State),
+      {ok, TRef} = timer:send_after(?SHUTDOWN_TIMEOUT, timeout_force_close),
+      {reply, ok, State#state{going_down = true, timer_ref = TRef}}
   end;
-handle_call(get_session_count, _From, #state{con_ets=Ets} = State) ->
-  Count = ets:info(Ets,size),
-  {reply,{ok,Count},State};
-handle_call(get_session_ids, _From, #state{con_ets=Ets} = State) ->
-  ExtractId = fun(#pid_info{id=Id},IdList) ->
-                [Id|IdList]
-              end,
-  Ids = ets:foldl(ExtractId,[],Ets),
-  {reply,{ok,Ids},State};
+handle_call(get_session_count, _From, #state{con_ets = Ets} = State) ->
+  Count = ets:info(Ets, size),
+  {reply, {ok, Count}, State};
+handle_call(get_session_ids, _From, #state{con_ets = Ets} = State) ->
+  ExtractId = fun(#pid_info{id = Id}, IdList) ->
+    [Id | IdList]
+  end,
+  Ids = ets:foldl(ExtractId, [], Ets),
+  {reply, {ok, Ids}, State};
 handle_call(_Request, _From, State) ->
-	{reply, ignored, State}.
+  {reply, ignored, State}.
 
 handle_cast(_Request, State) ->
-	{noreply, State}.
+  {noreply, State}.
 
 
 
 handle_info(timeout_force_close, State) ->
   close_routing(State),
-  {stop,normal,State};
+  {stop, normal, State};
 handle_info(_Info, State) ->
-	{noreply, State}.
+  {noreply, State}.
 
 terminate(_Reason, _State) ->
-	ok.
+  ok.
 
 code_change(_OldVsn, State, _Extra) ->
-	{ok, State}.
+  {ok, State}.
 
 
-close_routing(#state{broker=Broker, dealer=Dealer, timer_ref=TRef}=State) ->
+close_routing(#state{broker = Broker, dealer = Dealer, timer_ref = TRef} = State) ->
   _ = timer:cancel(TRef),
-  send_all_clients(shutdown,State),
-  {ok,stopped} = erwa_broker:stop(Broker),
-  {ok,stopped} = erwa_dealer:stop(Dealer),
+  send_all_clients(shutdown, State),
+  {ok, stopped} = erwa_broker:stop(Broker),
+  {ok, stopped} = erwa_dealer:stop(Dealer),
   ok.
 
 
-send_all_clients(Msg,#state{con_ets=Con}) ->
+send_all_clients(Msg, #state{con_ets = Con}) ->
   % should here erwa_session:send_message_to be used?
   % yet routing should never be sending anything to another router ... so not for now
-  ok = ets:foldl(fun(#pid_info{pid=Pid},ok) -> Pid ! {erwa,Msg}, ok end, ok, Con).
+  ok = ets:foldl(fun(#pid_info{pid = Pid}, ok) -> Pid ! {erwa, Msg}, ok end, ok, Con).
 
-publish_metaevent(_,_,#state{broker=unknown}) ->
+publish_metaevent(_, _, #state{broker = unknown}) ->
   ok;
-publish_metaevent(_,_,#state{meta_events=disabled}) ->
+publish_metaevent(_, _, #state{meta_events = disabled}) ->
   ok;
-publish_metaevent(Event,Arg,#state{broker=Broker}) ->
+publish_metaevent(Event, Arg, #state{broker = Broker}) ->
   MetaTopic = case Event of
                 on_join -> <<"wamp.session.on_join">>;
                 on_leave -> <<"wamp.session.on_leave">>
               end,
-  {ok,_} = erwa_broker:publish(MetaTopic,#{},[Arg],undefined,no_session,Broker),
+  {ok, _} = erwa_broker:publish(MetaTopic, #{}, [Arg], undefined, no_session, Broker),
   ok.
 
 -ifdef(TEST).
 
 start_stop_test() ->
   erwa_sessions:start(),
-  {ok,Pid} = start(),
-  {ok,stopped} = stop(Pid),
+  {ok, Pid} = start(),
+  {ok, stopped} = stop(Pid),
   erwa_sessions:stop().
 
 simple_routing_test() ->
   erwa_sessions:start(),
-  {ok,Pid} = start(),
-  Session = erwa_session:set_id(234,erwa_session:create()),
-  ok = connect(Pid,Session),
-  {ok,_} = get_dealer(Pid),
-  {ok,_} = get_broker(Pid),
+  {ok, Pid} = start(),
+  Session = #session{id = 234},
+  ok = connect(Pid, Session),
+  {ok, _} = get_dealer(Pid),
+  {ok, _} = get_broker(Pid),
   ok = disconnect(Pid),
-  {ok,stopped} = stop(Pid),
+  {ok, stopped} = stop(Pid),
   erwa_sessions:stop().
 
 
 forced_connection_test() ->
   erwa_sessions:start(),
-  {ok,Pid} = start(),
-  {error,not_connected} = get_broker(Pid),
-  {error,not_connected} = get_dealer(Pid),
-  {ok,stopped} = stop(Pid),
+  {ok, Pid} = start(),
+  {error, not_connected} = get_broker(Pid),
+  {error, not_connected} = get_dealer(Pid),
+  {ok, stopped} = stop(Pid),
   erwa_sessions:stop().
 
 
 meta_api_test() ->
   erwa_sessions:start(),
-  {ok,Pid} = start(),
-  Session = erwa_session:set_id(234,erwa_session:create()),
-  ok = connect(Pid,Session),
-  {ok,1} = get_session_count(Pid),
-  {ok,[234]} = get_session_ids(Pid),
+  {ok, Pid} = start(),
+  Session = #session{id = 234},
+  ok = connect(Pid, Session),
+  {ok, 1} = get_session_count(Pid),
+  {ok, [234]} = get_session_ids(Pid),
   ok = disconnect(Pid),
-  {ok,stopped} = stop(Pid),
+  {ok, stopped} = stop(Pid),
   erwa_sessions:stop().
 
 garbage_test() ->
   erwa_sessions:start(),
-  {ok,Pid} = start(),
-  ignored = gen_server:call(Pid,some_garbage),
-  ok = gen_server:cast(Pid,some_garbage),
+  {ok, Pid} = start(),
+  ignored = gen_server:call(Pid, some_garbage),
+  ok = gen_server:cast(Pid, some_garbage),
   Pid ! some_garbage,
-  {ok,stopped} = stop(Pid),
+  {ok, stopped} = stop(Pid),
   erwa_sessions:stop().
 
 

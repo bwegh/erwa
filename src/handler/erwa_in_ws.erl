@@ -29,6 +29,8 @@
 -include_lib("eunit/include/eunit.hrl").
 -endif.
 
+-include("erwa_model.hrl").
+
 
 %% for websocket
 -export([init/2]).
@@ -61,10 +63,8 @@ init(Req, _Opts) ->
 		{Enc, WsEncoding, Header} ->
 			Req1 = cowboy_req:set_resp_header(?SUBPROTHEADER, Header, Req),
 			Peer = cowboy_req:peer(Req1),
-			Session = erwa_session:create(),
-			Session1 = erwa_session:set_peer(Peer, Session),
-			Session2 = erwa_session:set_source(websocket, Session1),
-			{cowboy_websocket, Req1, #state{enc = Enc, ws_enc = WsEncoding, session = Session2}};
+			Session = #session{peer = Peer, source = websocket},
+			{cowboy_websocket, Req1, #state{enc = Enc, ws_enc = WsEncoding, session = Session}};
 		_ ->
 			% unsupported
 			{shutdown, Req}
