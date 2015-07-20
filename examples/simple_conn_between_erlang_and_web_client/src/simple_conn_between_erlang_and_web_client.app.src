@@ -11,7 +11,8 @@
 		crypto,
     	ranch,
     	cowboy,
-    	erwa
+    	erwa,
+    	awre
 	]},
 	{mod, {simple_conn_between_erlang_and_web_client_app, []}},
 	{env, []}
