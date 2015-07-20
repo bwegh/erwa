@@ -61,7 +61,7 @@
 
 -spec add(Name :: binary()) -> ok | {error, Reason :: term()}.
 add(Name) ->
-  MW_List = get_env(erwa, router_middleware, [erwa_mw_default]),
+  MW_List = application:get_env(erwa, router_middleware, [erwa_mw_default]),
   add(Name, MW_List).
 
 -spec add(Name :: binary(), Middlewares :: [atom()]) -> ok | {error, Reason :: term()}.
@@ -107,44 +107,33 @@ stop() ->
 %% gen_server.
 
 init([]) ->
-  AutoCreate = get_env(erwa, realm_autocreate, false),
+  AutoCreate = application:get_env(erwa, realm_autocreate, false),
   Ets = ets:new(realms, [set]),
   {ok, #state{ets = Ets, autocreate_realm = AutoCreate}}.
-
-
 
 handle_call({start_realm, Name, Middleware}, _From, State) ->
   Result = create_new_realm(Name, Middleware, State),
   {reply, Result, State};
-
 handle_call({kill_realm, Name}, _From, State) ->
   Reply = stop_realm({name, Name}, kill, State),
   {reply, Reply, State};
-
 handle_call({shutdown_realm, Name}, _From, State) ->
   Reply = stop_realm({name, Name}, shutdown, State),
   {reply, Reply, State};
-
 handle_call({get_routing, Name}, _From, State) ->
   Result = get_realm_data(routing, Name, State),
   {reply, Result, State};
-
 handle_call({get_middleware_list, Name}, _From, State) ->
   Result = get_realm_data(middleware, Name, State),
   {reply, Result, State};
-
-
 handle_call(enable_autocreate, _From, State) ->
   {reply, ok, State#state{autocreate_realm = true}};
 handle_call(disable_autocreate, _From, State) ->
   {reply, ok, State#state{autocreate_realm = false}};
 handle_call({stop}, _From, State) ->
   {stop, normal, {ok, stopped}, State};
-
 handle_call(_Request, _From, State) ->
   {reply, ignored, State}.
-
-
 
 handle_cast(_Request, State) ->
   {noreply, State}.
@@ -152,7 +141,6 @@ handle_cast(_Request, State) ->
 handle_info({'DOWN', Ref, process, _Pid, _Reason}, State) ->
   _ = stop_realm({monitor, Ref}, clean_up, State),
   {noreply, State};
-
 handle_info(_Info, State) ->
   {noreply, State}.
 
@@ -166,7 +154,6 @@ code_change(_OldVsn, State, _Extra) ->
 
 -spec create_new_realm(Name :: binary(), MW_List :: [atom()], State :: #state{})
       -> ok | {error, Reason :: term()}.
-
 create_new_realm(Name, MW_List, #state{ets = Ets}) ->
   case ets:lookup(Ets, Name) of
     [] ->
@@ -194,7 +181,7 @@ get_realm_data(Tag, Name, #state{ets = Ets, autocreate_realm = AC} = State) ->
     [] ->
       case AC of
         true ->
-          MW_List = get_env(erwa, router_middleware, [erwa_mw_default]),
+          MW_List = application:get_env(erwa, router_middleware, [erwa_mw_default]),
           ok = create_new_realm(Name, MW_List, State),
           get_realm_data(Tag, Name, State);
         false ->
@@ -232,94 +219,3 @@ stop_realm({monitor, Ref}, clean_up, #state{ets = Ets}) ->
       ets:delete(Ets, Name),
       ok
   end.
-
-
-
-get_env(Application, Pararmeter, Default) when is_atom(Application), is_atom(Pararmeter) ->
-  case application:get_env(Application, Pararmeter) of
-    undefined -> Default;
-    {ok, Value} -> Value
-  end.
-
-
-
--ifdef(TEST).
-
-get_tablesize() ->
-  Pid = whereis(?MODULE),
-  Tables = ets:all(),
-  [Table] = lists:filter(fun(T) -> ets:info(T, owner) == Pid end, Tables),
-  ets:info(Table, size).
-
-
-ensure_tablesize(_Number, MaxTime) when MaxTime =< 0 ->
-  timeout;
-ensure_tablesize(Number, MaxTime) ->
-  case get_tablesize() of
-    Number -> ok;
-    _ ->
-      receive
-      after 10 -> ok
-      end,
-      NewTime = MaxTime - 10,
-      ensure_tablesize(Number, NewTime)
-  end.
-
-start_stop_test() ->
-  {ok, _} = start(),
-  {ok, stopped} = stop().
-
-environment_test() ->
-  application:set_env(erwa, router_middleware, [erwa_mw_allow]),
-  [erwa_mw_allow] = get_env(erwa, router_middleware, [erwa_mw_default]),
-  application:unset_env(erwa, router_middleware),
-  [erwa_mw_default] = get_env(erwa, router_middleware, [erwa_mw_default]).
-
-garbage_test() ->
-  {ok, Pid} = start(),
-  ignored = gen_server:call(?MODULE, some_garbage),
-  ok = gen_server:cast(?MODULE, some_garbage),
-  Pid ! some_garbage,
-  {ok, stopped} = stop().
-
-add_remove_test() ->
-  {ok, _} = erwa_routing_sup:start_link(),
-  {ok, _} = start(),
-  Name1 = <<"com.doesnotexist.wamp">>,
-  Name2 = <<"com.doesnotexist.pamw">>,
-  MWL = [erwa_mw_allow],
-  ok = set_autocreate(false),
-  0 = get_tablesize(),
-  {error, not_found} = get_routing(Name1),
-  0 = get_tablesize(),
-  {error, not_running} = kill(Name1),
-  0 = get_tablesize(),
-  ok = add(Name1),
-  2 = get_tablesize(),
-  {error, already_exists} = add(Name1),
-  2 = get_tablesize(),
-  ok = add(Name2, MWL),
-  4 = get_tablesize(),
-  {ok, _} = get_routing(Name1),
-  {ok, _} = get_middleware_list(Name1),
-  {ok, _} = get_routing(Name2),
-  {ok, killed} = kill(Name1),
-  ok = ensure_tablesize(2, 5000),
-  {error, not_found} = get_routing(Name1),
-  {ok, shutting_down} = shutdown(Name2),
-  ok = ensure_tablesize(0, 5000),
-  {error, not_found} = get_routing(Name2),
-  ok = set_autocreate(true),
-  {ok, _} = get_routing(Name1),
-  ok = set_autocreate(false),
-  2 = get_tablesize(),
-  {ok, killed} = kill(Name1),
-  ok = ensure_tablesize(0, 5000),
-  timeout = ensure_tablesize(5, 10),
-  {ok, stopped} = stop().
-
-
-
-
-
--endif.
