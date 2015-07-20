@@ -40,106 +40,114 @@
 -export([code_change/3]).
 
 
--record(state,{
-               dealer = unknown,
-               broker = unknown,
-               routing = unknown,
-               sess_id = unknown,
-               mapping = #{}
-               }).
+-record(state,
+{
+	dealer = unknown,
+	broker = unknown,
+	routing = unknown,
+	sess_id = unknown,
+	mapping = #{}
+}).
 
--define(PROCEDURES,[{<<"wamp.subscription.list">>,fun subscription_list/4},
-                 %{<<"wamp.subscription.match">>,fun subscription_match/4},
-                 {<<"wamp.subscription.lookup">>,fun subscription_lookup/4},
-                 {<<"wamp.registration.list">>,fun registration_list/4},
-                 %{<<"wamp.registration.match">>,fun registration_match/4},
-                 {<<"wamp.registration.lookup">>,fun registration_lookup/4},
-                 {<<"wamp.session.count">>,fun session_count/4},
-                 {<<"wamp.session.list">>,fun session_list/4}
-                 %{<<"wamp.session.get">>,fun session_get/4}
-                 ]).
+-define(PROCEDURES,
+	[
+		{<<"wamp.subscription.list">>, fun subscription_list/4},
+		%{<<"wamp.subscription.match">>,fun subscription_match/4},
+		{<<"wamp.subscription.lookup">>, fun subscription_lookup/4},
+		{<<"wamp.registration.list">>, fun registration_list/4},
+		%{<<"wamp.registration.match">>,fun registration_match/4},
+		{<<"wamp.registration.lookup">>, fun registration_lookup/4},
+		{<<"wamp.session.count">>, fun session_count/4},
+		{<<"wamp.session.list">>, fun session_list/4}
+		%{<<"wamp.session.get">>,fun session_get/4}
+	]).
 
 start(Args) ->
-  gen_server:start(?MODULE, Args, []).
+	gen_server:start(?MODULE, Args, []).
 
 start_link(Args) ->
-  gen_server:start_link(?MODULE, Args, []).
+	gen_server:start_link(?MODULE, Args, []).
 
 stop(Pid) ->
-  gen_server:call(Pid, stop).
+	gen_server:call(Pid, stop).
 
 
-init(Args) ->
-  #{dealer := Dealer, broker:=Broker, routing:=Routing, realm:=Realm} = Args,
-  {ok,SessionId} = erwa_sessions:register_session(Realm),
-  F = fun({Method,Fun},Map) ->
-        {ok,RegId} = erwa_dealer:register(Method, #{invoke => single}, SessionId, Dealer),
-        maps:put(RegId,Fun,Map)
-      end,
-  Mapping = lists:foldl(F,#{},?PROCEDURES),
-  {ok,#state{sess_id = SessionId, dealer = Dealer, broker = Broker, mapping=Mapping, routing=Routing}}.
+init(#{dealer := Dealer, broker := Broker, routing := Routing, realm := Realm}) ->
+	{ok, SessionId} = erwa_sessions:register_session(Realm),
+	F =
+		fun({Method, Fun}, Map) ->
+			{ok, RegId} = erwa_dealer:register(Method, #{invoke => single}, SessionId, Dealer),
+			maps:put(RegId, Fun, Map)
+		end,
+	Mapping = lists:foldl(F, #{}, ?PROCEDURES),
+	{ok, #state{sess_id = SessionId, dealer = Dealer, broker = Broker, mapping = Mapping, routing = Routing}}.
 
 
-handle_call(_Msg,_From,State) ->
-  {reply,ignored,State}.
+handle_call(_Msg, _From, State) ->
+	{reply, ignored, State}.
 
-handle_cast(_Msg,State) ->
-  {noreply,State}.
-
-handle_info({erwa,{invocation,_,ProcedureId,Options,Arguments,ArgumentsKw}},#state{sess_id=SessionId,mapping=Mapping}=State) ->
-  #{invocation_pid := InvocPid} = Options,
-  Fun = maps:get(ProcedureId,Mapping,fun empty_result/4),
-  case Fun(Options,Arguments,ArgumentsKw,State) of
-    {ok,OutOptions,OutArguments,OutArgumentsKw} ->
-      ok = erwa_invocation:yield(InvocPid,OutOptions,OutArguments,OutArgumentsKw,SessionId);
-    {error,ErrDetails,ErrorUri,ErrArguments,ErrArgumentsKw} ->
-      ok = erwa_invocation:error(InvocPid,ErrDetails,ErrorUri,ErrArguments,ErrArgumentsKw,SessionId)
-  end,
-  {noreply,State};
-handle_info(_Info, State) ->
+handle_cast(_Msg, State) ->
 	{noreply, State}.
 
-
-session_count(_Options,_Arguments,_ArgumentsKw,#state{routing=Routing}) ->
-  {ok,Count} = erwa_routing:get_session_count(Routing),
-  {ok,#{},[Count],undefined}.
-
-session_list(_Options,_Arguments,_ArgumentsKw,#state{routing=Routing}) ->
-  {ok,Ids} = erwa_routing:get_session_ids(Routing),
-  {ok,#{},Ids,undefined}.
-
-subscription_list(_Options,_Arguments,_ArgumentsKw,#state{broker=Broker}) ->
-  {ok,List} = erwa_broker:get_subscriptions(Broker),
-  {ok,#{},[List],undefined}.
-
-subscription_lookup(_Options,[SubscriptionId],_ArgumentsKw,#state{broker=Broker}) ->
-  case erwa_broker:get_subscription(Broker,SubscriptionId) of
-    {ok,Details} ->
-      {ok, #{},[Details],undefined};
-    {error,not_found} ->
-      {error,#{},invalid_argument,undefined,undefined}
-  end.
-
-registration_list(_Options,_Arguments,_ArgumentsKw,#state{dealer=Dealer}) ->
-  {ok,List} = erwa_dealer:get_registrations(Dealer),
-  {ok,#{},[List],undefined}.
-
-registration_lookup(_Options,[RegistrationId],_ArgumentsKw,#state{dealer=Dealer}) ->
-  case erwa_dealer:get_registration(Dealer,RegistrationId) of
-    {ok,Details} ->
-      {ok, #{},[Details],undefined};
-    {error,not_found} ->
-      {error,#{},invalid_argument,undefined,undefined}
-  end.
-
-empty_result(_,_,_,_) ->
-  {#{},undefined,undefined}.
-
-
-
+handle_info({erwa, {invocation, _, ProcedureId, Options, Arguments, ArgumentsKw}},
+		#state{sess_id = SessionId, mapping = Mapping} = State) ->
+	#{invocation_pid := InvocPid} = Options,
+	Fun = maps:get(ProcedureId, Mapping, fun empty_result/4),
+	case Fun(Options, Arguments, ArgumentsKw, State) of
+		{ok, OutOptions, OutArguments, OutArgumentsKw} ->
+			ok = erwa_invocation:yield(InvocPid, OutOptions, OutArguments, OutArgumentsKw, SessionId);
+		{error, ErrDetails, ErrorUri, ErrArguments, ErrArgumentsKw} ->
+			ok = erwa_invocation:error(InvocPid, ErrDetails, ErrorUri, ErrArguments, ErrArgumentsKw, SessionId)
+	end,
+	{noreply, State};
+handle_info(_Info, State) ->
+	{noreply, State}.
 
 terminate(_Reason, _State) ->
 	ok.
 
 code_change(_OldVsn, State, _Extra) ->
 	{ok, State}.
+
+
+%% @private
+session_count(_Options, _Arguments, _ArgumentsKw, #state{routing = Routing}) ->
+	{ok, Count} = erwa_routing:get_session_count(Routing),
+	{ok, #{}, [Count], undefined}.
+
+%% @private
+session_list(_Options, _Arguments, _ArgumentsKw, #state{routing = Routing}) ->
+	{ok, Ids} = erwa_routing:get_session_ids(Routing),
+	{ok, #{}, Ids, undefined}.
+
+%% @private
+subscription_list(_Options, _Arguments, _ArgumentsKw, #state{broker = Broker}) ->
+	{ok, List} = erwa_broker:get_subscriptions(Broker),
+	{ok, #{}, [List], undefined}.
+
+%% @private
+subscription_lookup(_Options, [SubscriptionId], _ArgumentsKw, #state{broker = Broker}) ->
+	case erwa_broker:get_subscription(Broker, SubscriptionId) of
+		{ok, Details} ->
+			{ok, #{}, [Details], undefined};
+		{error, not_found} ->
+			{error, #{}, invalid_argument, undefined, undefined}
+	end.
+
+%% @private
+registration_list(_Options, _Arguments, _ArgumentsKw, #state{dealer = Dealer}) ->
+	{ok, List} = erwa_dealer:get_registrations(Dealer),
+	{ok, #{}, [List], undefined}.
+
+%% @private
+registration_lookup(_Options, [RegistrationId], _ArgumentsKw, #state{dealer = Dealer}) ->
+	case erwa_dealer:get_registration(Dealer, RegistrationId) of
+		{ok, Details} ->
+			{ok, #{}, [Details], undefined};
+		{error, not_found} ->
+			{error, #{}, invalid_argument, undefined, undefined}
+	end.
+
+%% @private
+empty_result(_, _, _, _) ->
+	{#{}, undefined, undefined}.

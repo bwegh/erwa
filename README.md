@@ -67,7 +67,7 @@ ranch and/or cowboy.
 A WAMP router on websockets:
 
     ok = erwa:start_websocket("/wamp", 8080, 100).
-Which starts `cowboy` on 8080 port with 100 acceptors and use `erwa_in_handler` for `"/wamp"` path.  
+Which starts `cowboy` on 8080 port with 100 acceptors and use `erwa_in_ws` for `"/wamp"` path.  
 If you wan't (for some reason) to use your own path on the same port - you can use `erwa:start_websocket/4` 
 and pass a list of rules as a fourth parameter:  
 
@@ -80,7 +80,7 @@ The other possibility is to start Erwa as a TCP router.
 A WAMP router on tcp sockets:  
 
     ok = erwa:start_socket(5555, 5).
-Which starts `ranch` on 5555 port with 5 acceptors with `erwa_in_handler`.
+Which starts `ranch` on 5555 port with 5 acceptors with `erwa_in_tcp`.
 This is also included in the simple_router example in the examples directory.
 
 By default Erwa does not automatically create realms. This is activated by the boolean
