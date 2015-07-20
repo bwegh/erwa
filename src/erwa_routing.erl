@@ -106,8 +106,7 @@ connect(Pid, Session) ->
   gen_server:call(Pid, {connect, Session}).
 
 -spec disconnect(pid() | none) -> ok | {error, going_down}.
-disconnect(none) ->
-  ok;
+disconnect(none) -> ok;
 disconnect(Pid) ->
   gen_server:call(Pid, disconnect).
 
@@ -209,9 +208,10 @@ handle_call(get_session_count, _From, #state{con_ets = Ets} = State) ->
   Count = ets:info(Ets, size),
   {reply, {ok, Count}, State};
 handle_call(get_session_ids, _From, #state{con_ets = Ets} = State) ->
-  ExtractId = fun(#pid_info{id = Id}, IdList) ->
-    [Id | IdList]
-  end,
+  ExtractId =
+    fun(#pid_info{id = Id}, IdList) ->
+      [Id | IdList]
+    end,
   Ids = ets:foldl(ExtractId, [], Ets),
   {reply, {ok, Ids}, State};
 handle_call(_Request, _From, State) ->
@@ -235,23 +235,23 @@ code_change(_OldVsn, State, _Extra) ->
   {ok, State}.
 
 
+%% @private
 close_routing(#state{broker = Broker, dealer = Dealer, timer_ref = TRef} = State) ->
-  _ = timer:cancel(TRef),
+  timer:cancel(TRef),
   send_all_clients(shutdown, State),
   {ok, stopped} = erwa_broker:stop(Broker),
   {ok, stopped} = erwa_dealer:stop(Dealer),
   ok.
 
-
+%% @private
 send_all_clients(Msg, #state{con_ets = Con}) ->
   % should here erwa_session:send_message_to be used?
   % yet routing should never be sending anything to another router ... so not for now
   ok = ets:foldl(fun(#pid_info{pid = Pid}, ok) -> Pid ! {erwa, Msg}, ok end, ok, Con).
 
-publish_metaevent(_, _, #state{broker = unknown}) ->
-  ok;
-publish_metaevent(_, _, #state{meta_events = disabled}) ->
-  ok;
+%% @private
+publish_metaevent(_, _, #state{broker = unknown}) -> ok;
+publish_metaevent(_, _, #state{meta_events = disabled}) -> ok;
 publish_metaevent(Event, Arg, #state{broker = Broker}) ->
   MetaTopic = case Event of
                 on_join -> <<"wamp.session.on_join">>;
@@ -259,55 +259,3 @@ publish_metaevent(Event, Arg, #state{broker = Broker}) ->
               end,
   {ok, _} = erwa_broker:publish(MetaTopic, #{}, [Arg], undefined, no_session, Broker),
   ok.
-
--ifdef(TEST).
-
-start_stop_test() ->
-  erwa_sessions:start(),
-  {ok, Pid} = start(),
-  {ok, stopped} = stop(Pid),
-  erwa_sessions:stop().
-
-simple_routing_test() ->
-  erwa_sessions:start(),
-  {ok, Pid} = start(),
-  Session = #session{id = 234},
-  ok = connect(Pid, Session),
-  {ok, _} = get_dealer(Pid),
-  {ok, _} = get_broker(Pid),
-  ok = disconnect(Pid),
-  {ok, stopped} = stop(Pid),
-  erwa_sessions:stop().
-
-
-forced_connection_test() ->
-  erwa_sessions:start(),
-  {ok, Pid} = start(),
-  {error, not_connected} = get_broker(Pid),
-  {error, not_connected} = get_dealer(Pid),
-  {ok, stopped} = stop(Pid),
-  erwa_sessions:stop().
-
-
-meta_api_test() ->
-  erwa_sessions:start(),
-  {ok, Pid} = start(),
-  Session = #session{id = 234},
-  ok = connect(Pid, Session),
-  {ok, 1} = get_session_count(Pid),
-  {ok, [234]} = get_session_ids(Pid),
-  ok = disconnect(Pid),
-  {ok, stopped} = stop(Pid),
-  erwa_sessions:stop().
-
-garbage_test() ->
-  erwa_sessions:start(),
-  {ok, Pid} = start(),
-  ignored = gen_server:call(Pid, some_garbage),
-  ok = gen_server:cast(Pid, some_garbage),
-  Pid ! some_garbage,
-  {ok, stopped} = stop(Pid),
-  erwa_sessions:stop().
-
-
--endif.

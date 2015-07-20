@@ -118,7 +118,7 @@ hndl_msg({hello, RealmName, Details}, #session{trans = Transport} = State) ->
     true ->
       case erwa_user_db:allow_anonymous(RealmName, Transport) of
         true ->
-          case erwa_realms:get_routing(RealmName) of
+          case erwa_realms_man:get_routing(RealmName) of
             {ok, RoutingPid} ->
               % the realm does exist
               State1 = create_session(RoutingPid, RealmName, Roles, State),
@@ -159,7 +159,7 @@ authenticate([wampcra | _], RealmName, Details, #session{trans = Transport} = St
   Roles = maps:get(roles, Details, []),
   case erwa_user_db:can_join(AuthId, RealmName, Transport) of
     {true, Role} ->
-      case erwa_realms:get_routing(RealmName) of
+      case erwa_realms_man:get_routing(RealmName) of
         {ok, RoutingPid} ->
           % the realm does exist
           State1 = create_session(RoutingPid, RealmName, Roles, State),
@@ -192,7 +192,7 @@ create_session(RoutingPid, RealmName, Roles, State) ->
   ok = erwa_routing:connect(RoutingPid, State),
   {ok, Broker} = erwa_routing:get_broker(RoutingPid),
   {ok, Dealer} = erwa_routing:get_dealer(RoutingPid),
-  {ok, MWL} = erwa_realms:get_middleware_list(RealmName),
+  {ok, MWL} = erwa_realms_man:get_middleware_list(RealmName),
   State#session{id = SessionId, mwl = MWL, realm_name = RealmName, routing_pid = RoutingPid,
     is_auth = false, dealer = Dealer, broker = Broker, client_roles = Roles}.
 

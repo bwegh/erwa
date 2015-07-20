@@ -70,22 +70,22 @@ get_version() ->
 %% @doc Start a router for a realm.
 -spec start_realm(Name :: binary()) -> ok.
 start_realm(Name) ->
-	ok = erwa_realms:add(Name).
+	ok = erwa_realms_man:add(Name).
 
 -spec start_realm(Name :: binary(), Middlewares :: [atom()]) -> ok.
 start_realm(Name, Middlewares) when is_list(Middlewares) ->
-	ok = erwa_realms:add(Name, Middlewares).
+	ok = erwa_realms_man:add(Name, Middlewares).
 
 
 %% @doc Stop the router of a realm.
 -spec stop_realm(Name :: binary()) -> {ok, Info :: atom()} | {error, Reason :: atom()}.
 stop_realm(Name) ->
-	erwa_realms:shutdown(Name).
+	erwa_realms_man:shutdown(Name).
 
 %% @doc Get the router of a realm.
 -spec get_routing_for_realm(Realm :: binary()) -> {ok, Pid :: pid()} | {error, not_found}.
 get_routing_for_realm(Realm) ->
-	erwa_realms:get_routing(Realm).
+	erwa_realms_man:get_routing(Realm).
 
 
 
