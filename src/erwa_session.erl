@@ -83,7 +83,6 @@ handle_message(InMsg, State) ->
   {stop, #session{}} |
   {send, Message :: term(), #session{}} |
   {send_stop, Message :: term(), #session{}}.
-
 handle_info(Info, State) ->
   case hndl_info(Info, State) of
     {Result, OutMsg, State1} ->
@@ -128,9 +127,9 @@ hndl_msg({hello, RealmName, Details}, #session{trans = Transport} = State) ->
               DealerFeat = erwa_dealer:get_features(Dealer),
               SessionData = #{authid => anonymous, role => anonymous, session =>
               SessionId},
-              WelcomeMsg = {welcome, SessionId, #{agent => erwa:get_version(), roles => #{broker => BrokerFeat, dealer => DealerFeat}}},
-              {reply, WelcomeMsg, State1#session{is_auth = true,
-                session_data = SessionData}};
+              WelcomeMsg = {welcome, SessionId, #{agent => erwa:get_version(),
+                roles => #{broker => BrokerFeat, dealer => DealerFeat}}},
+              {reply, WelcomeMsg, State1#session{is_auth = true, session_data = SessionData}};
             {error, _} ->
               {reply_stop, {abort, #{}, no_such_realm}, State}
           end;
