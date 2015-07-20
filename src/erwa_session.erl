@@ -167,7 +167,7 @@ authenticate([wampcra | _], RealmName, Details, #session{trans = Transport} = St
           State1 = create_session(RoutingPid, RealmName, Roles, State),
           #session{id = SessionId} = State1,
           % a user that needs to authenticate
-          % need to create a a challenge  
+          % need to create a a challenge
           SessionData = #{authid => AuthId, role => Role, session =>
           SessionId},
           {Result, ChallengeData} = erwa_user_db:wampcra_challenge(SessionData),
