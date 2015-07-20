@@ -1,19 +1,17 @@
-
 {application, simple_conn_between_erlang_and_web_client, [
-	{id, "simple_conn_between_erlang_and_web_client"},
-	{description, "a simple connection between Erlang VM and Web clients"},
-	{vsn, "0.0.1"},
+	{description, ""},
+	{vsn, "0.1.0"},
+	{id, "git"},
 	{modules, []},
 	{registered, []},
 	{applications, [
 		kernel,
-    	sasl,
 		stdlib,
+    	sasl,
 		crypto,
     	ranch,
     	cowboy,
-    	erwa,
-    	ssl
+    	erwa
 	]},
 	{mod, {simple_conn_between_erlang_and_web_client_app, []}},
 	{env, []}
