@@ -22,7 +22,6 @@
 
 %% @TODO: add ssl check
 
-%% @private
 -module(erwa_in_tcp).
 
 -behaviour(ranch_protocol).

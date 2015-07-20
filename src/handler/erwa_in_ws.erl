@@ -20,7 +20,6 @@
 %% SOFTWARE.
 %%
 
-%% @private
 -module(erwa_in_ws).
 
 -behaviour(cowboy_websocket).

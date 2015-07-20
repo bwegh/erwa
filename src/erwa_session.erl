@@ -125,8 +125,7 @@ hndl_msg({hello, RealmName, Details}, #session{trans = Transport} = State) ->
               #session{id = SessionId, broker = Broker, dealer = Dealer} = State1,
               BrokerFeat = erwa_broker:get_features(Broker),
               DealerFeat = erwa_dealer:get_features(Dealer),
-              SessionData = #{authid => anonymous, role => anonymous, session =>
-              SessionId},
+              SessionData = #{authid => anonymous, role => anonymous, session => SessionId},
               WelcomeMsg = {welcome, SessionId, #{agent => erwa:get_version(),
                 roles => #{broker => BrokerFeat, dealer => DealerFeat}}},
               {reply, WelcomeMsg, State1#session{is_auth = true, session_data = SessionData}};
