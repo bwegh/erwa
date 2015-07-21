@@ -135,7 +135,7 @@ hndl_msg({hello, RealmName, Details}, #session{trans = Transport} = State) ->
       AuthMethods = maps:get(authmethods, Details, []),
       authenticate(AuthMethods, RealmName, Details, State)
   end;
-hndl_msg({authenticate, _Signature, _Extra} = Msg, State = #session{id = SessionId, broker = Broker, dealer = Dealer}) ->
+hndl_msg({authenticate, _Signature, _Extra}, State = #session{id = SessionId, broker = Broker, dealer = Dealer}) ->
   BrokerFeat = erwa_broker:get_features(Broker),
   DealerFeat = erwa_dealer:get_features(Dealer),
   Msg = {welcome, SessionId, #{agent => erwa:get_version(), roles => #{broker => BrokerFeat, dealer => DealerFeat}}},
