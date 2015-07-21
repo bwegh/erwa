@@ -30,8 +30,7 @@
 
 start_link(Client, Realm) ->
 	gen_server:start_link({local, Client}, ?MODULE, [Client, Realm], []). 
-  	%%gen_server:start_link(?MODULE, [], []).
-
+	
 init([Client, Realm]) ->
 	error_logger:info_report(["Starting client", [{client, Client}]]),
 	{ok,Con} = awre:start_client(),
@@ -88,6 +87,7 @@ handle_cast(_Msg,State) ->
 
 
 handle_info({awre,{event,SubId,_PublicationId,_Details,Arguments,ArgumentsKw}},#state{event_sub_id=SubId,con=Con}=State) ->
+	
 	error_logger:info_report(["Event has been received in client.", [{client, State#state.client},
 																	 {con, State#state.con},
 																	 {subId, SubId},
@@ -96,7 +96,14 @@ handle_info({awre,{event,SubId,_PublicationId,_Details,Arguments,ArgumentsKw}},#
 																	 {arguments, Arguments},
 																	 {argumentsKw, ArgumentsKw}
 																	 ]]),
-  	Params = [3],
+	
+  	%% The number what must use for square operation should take from the Arguments.
+	%% The Arguments is a list what contains string inside the binary, so the integer number should be grab from that.
+	%% eq: [<<"2,4">>]
+	[Bin] = Arguments,
+	[NumberStr, ExpectedResultStr] = string:tokens(erlang:binary_to_list(Bin), ","),
+	ExpectedResult = erlang:list_to_integer(ExpectedResultStr),
+	Params = [erlang:list_to_integer(NumberStr)],
   	
 	error_logger:info_report(["Client is calling the registered procedure.", [{client, State#state.client},
 																			  {con, Con},
@@ -104,7 +111,7 @@ handle_info({awre,{event,SubId,_PublicationId,_Details,Arguments,ArgumentsKw}},#
 																			  {parameters, Params}
 																			  ]]),
 	
-  	{ok,Details,ResA,ResAKw} = awre:call(Con,?AWRE_OPTIONS,?RPC_SQUARE_URL,Params),
+  	{ok,Details,[ResA],ResAKw} = awre:call(Con,?AWRE_OPTIONS,?RPC_SQUARE_URL,Params),
 	
 	error_logger:info_report(["Client sucessfully called the registered procedure.", 
 							  [{client, State#state.client},
@@ -115,8 +122,16 @@ handle_info({awre,{event,SubId,_PublicationId,_Details,Arguments,ArgumentsKw}},#
 							   {resA, ResA},
 							   {resAKw, ResAKw}
 							  ]]),
-	
-  	ResA = [9],
+	case ResA of
+		ExpectedResult ->
+			error_logger:info_report(["Result of procedure call is PASSED", 
+									  [{expectedResult, ExpectedResult},
+									   {computedResult, ResA}]]);
+		_Err ->
+			error_logger:error_report(["Result of procedure call is FAILED", 
+									  [{expectedResult, ExpectedResult},
+									   {computedResult, ResA}]])
+	end,
 	
 	%%   io:format("unsubscribing from ~p ... ",[SubId]),
 	%%   ok = awre:unsubscribe(Con,SubId),
