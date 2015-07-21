@@ -172,7 +172,7 @@ do_cancel(#state{callee_ids = Callees} = State) ->
 check_and_create_state(Args) ->
   try
     #{procedure_id := ProcedureId,
-      caller_id :=CallerId,
+      caller_id := CallerId,
       call_req_id := RequestId,
       call_options := Options,
       call_arguments := Arguments,
@@ -185,7 +185,7 @@ check_and_create_state(Args) ->
 
     case maps:get(timeout, Options, 0) of
       Timeout when Timeout > 0 ->
-        erlang:send_after(self(), Timeout, automatic_cancel);
+        erlang:send_after(Timeout, self(), automatic_cancel);
       _ ->
         ok
     end,
@@ -212,8 +212,9 @@ check_and_create_state(Args) ->
         % error for now
         {error, multiple_callees}
     end
-  catch _:Reason ->
-    {error, Reason}
+  catch
+    _:Reason ->
+      {error, Reason}
   end.
 
 %% @private
