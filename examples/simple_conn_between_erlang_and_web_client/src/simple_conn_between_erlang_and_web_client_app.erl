@@ -9,6 +9,7 @@
 %% ====================================================================
 -define(WEB_HTTP_PORT, 8080).
 -define(WEB_HTTPS_PORT, 8443).
+-define(REALM, "realm1").
 
 start(_Type, _Args) ->
 	
@@ -38,11 +39,11 @@ start(_Type, _Args) ->
 													], 
 										[{env, [{dispatch, Dispatch}]}]),
 	
-	%%{ok, _} = cowboy:start_http(http, 100, [{port, 8080}],[{env, [{dispatch, Dispatch}]}]),
-	
 	{ok,_} = ranch:start_listener(erwa_tcp, 5, ranch_tcp, [{port,5555}], erwa_in_tcp, []),
 	
+	ok = erwa:start_realm(?REALM),
 	simple_conn_between_erlang_and_web_client_sup:start_link().
 
 stop(_State) ->
 	ok.
+
