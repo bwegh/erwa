@@ -125,7 +125,7 @@ stop(Pid) ->
 %% gen_server.
 
 init(RealmName) ->
-  Ets = ets:new(connections, [set, {keypos, 2}, protected]),
+  Ets = ets:new(connections, [set, {keypos, #pid_info.id}, protected]),
   {ok, BrokerPid} = erwa_broker:start_link(),
   {ok, Broker} = erwa_broker:get_data(BrokerPid),
   {ok, DealerPid} = erwa_dealer:start_link(#{broker=>Broker}),

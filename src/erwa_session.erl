@@ -142,7 +142,7 @@ hndl_msg({authenticate, _Signature, _Extra} = Msg, State = #session{id = Session
   {reply, Msg, State#session{is_auth = true}};
 hndl_msg({abort, _Details, _ErrorUrl}, #session{is_auth = false} = State) ->
   {stop, State#session{is_auth = false}};
-hndl_msg(Msg, #session{is_auth = true} = State) ->
+hndl_msg(Msg, State = #session{is_auth = true}) ->
   hndl_msg_authed(Msg, State);
 hndl_msg(_Msg, State) ->
   {stop, State}.

@@ -102,7 +102,6 @@ unsubscribe_all(SessionId, #data{pid = Pid}) ->
 
 -spec publish(Topic :: binary(), Options :: map(), Arguments :: list(), ArgumentsKw :: map(), Session :: term(), Data :: #data{}) ->
   {ok, non_neg_integer()}.
-
 publish(TopicUri, Options, Arguments, ArgumentsKw, SessionId, #data{ets = Ets}) ->
   case ets:lookup(Ets, TopicUri) of
     [#topic{subscribers = Subs, id = SubscriptionId}] ->
@@ -151,7 +150,6 @@ stop(Pid) ->
 init([]) ->
   Ets = ets:new(events, [set, {keypos, 2}]),
   {ok, #state{ets = Ets}}.
-
 
 handle_call({subscribe, TopicUri, Options, SessionId}, _From, State) ->
   Result = int_subscribe(TopicUri, Options, SessionId, State),

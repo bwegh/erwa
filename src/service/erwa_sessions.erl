@@ -99,7 +99,7 @@ stop() ->
 %% gen_server.
 
 init([]) ->
-  Ets = ets:new(?TAB, [set, named_table]),
+  Ets = ets:new(?TAB, [set, protected, named_table]),
   {ok, #state{ets = Ets}}.
 
 handle_call({register_session, Realm}, {Pid, _Ref}, #state{ets = Ets} = State) ->
