@@ -12,7 +12,7 @@ $ make
 To start the release in the foreground:
 
 ``` bash
-$ ./_rel/simple_conn_between_erlang_and_web_client/bin/simple_router console
+$ ./_rel/simple_conn_between_erlang_and_web_client/bin/simple_conn_between_erlang_and_web_client console
 ```
 
 Usage:
@@ -22,7 +22,9 @@ Usage:
 	- select square in the function's drop-down menu
 	- click on register button
 	- in the Erlang VM start a new client by the following command
+		
 		simple_conn_between_erlang_and_web_client_sup:start_client(c1, "realm1").
+		
 	- go back to web browser and type some words in data filed in the top of page
 	- click on publish button
 	- in the Erlang VM shell the next should be appears
