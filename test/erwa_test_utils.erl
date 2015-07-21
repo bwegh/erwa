@@ -19,21 +19,16 @@
 %% OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 %% SOFTWARE.
 %%
+-module(erwa_test_utils).
+-author("tihon").
 
--module(eunit_SUITE).
+%% API
+-export([flush/0]).
 
--include_lib("common_test/include/ct.hrl").
-
-%% ct.
--export([all/0]).
-
-%% Tests.
--export([eunit/1]).
-
-%% ct.
-
-all() ->
-	[eunit].
-
-eunit(_) ->
-	ok = eunit:test({application, erwa},[verbose]).
+flush() ->
+  receive
+    _ ->
+      flush()
+  after 0 ->
+    ok
+  end.

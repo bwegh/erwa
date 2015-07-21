@@ -1,5 +1,5 @@
 %%
-%% Copyright (c) 2015 Bas Wegh
+%% Copyright (c) 2014-2015 Bas Wegh
 %%
 %% Permission is hereby granted, free of charge, to any person obtaining a copy
 %% of this software and associated documentation files (the "Software"), to deal
@@ -19,40 +19,15 @@
 %% OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 %% SOFTWARE.
 %%
+-module(erwa_mv_default_test).
+-author("tihon").
 
-
-%% @private
--module(erwa_invocation_sup).
--behaviour(supervisor).
-
--ifdef(TEST).
 -include_lib("eunit/include/eunit.hrl").
--endif.
 
-%% API.
--export([start_link/0]).
--export([start_invocation/1]).
-
-%% supervisor.
--export([init/1]).
-
-%% API.
-
--spec start_link() -> {ok, pid()}.
-start_link() ->
-  supervisor:start_link({local, ?MODULE}, ?MODULE, []).
-
-
--spec start_invocation(Args :: map()) -> {ok, pid()}.
-start_invocation(Args) ->
-  supervisor:start_child(?MODULE, [Args]).
-
-%% supervisor.
-
-init([]) ->
-  Procs = [
-    {invocation, {erwa_invocation, start_link, []},
-      temporary, 5000, worker, []}
-  ],
-  {ok, {{simple_one_for_one, 1000, 10}, Procs}}.
-
+simple_test() ->
+  {true, #{}} = erwa_mw_default:perm_connect(0, <<"">>, #{}),
+  {true, #{}} = erwa_mw_default:authenticate(0, <<"">>, #{}),
+  {true, #{}} = erwa_mw_default:perm_publish(0, #{}, <<"">>, [], #{}),
+  {true, #{}} = erwa_mw_default:perm_subscribe(0, #{}, <<"">>),
+  {true, #{}} = erwa_mw_default:perm_call(0, #{}, <<"">>, [], #{}),
+  {true, #{}} = erwa_mw_default:perm_register(0, #{}, <<"">>).

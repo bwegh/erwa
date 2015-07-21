@@ -1,5 +1,5 @@
 %%
-%% Copyright (c) 2015 Bas Wegh
+%% Copyright (c) 2014-2015 Bas Wegh
 %%
 %% Permission is hereby granted, free of charge, to any person obtaining a copy
 %% of this software and associated documentation files (the "Software"), to deal
@@ -19,40 +19,34 @@
 %% OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 %% SOFTWARE.
 %%
+-module(erwa_publications_test).
+-author("tihon").
 
-
-%% @private
--module(erwa_invocation_sup).
--behaviour(supervisor).
-
--ifdef(TEST).
 -include_lib("eunit/include/eunit.hrl").
--endif.
 
-%% API.
--export([start_link/0]).
--export([start_invocation/1]).
+get_tablesize() ->
+  Pid = whereis(erwa_publications),
+  Tables = ets:all(),
+  [Table] = lists:filter(fun(T) -> ets:info(T, owner) == Pid end, Tables),
+  ets:info(Table, size).
 
-%% supervisor.
--export([init/1]).
+stat_stop_test() ->
+  {ok, _} = erwa_publications:start(),
+  {ok, stopped} = erwa_publications:stop().
 
-%% API.
+simple_test() ->
+  {ok, _} = erwa_publications:start(),
+  0 = get_tablesize(),
+  {ok, _} = erwa_publications:get_pub_id(),
+  1 = get_tablesize(),
+  {ok, _} = erwa_publications:get_pub_id(),
+  2 = get_tablesize(),
+  {ok, stopped} = erwa_publications:stop().
 
--spec start_link() -> {ok, pid()}.
-start_link() ->
-  supervisor:start_link({local, ?MODULE}, ?MODULE, []).
 
-
--spec start_invocation(Args :: map()) -> {ok, pid()}.
-start_invocation(Args) ->
-  supervisor:start_child(?MODULE, [Args]).
-
-%% supervisor.
-
-init([]) ->
-  Procs = [
-    {invocation, {erwa_invocation, start_link, []},
-      temporary, 5000, worker, []}
-  ],
-  {ok, {{simple_one_for_one, 1000, 10}, Procs}}.
-
+garbage_test() ->
+  {ok, Pid} = erwa_publications:start(),
+  ignored = gen_server:call(erwa_publications, some_garbage),
+  ok = gen_server:cast(erwa_publications, some_garbage),
+  Pid ! some_garbage,
+  {ok, stopped} = erwa_publications:stop().

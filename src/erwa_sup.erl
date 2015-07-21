@@ -19,9 +19,6 @@
 %% OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 %% SOFTWARE.
 %%
-
-
-%% @private
 -module(erwa_sup).
 -behaviour(supervisor).
 
@@ -31,20 +28,19 @@
 %% supervisor.
 -export([init/1]).
 
-%% API.
+-define(CHILD(I, Type), {I, {I, start_link, []}, permanent, 5000, Type, [I]}).
 
+%% API.
 -spec start_link() -> {ok, pid()}.
 start_link() ->
-  supervisor:start_link( ?MODULE, []).
+  supervisor:start_link(?MODULE, []).
 
 %% supervisor.
-
 init([]) ->
-Procs = [{sessions,{erwa_sessions,start_link,[]},permanent,5000,worker,[]},
-         {publications,{erwa_publications,start_link,[]},permanent,5000,worker,[]},
-         {invocation_sup,{erwa_invocation_sup,start_link,[]},permanent,5000,supervisor,[]},
-         {realms_sup,{erwa_routing_sup,start_link,[]},permanent,5000,supervisor,[]},
-         {realms,{erwa_realms,start_link,[]},permanent,5000,worker,[]},
-         {user_db,{erwa_user_db,start_link,[]},permanent,5000,worker,[]}
-        ],
-{ok, {{one_for_one, 10, 10}, Procs}}.
+  Sessions = ?CHILD(erwa_sessions, worker),
+  Publications = ?CHILD(erwa_publications, worker),
+  InvocationSup = ?CHILD(erwa_invocation_sup, supervisor),
+  RoutingSup = ?CHILD(erwa_routing_sup, supervisor),
+  Realms = ?CHILD(erwa_realms, worker),
+  UserDB = ?CHILD(erwa_user_db, worker),
+  {ok, {{one_for_one, 10, 10}, [Sessions, Publications, InvocationSup, RoutingSup, Realms, UserDB]}}.
