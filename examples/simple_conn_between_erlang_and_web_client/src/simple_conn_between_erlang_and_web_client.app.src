@@ -12,7 +12,8 @@
     	ranch,
     	cowboy,
     	erwa,
-    	awre
+    	awre,
+    	runtime_tools
 	]},
 	{mod, {simple_conn_between_erlang_and_web_client_app, []}},
 	{env, []}
