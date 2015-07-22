@@ -4,11 +4,15 @@
 -define(RPC_SQUARE_URL,<<"ws.wamp.test.square">>).
 -define(RPC_ECHO_URL,<<"ws.wamp.test.echo">>).
 -define(EVENT_URL,<<"ws.wamp.test.info">>).
+-define(KEEPALIVE_URL, <<"ws.wamp.test.keepalive">>).
+
 %%-define(REALM,<<"ws.wamp.test">>).
 -define(HOST,"localhost"). % has to be a string
 -define(PORT,5555).
 -define(ENCODING,msgpack). %% msgpack or json
 -define(AWRE_OPTIONS, #{}).
+
+-define(KEEPALIVE_SEND_INTERVAL, 1000).
 
 -export([start_link/2]).
 
@@ -25,7 +29,8 @@
   session = undefined,
   rpc_echo_id = undefined,
   event_sub_id = undefined,
-  client = undefined
+  client = undefined,
+  keepaliveTref
               }).
 
 start_link(Client, Realm) ->
@@ -76,8 +81,15 @@ init([Client, Realm]) ->
 	
 	error_logger:info_report(["If you send me an message on the subscribed event, I will call a procedure.", [{subscribeTo, ?EVENT_URL},
 																											  {procedureToCall, ?RPC_SQUARE_URL}]]),
+	{ok, TRef} = timer:send_interval(?KEEPALIVE_SEND_INTERVAL, {tick}),
 	
-	{ok,#state{con=Con,session=SessionId,rpc_echo_id=EchoRPCId,event_sub_id=SubId, client = Client}}.
+	{ok,#state{con=Con,
+			   session=SessionId,
+			   rpc_echo_id=EchoRPCId,
+			   event_sub_id=SubId, 
+			   client = Client,
+			   keepaliveTref = TRef
+			  }}.
 
 handle_call(_,_From,State) ->
   {noreply,State}.
@@ -176,6 +188,19 @@ handle_info({awre,{invocation,RequestId,RpcId,_Details,Arguments,ArgumentsKw}},#
 	%%   io:format("unregistered.~n"),
   	{noreply,State};
 
+handle_info({tick}, State) ->
+	Msg = string:concat("keepalive-", erlang:atom_to_list(State#state.client)),
+	MsgBin = erlang:list_to_binary(Msg),
+	case awre:publish(State#state.con, #{}, ?KEEPALIVE_URL, [MsgBin]) of
+		ok ->
+			error_logger:info_report(["Keepalive has been sent", [{msg, Msg}]]);
+		Err ->
+			error_logger:error_report(["Failed to send Keepalive", [{msg, Msg},
+																	{reason, Err}]])
+	end,
+	{noreply, State};
+
+
 handle_info(Msg,State) ->
 	error_logger:info_report(["Unexpected event has been received by client", 
 							  [{client, State#state.client},
@@ -185,7 +210,13 @@ handle_info(Msg,State) ->
 							   ]]),
   	{noreply,State}.
 
-terminate(_Reason,_State) ->
+terminate(Reason, State) ->
+	error_logger:info_report(["Terminate Client", 
+							  [{reason, Reason},
+							   {state, State}]]),
+	awre:unregister(State#state.con, State#state.rpc_echo_id),
+	awre:unsubscribe(State#state.con, State#state.event_sub_id),
+	
   	ok.
 
 code_change(_OldVsn,State,_Extra) ->
