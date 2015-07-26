@@ -538,7 +538,7 @@ multiple_un_register_test() ->
 
 call_test() ->
   erwa_invocation_sup:start_link(),
-  erwa_sessions:start_link(),
+  erwa_sessions:create_table(),
   flush(),
   {ok,Pid} = start(),
   {ok,Data} = get_data(Pid),
@@ -581,13 +581,13 @@ call_test() ->
            ok
        end,
   flush(),
-  erwa_sessions:stop(),
+  erwa_sessions:drop_table(),
   ok.
 
 
 caller_identification_test() ->
   erwa_invocation_sup:start_link(),
-  erwa_sessions:start_link(),
+  erwa_sessions:create_table(),
   flush(),
   Realm = <<"erwa.test">>,
   {ok,Pid} = start(),
@@ -634,13 +634,13 @@ caller_identification_test() ->
          done -> ok
        end,
   flush(),
-  erwa_sessions:stop(),
+  erwa_sessions:drop_table(),
   ok.
 
 
 call_cancel_test() ->
   erwa_invocation_sup:start_link(),
-  erwa_sessions:start_link(),
+  erwa_sessions:create_table(),
   flush(),
   Realm = <<"erwa.test">>,
   {ok,Pid} = start(),
@@ -694,13 +694,13 @@ call_cancel_test() ->
          done -> ok
        end,
   flush(),
-  erwa_sessions:stop(),
+  erwa_sessions:drop_table(),
   ok.
 
 
 call_progressive_test() ->
   erwa_invocation_sup:start_link(),
-  erwa_sessions:start_link(),
+  erwa_sessions:create_table(),
   flush(),
   Realm = <<"erwa.test">>,
   {ok,Pid} = start(),
@@ -746,7 +746,7 @@ call_progressive_test() ->
            ok
        end,
   flush(),
-  erwa_sessions:stop(),
+	erwa_sessions:drop_table(),
   ok.
 
 garbage_test() ->

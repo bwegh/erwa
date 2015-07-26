@@ -36,4 +36,5 @@ all() ->
 	[eunit].
 
 eunit(_) ->
+	mnesia:start(),
 	ok = eunit:test({application, erwa},[verbose]).

@@ -275,6 +275,7 @@ garbage_test() ->
   {ok,stopped} = stop().
 
 add_remove_test() ->
+	ok = erwa_sessions:create_table(),
 	{ok,_} = erwa_routing_sup:start_link(), 
 	{ok,_} = start(),
   Name1 = <<"com.doesnotexist.wamp">>,
@@ -308,6 +309,7 @@ add_remove_test() ->
   {ok,killed} = kill(Name1),
   ok = ensure_tablesize(0,5000),
   timeout = ensure_tablesize(5,10),
+	ok = erwa_sessions:drop_table(),
   {ok,stopped} = stop().
 
 

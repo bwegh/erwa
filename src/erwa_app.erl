@@ -36,6 +36,7 @@
 %% API.
 
 start(_Type, _Args) ->
+	erwa_sessions:create_table(),
   erwa_sup:start_link().
 
 

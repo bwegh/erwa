@@ -262,13 +262,13 @@ publish_metaevent(Event,Arg,#state{broker=Broker}) ->
 -ifdef(TEST).
 
 start_stop_test() ->
-  erwa_sessions:start(),
+  erwa_sessions:create_table(),
   {ok,Pid} = start(),
   {ok,stopped} = stop(Pid),
-  erwa_sessions:stop().
+  erwa_sessions:drop_table().
 
 simple_routing_test() ->
-  erwa_sessions:start(),
+  erwa_sessions:create_table(),
   {ok,Pid} = start(),
   Session = erwa_session:set_id(234,erwa_session:create()),
   ok = connect(Pid,Session),
@@ -276,20 +276,20 @@ simple_routing_test() ->
   {ok,_} = get_broker(Pid),
   ok = disconnect(Pid),
   {ok,stopped} = stop(Pid),
-  erwa_sessions:stop().
+  erwa_sessions:drop_table().
 
 
 forced_connection_test() ->
-  erwa_sessions:start(),
+  erwa_sessions:create_table(),
   {ok,Pid} = start(),
   {error,not_connected} = get_broker(Pid),
   {error,not_connected} = get_dealer(Pid),
   {ok,stopped} = stop(Pid),
-  erwa_sessions:stop().
+  erwa_sessions:drop_table().
 
 
 meta_api_test() ->
-  erwa_sessions:start(),
+  erwa_sessions:create_table(),
   {ok,Pid} = start(),
   Session = erwa_session:set_id(234,erwa_session:create()),
   ok = connect(Pid,Session),
@@ -297,16 +297,16 @@ meta_api_test() ->
   {ok,[234]} = get_session_ids(Pid),
   ok = disconnect(Pid),
   {ok,stopped} = stop(Pid),
-  erwa_sessions:stop().
+  erwa_sessions:drop_table().
 
 garbage_test() ->
-  erwa_sessions:start(),
+  erwa_sessions:create_table(),
   {ok,Pid} = start(),
   ignored = gen_server:call(Pid,some_garbage),
   ok = gen_server:cast(Pid,some_garbage),
   Pid ! some_garbage,
   {ok,stopped} = stop(Pid),
-  erwa_sessions:stop().
+  erwa_sessions:drop_table().
 
 
 -endif.

@@ -253,7 +253,7 @@ flush() ->
 
 call_result_test() ->
   flush(),
-  erwa_sessions:start_link(),
+  erwa_sessions:create_table(),
   {ok,SessionId} = erwa_sessions:register_session(<<"erwa.test">>),
   CallInfo = #{procedure_id => 123,
                caller_id => SessionId,
@@ -276,13 +276,14 @@ call_result_test() ->
   ok = receive
          {'DOWN', _, process, Pid, _ } -> ok
        end,
+	erwa_sessions:drop_table(),
   ok.
 
 
 
 call_error_test() ->
   flush(),
-  erwa_sessions:start_link(),
+  erwa_sessions:create_table(),
   {ok,SessionId} = erwa_sessions:register_session(<<"erwa.test">>),
   CallInfo = #{procedure_id => 123,
                caller_id => SessionId,
@@ -305,13 +306,14 @@ call_error_test() ->
   ok = receive
          {'DOWN', _, process, Pid, _ } -> ok
        end,
+	erwa_sessions:drop_table(),
   ok.
 
 
 
 cancel_test() ->
   flush(),
-  erwa_sessions:start_link(),
+  erwa_sessions:create_table(),
   {ok,SessionId} = erwa_sessions:register_session(<<"erwa.test">>),
   CallInfo = #{procedure_id => 123,
                caller_id => SessionId,
@@ -338,11 +340,12 @@ cancel_test() ->
   ok = receive
          {'DOWN', _, process, Pid, _ } -> ok
        end,
+	erwa_sessions:drop_table(),
   ok.
 
 timeout_test() ->
   flush(),
-  erwa_sessions:start_link(),
+  erwa_sessions:create_table(),
   {ok,SessionId} = erwa_sessions:register_session(<<"erwa.test">>),
   CallInfo = #{procedure_id => 123,
                caller_id => SessionId,
@@ -368,6 +371,7 @@ timeout_test() ->
   ok = receive
          {'DOWN', _, process, Pid, _ } -> ok
        end,
+	erwa_sessions:drop_table(),
   ok.
 
 
@@ -404,6 +408,7 @@ failed_init_test() ->
 
 
 garbage_test() ->
+	ok = erwa_sessions:create_table(),
   CallInfo = #{procedure_id => 123,
                caller_id => 2393874,
                call_req_id => 124,
@@ -416,6 +421,7 @@ garbage_test() ->
   ignored = gen_server:call(Pid,some_garbage),
   ok = gen_server:cast(Pid,some_garbage),
   Pid ! some_garbage,
+	ok = erwa_sessions:drop_table(),
   {ok,stopped} = stop(Pid).
 
 -endif.

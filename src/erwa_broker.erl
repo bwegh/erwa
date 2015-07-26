@@ -435,7 +435,7 @@ unsubscribe_all_test() ->
 
 
 multiple_un_subscribe_test() ->
-	erwa_sessions:start_link(),
+	erwa_sessions:create_table(),
 	{ok,Pid} = start(),
 	{ok,Data} = get_data(Pid),
 	ok = disable_metaevents(Data),
@@ -482,12 +482,12 @@ multiple_un_subscribe_test() ->
 	3 = get_tablesize(Data),
 	ok = unsubscribe_all(SessionId,Data),
 	0 = get_tablesize(Data),
-	erwa_sessions:stop(),
+	erwa_sessions:drop_table(),
 	{ok,stopped} = stop(Data).
 
 
 publish_test() ->
-	erwa_sessions:start_link(),
+	erwa_sessions:create_table(),
 	{ok,_} = erwa_publications:start(),
 	{ok,Pid} = start(),
 	{ok,Data} = get_data(Pid),
@@ -519,13 +519,13 @@ publish_test() ->
 				 {erwa,{event,ID,PublicationID2,#{},undefined,undefined}} ->
 					 ok
 			 end,
-	erwa_sessions:stop(),
+	erwa_sessions:drop_table(),
 	{ok,stopped} = stop(Data),
 	{ok,stopped} = erwa_publications:stop().
 
 
 exclude_test() ->
-	erwa_sessions:start_link(),
+	erwa_sessions:create_table(),
 	{ok,_} = erwa_publications:start(),
 	{ok,Pid} = start(),
 	{ok,Data} = get_data(Pid),
@@ -574,14 +574,14 @@ exclude_test() ->
 				 nothing -> ok;
 				 yes_got_it -> wrong
 			 end,
-	erwa_sessions:stop(),
+	erwa_sessions:drop_table(),
 	{ok,stopped} = stop(Data),
 	{ok,stopped} = erwa_publications:stop().
 
 
 
 eligible_test() ->
-	erwa_sessions:start_link(),
+	erwa_sessions:create_table(),
 	{ok,_} = erwa_publications:start(),
 	{ok,Pid} = start(),
 	{ok,Data} = get_data(Pid),
@@ -631,7 +631,7 @@ eligible_test() ->
 				 nothing -> ok;
 				 yes_got_it -> wrong
 			 end,
-	erwa_sessions:stop(),
+	erwa_sessions:drop_table(),
 	{ok,stopped} = stop(Data),
 	{ok,stopped} = erwa_publications:stop().
 
