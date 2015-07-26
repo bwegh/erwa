@@ -61,7 +61,7 @@
 
 -spec add(Name :: binary() ) -> ok | {error, Reason :: term() }.
 add(Name) ->
-  MW_List = get_env(erwa,router_middleware,[erwa_mw_default]),
+  MW_List = application:get_env(erwa,router_middleware,[erwa_mw_default]),
   add(Name,MW_List).
 
 -spec add(Name :: binary(), Middlewares :: [atom()] ) -> ok | {error, Reason :: term() }.
@@ -107,7 +107,7 @@ stop() ->
   %% gen_server.
 
 init([]) ->
-  AutoCreate = get_env(erwa,realm_autocreate,false),
+	AutoCreate = application:get_env(erwa,realm_autocreate,false),
   Ets = ets:new(realms,[set]),
 	{ok, #state{ets=Ets, autocreate_realm=AutoCreate}}.
 
@@ -194,7 +194,7 @@ get_realm_data(Tag,Name,#state{ets=Ets, autocreate_realm=AC}=State) ->
     [] ->
       case AC of
         true ->
-          MW_List = get_env(erwa,router_middleware,[erwa_mw_default]),
+          MW_List = application:get_env(erwa,router_middleware,[erwa_mw_default]),
           ok = create_new_realm(Name,MW_List,State),
           get_realm_data(Tag,Name,State);
         false ->
@@ -235,14 +235,6 @@ stop_realm({monitor,Ref},clean_up,#state{ets=Ets}) ->
 
 
 
-get_env(Application, Pararmeter, Default) when is_atom(Application), is_atom(Pararmeter) ->
-  case application:get_env(Application,Pararmeter) of
-    undefined -> Default;
-    {ok, Value} -> Value
-  end.
-
-
-
 -ifdef(TEST).
 
 get_tablesize() ->
@@ -271,9 +263,9 @@ start_stop_test() ->
 
 environment_test() ->
   application:set_env(erwa,router_middleware,[erwa_mw_allow]),
-  [erwa_mw_allow] = get_env(erwa,router_middleware,[erwa_mw_default]),
+  [erwa_mw_allow] = application:get_env(erwa,router_middleware,[erwa_mw_default]),
   application:unset_env(erwa,router_middleware),
-  [erwa_mw_default] = get_env(erwa,router_middleware,[erwa_mw_default]).
+  [erwa_mw_default] = application:get_env(erwa,router_middleware,[erwa_mw_default]).
 
 garbage_test() ->
   {ok,Pid} = start(),

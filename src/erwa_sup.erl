@@ -31,6 +31,7 @@
 %% supervisor.
 -export([init/1]).
 
+-define( CHILD(I, Type), {I, {I, start_link, []}, permanent, 5000, Type, [I]}).
 %% API.
 
 -spec start_link() -> {ok, pid()}.
@@ -40,11 +41,19 @@ start_link() ->
 %% supervisor.
 
 init([]) ->
-Procs = [{sessions,{erwa_sessions,start_link,[]},permanent,5000,worker,[]},
-         {publications,{erwa_publications,start_link,[]},permanent,5000,worker,[]},
-         {invocation_sup,{erwa_invocation_sup,start_link,[]},permanent,5000,supervisor,[]},
-         {realms_sup,{erwa_routing_sup,start_link,[]},permanent,5000,supervisor,[]},
-         {realms,{erwa_realms,start_link,[]},permanent,5000,worker,[]},
-         {user_db,{erwa_user_db,start_link,[]},permanent,5000,worker,[]}
+	Sessions = ?CHILD(erwa_sessions, worker),
+	Publications = ?CHILD(erwa_publications, worker),
+	InvocationSup = ?CHILD(erwa_invocation_sup, supervisor),
+	RoutingSup = ?CHILD(erwa_routing_sup, supervisor),
+	Realms = ?CHILD(erwa_realms, worker),
+	UserDb = ?CHILD(erwa_user_db, worker),
+
+Procs = [
+				 Sessions,
+				 Publications,
+				 InvocationSup,
+				 RoutingSup,
+				 Realms,
+				 UserDb
         ],
 {ok, {{one_for_one, 10, 10}, Procs}}.

@@ -56,8 +56,8 @@ Erwa has the following features:
 
 Router
 ======
-The router implementation in Erwa uses the great [ranch](https://github.com/extend/ranch)
-and [cowboy](https://github.com/extend/cowboy) from [Loïc Hoguin (essen)](https://github.com/essen)
+The router implementation in Erwa uses the great [ranch](https://github.com/ninenines/ranch)
+and [cowboy](https://github.com/ninenines/cowboy) from [Loïc Hoguin (essen)](https://github.com/essen)
 to handle the incomming connections and the webserver part for the websockets.
 Erwa has two modules to work either as a protocol for ranch on incomming TCP connections, or
 as websocket handler with cowboy on incomming websocket connections.
@@ -66,25 +66,20 @@ All you need to do to get a simple WAMP router up and running is to add a dispat
 ranch and/or cowboy:
 
 A WAMP router on websockets:
-* using erwa_in_handler as the websocket handler, by dispatching a certain path to conditions
-* starting cowboy on a certain port (here 8080) and add the dispatch rule
 ```Erlang
-%% a rule to dispatch incomming connections to any host with the path /wamp to the erwa_in_handler
-Dispatch = cowboy_router:compile([ {'_', [ {"/wamp", erwa_in_handler, []}, ]} ]),
-%% fire up cowboy with the dispatch rule for the wamp connection
-{ok, _} = cowboy:start_http(http, 100, [{port, 8080}],[{env, [{dispatch, Dispatch}]}]),
+%% start erwa to handle any incomming connections to any host at the path /wamp
+%% start it with 100 parallel acceptors on port 8080
+ok = erwa:start_websocket("/wamp", 8080, 100).
 ```
 In the examples directory you can find the simple_router which includes just the above
 and starts a WAMP router, including a simple javascript client,
 using [wampy.js](https://github.com/KSDaemon/wampy.js).
 
 The other possibility is to start Erwa as a TCP router:
-Erwa implements a protocol for ranch in the erwa_in_handler modules.
-So starting and tcp router is done by starting ranch with
-erwa_in_handler as the protocol:
 ```Erlang
-%% start ranch with the wamp protocol by using erwa_in_handler on port 555
-{ok,_} = ranch:start_listener(erwa_tcp, 5, ranch_tcp, [{port,5555}], erwa_in_handler, []),
+%% start erwa listening for raw tcp connections on port 5555
+%% starting it with 5 parallel acceptors
+ok = erwa:start_socket(5555,5).
 ```
 This is also included in the simple_router example in the examples directory.
 

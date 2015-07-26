@@ -199,29 +199,26 @@ check_out_message(Result, Msg,State) ->
 hndl_msg({hello,RealmName,Details}, #state{trans=Transport} = State) ->
   AuthId = maps:get(authid, Details, anonymous),
   Roles = maps:get(roles, Details, []),
-  case ( AuthId == anonymous ) or ( AuthId == <<"anonymous">> ) of 
-    true -> 
-      case erwa_user_db:allow_anonymous(RealmName,Transport) of
-        true -> 
-          case erwa_realms:get_routing(RealmName) of
-            {ok,RoutingPid} ->
-              % the realm does exist
-              State1 = create_session(RoutingPid,RealmName,Roles,State),
-              #state{id=SessionId, broker=Broker, dealer=Dealer}=State1,
-              BrokerFeat = erwa_broker:get_features(Broker),
-              DealerFeat = erwa_dealer:get_features(Dealer),
-              SessionData = #{authid => anonymous, role => anonymous, session =>
-                              SessionId},
-              WelcomeMsg ={welcome,SessionId,#{agent => erwa:get_version(), roles => #{broker => BrokerFeat, dealer => DealerFeat}}},
-              {reply,WelcomeMsg,State1#state{is_auth=true,
-                                             session_data=SessionData}}; 
-            {error,_} ->
-              {reply_stop, {abort, #{}, no_such_realm},State}
-          end;
-        false -> 
-          {reply_stop, {abort, #{}, no_such_realm}, State}
+  case {AuthId == anonymous, erwa_user_db:allow_anonymous(RealmName, Transport)} of 
+    {true, true} -> 
+      case erwa_realms:get_routing(RealmName) of
+        {ok,RoutingPid} ->
+          % the realm does exist
+          State1 = create_session(RoutingPid,RealmName,Roles,State),
+          #state{id=SessionId, broker=Broker, dealer=Dealer}=State1,
+          BrokerFeat = erwa_broker:get_features(Broker),
+          DealerFeat = erwa_dealer:get_features(Dealer),
+          SessionData = #{authid => anonymous, role => anonymous, session =>
+                          SessionId},
+          WelcomeMsg ={welcome,SessionId,#{agent => erwa:get_version(), roles => #{broker => BrokerFeat, dealer => DealerFeat}}},
+          {reply,WelcomeMsg,State1#state{is_auth=true,
+                                         session_data=SessionData}}; 
+        {error,_} ->
+          {reply_stop, {abort, #{}, no_such_realm},State}
       end;
-    false ->
+    {true, false} -> 
+      {reply_stop, {abort, #{}, no_such_realm}, State};
+    {false,_} ->
       AuthMethods = maps:get(authmethods, Details, []),
       authenticate(AuthMethods, RealmName, Details, State)
   end;
@@ -251,20 +248,18 @@ hndl_msg(_Msg,State) ->
   {stop,State}.
 
 
-
-
 authenticate([], _RealmName, _Details, State) ->
   {reply_stop, {abort, #{}, no_such_realm}, State};
 authenticate([wampcra|_], RealmName, Details, #state{trans=Transport
                                                      }=State) -> 
   AuthId = maps:get(authid, Details, anonymous),
-  Roles = maps:get(roles, Details, []),
+  ClientRoles = maps:get(roles, Details, []),
   case erwa_user_db:can_join(AuthId, RealmName, Transport ) of 
     {true, Role} -> 
       case erwa_realms:get_routing(RealmName) of
         {ok,RoutingPid} ->
           % the realm does exist
-          State1 = create_session(RoutingPid,RealmName,Roles,State),
+          State1 = create_session(RoutingPid,RealmName,ClientRoles,State),
           #state{id = SessionId} = State1,
           % a user that needs to authenticate
           % need to create a a challenge  

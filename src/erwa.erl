@@ -37,8 +37,10 @@
 -export([get_routing_for_realm/1]).
 
 
-
 -export([get_version/0]).
+-export([start_websocket/3]).
+-export([start_websocket/4]).
+-export([start_socket/2]).
 
 
 %% @doc returns the version string for the application, used as agent description
@@ -50,7 +52,31 @@ get_version() ->
   end,
   << <<"Erwa-">>/binary, Ver/binary >>.
 
+%% @doc start router listening on websocket
+-spec start_websocket( Path :: string(), Port :: integer(), Acceptors ::
+											 integer() ) -> ok.
+start_websocket(Path, Port, Acceptors) -> 
+	start_websocket(Path, Port, Acceptors, []).
 
+%% @doc start router listening on websocket with custom handlers added
+-spec start_websocket( Path :: string(), Port :: integer(), Acceptors ::
+								 non_neg_integer(), Handlers :: [term()] ) -> ok.
+start_websocket(Path, Port, Acceptors, Handlers) ->
+	Dispatch = cowboy_router:compile([{'_',[ {Path, erwa_in_ws,
+																						[] } | Handlers] }]),
+	{ok, _} = cowboy:start_http(erwa_http, Acceptors, [{port, Port}], [{env,
+																																			[{dispatch,
+																																				Dispatch}]}]),
+	ok.
+
+
+%% @doc start the router listening for raw tcp connections
+-spec start_socket(Port :: non_neg_integer(), Acceptors :: non_neg_integer()) ->
+	ok.
+start_socket(Port, Acceptors) ->
+	{ok, _} = ranch:start_listener(erwa_tcp, Acceptors, ranch_tcp, [{port, Port}],
+																 erwa_in_tcp, []),
+	ok.
 
 
 %% for router

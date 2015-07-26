@@ -35,6 +35,7 @@
 		kernel,
 		stdlib,
     wamper,
+		mnesia,
     crypto
 	]},
 	{mod, {erwa_app, []}},
