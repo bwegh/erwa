@@ -92,10 +92,7 @@ add_session(Pid,Realm) ->
 		{atomic, ok} ->
       ID;
 		{aborted, already_exists}  ->
-			add_session(Pid,Realm);
-		Other ->
-			ct:log("got an issue: ~p~n",[Other]),
-			{error, Other}
+			add_session(Pid,Realm)
 	end.
 
 delete_session(Pid) when is_pid(Pid) ->

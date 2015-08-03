@@ -21,121 +21,52 @@
 %%
 
 -module(erwa_publications).
--behaviour(gen_server).
-
--ifdef(TEST).
--include_lib("eunit/include/eunit.hrl").
--endif.
 
 %% API
--export([start/0]).
--export([start_link/0]).
--export([stop/0]).
-
+-export([create_table/0]).
+-export([drop_table/0]).
 -export([get_pub_id/0]).
 
 
-%% gen_server
--export([init/1]).
--export([handle_call/3]).
--export([handle_cast/2]).
--export([handle_info/2]).
--export([terminate/2]).
--export([code_change/3]).
-
-
--record(state,{
-               ets=none
+-record(erwa_pub_rec,{
+          id = unknown,
+          other = unused
                }).
 
--spec start() -> {ok,pid()}.
-start() ->
-  gen_server:start({local, ?MODULE}, ?MODULE, [], []).
+-spec create_table() -> ok.
+create_table() ->
+    {atomic, ok} = mnesia:create_table(erwa_pub_rec, [{disc_copies,[]}, {ram_copies, [node()]},
+                                       {type, set}, {attributes,
+                                                     record_info(fields,
+                                                                 erwa_pub_rec)}]),
+    ok.
 
-start_link() ->
-  gen_server:start_link({local, ?MODULE}, ?MODULE, [], []).
-
+-spec drop_table() -> ok.
+drop_table() -> 
+    mnesia:delete_table(erwa_pub_rec),
+    ok.
 
 -spec get_pub_id() -> {ok,non_neg_integer()}.
 get_pub_id() ->
-  gen_server:call(?MODULE, get_pub_id).
+    new_pub_id().
 
 
--spec stop() -> {ok,stopped}.
-stop() ->
-  gen_server:call(?MODULE, stop).
-
-  %% gen_server.
-
-init([]) ->
-  Ets = ets:new(publication_ids,[set]),
-	{ok, #state{ets=Ets}}.
-
-
-handle_call(get_pub_id, _From, #state{ets=Ets}=State) ->
-  ID = new_pub_id(Ets),
-  {reply, {ok,ID} , State};
-
-handle_call(stop, _From, State) ->
-	{stop,normal,{ok,stopped},State};
-
-handle_call(_Request, _From, State) ->
-	{reply, ignored, State}.
-
-
-
-handle_cast(_Request, State) ->
-	{noreply, State}.
-
-handle_info(_Info, State) ->
-	{noreply, State}.
-
-terminate(_Reason, _State) ->
-	ok.
-
-code_change(_OldVsn, State, _Extra) ->
-	{ok, State}.
-
-
-new_pub_id(Ets) ->
+new_pub_id() ->
   ID = crypto:rand_uniform(0,9007199254740992),
-  case ets:insert_new(Ets,{ID}) of
-    true ->
-      ID;
-    false ->
-      new_pub_id(Ets)
+  Data = #erwa_pub_rec{id=ID},
+  Trans = fun() -> 
+                  case mnesia:read({erwa_pub_rec, ID}) of 
+                      [] -> 
+                          mnesia:write(Data);
+                      _ -> 
+                          mnesia:abort(already_exists)
+                  end
+          end,
+  case mnesia:transaction(Trans) of 
+      {atomic, ok} -> 
+          {ok, ID};
+      {aborted, already_exists} ->
+          new_pub_id()
   end.
 
-
--ifdef(TEST).
-
-get_tablesize() ->
-  Pid = whereis(?MODULE),
-  Tables = ets:all(),
-  [Table] = lists:filter(fun(T) -> ets:info(T,owner) == Pid end,Tables),
-  ets:info(Table,size).
-
-
-stat_stop_test() ->
-  {ok,_} = start(),
-  {ok,stopped} = stop().
-
-simple_test() ->
-  {ok, _ } = start(),
-  0 = get_tablesize(),
-  {ok,_} = get_pub_id(),
-  1 = get_tablesize(),
-  {ok,_} = get_pub_id(),
-  2 = get_tablesize(),
-  {ok,stopped} = stop().
-
-
-garbage_test() ->
-  {ok, Pid} = start(),
-  ignored = gen_server:call(?MODULE,some_garbage),
-  ok = gen_server:cast(?MODULE,some_garbage),
-  Pid ! some_garbage,
-  {ok,stopped} = stop().
-
--endif.
 

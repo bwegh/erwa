@@ -488,7 +488,7 @@ multiple_un_subscribe_test() ->
 
 publish_test() ->
 	erwa_sessions:create_table(),
-	{ok,_} = erwa_publications:start(),
+    ok = erwa_publications:create_table(),
 	{ok,Pid} = start(),
 	{ok,Data} = get_data(Pid),
 	ok = disable_metaevents(Data),
@@ -521,12 +521,12 @@ publish_test() ->
 			 end,
 	erwa_sessions:drop_table(),
 	{ok,stopped} = stop(Data),
-	{ok,stopped} = erwa_publications:stop().
+    ok = erwa_publications:drop_table().
 
 
 exclude_test() ->
 	erwa_sessions:create_table(),
-	{ok,_} = erwa_publications:start(),
+    ok = erwa_publications:create_table(),
 	{ok,Pid} = start(),
 	{ok,Data} = get_data(Pid),
 	ok = disable_metaevents(Data),
@@ -576,13 +576,13 @@ exclude_test() ->
 			 end,
 	erwa_sessions:drop_table(),
 	{ok,stopped} = stop(Data),
-	{ok,stopped} = erwa_publications:stop().
+    ok = erwa_publications:drop_table().
 
 
 
 eligible_test() ->
 	erwa_sessions:create_table(),
-	{ok,_} = erwa_publications:start(),
+    ok = erwa_publications:create_table(),
 	{ok,Pid} = start(),
 	{ok,Data} = get_data(Pid),
 	ok = disable_metaevents(Data),
@@ -633,7 +633,7 @@ eligible_test() ->
 			 end,
 	erwa_sessions:drop_table(),
 	{ok,stopped} = stop(Data),
-	{ok,stopped} = erwa_publications:stop().
+    ok = erwa_publications:drop_table().
 
 
 garbage_test() ->

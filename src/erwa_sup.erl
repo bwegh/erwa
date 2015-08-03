@@ -41,14 +41,12 @@ start_link() ->
 %% supervisor.
 
 init([]) ->
-	Publications = ?CHILD(erwa_publications, worker),
 	InvocationSup = ?CHILD(erwa_invocation_sup, supervisor),
 	RoutingSup = ?CHILD(erwa_routing_sup, supervisor),
 	Realms = ?CHILD(erwa_realms, worker),
 	UserDb = ?CHILD(erwa_user_db, worker),
 
 Procs = [
-				 Publications,
 				 InvocationSup,
 				 RoutingSup,
 				 Realms,
