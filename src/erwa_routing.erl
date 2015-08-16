@@ -61,7 +61,6 @@
                 realm_name = unknown,
                 broker = unknown,
                 dealer = unknown,
-
                 %api_pid = unknown,
                 con_ets=none,
                 going_down = false,
@@ -129,15 +128,15 @@ stop(Pid) ->
 
 init(RealmName) ->
   Ets = ets:new(connections,[set,{keypos,2},protected]),
-  {ok,BrokerPid} =erwa_broker:start_link(),
-  {ok,Broker} = erwa_broker:get_data(BrokerPid),
+  %% {ok,BrokerPid} =erwa_broker:start_link(),
+  %% {ok,Broker} = erwa_broker:get_data(BrokerPid),
 
-  {ok,DealerPid} =erwa_dealer:start_link(#{broker=>Broker}),
+  {ok,DealerPid} =erwa_dealer:start_link(),
   {ok,Dealer} = erwa_dealer:get_data(DealerPid),
 
-  {ok, _CalleePid} = erwa_callee:start_link(#{broker=>Broker, dealer=>Dealer, routing=>self(), realm=>RealmName}),
+  {ok, _CalleePid} = erwa_callee:start_link(#{ dealer=>Dealer, routing=>self(), realm=>RealmName}),
 
-	{ok, #state{con_ets=Ets, broker=Broker, dealer=Dealer, realm_name=RealmName}}.
+	{ok, #state{con_ets=Ets, dealer=Dealer, realm_name=RealmName}}.
 
 
 handle_call(stop, _From, State) ->
@@ -234,10 +233,10 @@ code_change(_OldVsn, State, _Extra) ->
 	{ok, State}.
 
 
-close_routing(#state{broker=Broker, dealer=Dealer, timer_ref=TRef}=State) ->
+close_routing(#state{ dealer=Dealer, timer_ref=TRef}=State) ->
   _ = timer:cancel(TRef),
   send_all_clients(shutdown,State),
-  {ok,stopped} = erwa_broker:stop(Broker),
+  %% {ok,stopped} = erwa_broker:stop(Broker),
   {ok,stopped} = erwa_dealer:stop(Dealer),
   ok.
 

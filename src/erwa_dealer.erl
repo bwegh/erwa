@@ -36,8 +36,6 @@
 
 -export([call/7]).
 
--export([get_features/1]).
-
 -export([enable_metaevents/1]).
 -export([disable_metaevents/1]).
 
@@ -54,27 +52,11 @@
 
 %% internal
 -export([start/0]).
--export([start/1]).
--export([start_link/1]).
+-export([start_link/0]).
 -export([stop/1]).
 
 -export([get_data/1]).
 
-
--define(FEATURES,#{features => #{
-                                 call_canceling =>             true,
-                                 call_timeout =>               true,
-                                 call_trustlevels =>           false,
-                                 callee_blackwhite_listing =>  false,
-                                 caller_exclusion =>           false,
-                                 caller_identification =>      false,
-                                 partitioned_rpc =>            false,
-                                 pattern_based_registration => false,
-                                 progressive_call_results =>   true
-                                 }
-
-                   }
-        ).
 
 -record(procedure,{
                    uri = none,
@@ -106,8 +88,7 @@
 
 -record(data, {
                pid = unknown,
-               ets = none,
-               features = ?FEATURES
+               ets = none
                }).
 
 
@@ -168,20 +149,13 @@ call(Uri, RequestId, Options, Arguments, ArgumentsKw, SessionId, #data{ets=Ets})
       {error,procedure_not_found}
   end.
 
--spec get_features(record(data)) -> term().
-get_features(#data{features = F}) ->
-  F.
-
 
 start() ->
-  gen_server:start(?MODULE, #{broker => unknown}, []).
+  gen_server:start(?MODULE, [], []).
 
 
-start(Args) ->
-  gen_server:start(?MODULE, Args, []).
-
-start_link(Args) ->
-  gen_server:start_link(?MODULE, Args, []).
+start_link() ->
+  gen_server:start_link(?MODULE, [], []).
 
 -spec get_data( pid() ) -> {ok,record(data)}.
 get_data( Pid) ->
@@ -195,10 +169,9 @@ stop(Pid) ->
 
   %% gen_server.
 
-init(Args) ->
-  Ets = ets:new(rpc,[set,{keypos,2}]),
-  #{broker := Broker } = Args,
-	{ok, #state{ets=Ets, broker=Broker}}.
+init(_) ->
+	Ets = ets:new(rpc,[set,{keypos,2}]),
+	{ok, #state{ets=Ets}}.
 
 
 handle_call({register,ProcedureUri,Options,SessionId},_From,State) ->
@@ -265,10 +238,10 @@ register_procedure(ProcedureUri,Options,SessionId,#state{ets=Ets}=State) ->
     [#procedure{uri=ProcedureUri}] ->
       {error,procedure_already_exists};
     [] ->
-      {ok,ProcedureId,ProcDetails} = create_procedure(ProcedureUri,Options,SessionId,State),
+      {ok,ProcedureId,_ProcDetails} = create_procedure(ProcedureUri,Options,SessionId,State),
       ok = add_proc_to_id(ProcedureUri,SessionId,State),
-      publish_metaevent(on_create,ProcedureUri,SessionId,ProcDetails,State),
-      publish_metaevent(on_register,ProcedureUri,SessionId,ProcedureId,State),
+      %% publish_metaevent(on_create,ProcedureUri,SessionId,ProcDetails,State),
+      %% publish_metaevent(on_register,ProcedureUri,SessionId,ProcedureId,State),
       {ok,ProcedureId}
   end.
 
@@ -306,12 +279,12 @@ unregister_procedure(Uri,SessionId,#state{ets=Ets}=State) when is_binary(Uri) ->
       {error, not_registered};
     true ->
       ok = remove_proc_from_id(Uri,SessionId,State),
-      publish_metaevent(on_unregister,Uri,SessionId,ID,State),
+      %% publish_metaevent(on_unregister,Uri,SessionId,ID,State),
       case lists:delete(SessionId,Ids) of
         [] ->
           true = ets:delete(Ets,{proc,ID}),
-          true = ets:delete(Ets,Uri),
-          publish_metaevent(on_delete,Uri,SessionId,ID,State);
+          true = ets:delete(Ets,Uri);
+          %% publish_metaevent(on_delete,Uri,SessionId,ID,State);
         NewIds ->
           true = ets:insert(Ets,Proc#procedure{ids=NewIds})
       end,
@@ -359,25 +332,25 @@ remove_proc_from_id(Uri,SessionId,#state{ets=Ets}) ->
 gen_id() ->
   crypto:rand_uniform(0,9007199254740992).
 
-publish_metaevent(_,_,_,_,#state{broker=unknown}) ->
-  ok;
-publish_metaevent(_,_,_,_,#state{meta_events=disabled}) ->
-  ok;
-publish_metaevent(Event,ProcedureUri,SessionId,SecondArg,#state{broker=Broker}) ->
-  case binary:part(ProcedureUri,{0,5}) == <<"wamp.">> of
-    true ->
-      % do not fire metaevents on "wamp.*" uris
-      ok;
-    false ->
-      MetaTopic = case Event of
-                on_create -> <<"wamp.registration.on_create">>;
-                on_register -> <<"wamp.registration.on_register">>;
-                on_unregister -> <<"wamp.registration.on_unregister">>;
-                on_delete -> <<"wamp.registration.on_delete">>
-              end,
-      {ok,_} = erwa_broker:publish(MetaTopic,#{},[SessionId,SecondArg],undefined,no_session,Broker)
-  end,
-  ok.
+%% publish_metaevent(_,_,_,_,#state{broker=unknown}) ->
+%%   ok;
+%% publish_metaevent(_,_,_,_,#state{meta_events=disabled}) ->
+%%   ok;
+%% publish_metaevent(Event,ProcedureUri,SessionId,SecondArg,#state{}) ->
+%%   case binary:part(ProcedureUri,{0,5}) == <<"wamp.">> of
+%%     true ->
+%%       % do not fire metaevents on "wamp.*" uris
+%%       ok;
+%%     false ->
+%%       MetaTopic = case Event of
+%%                 on_create -> <<"wamp.registration.on_create">>;
+%%                 on_register -> <<"wamp.registration.on_register">>;
+%%                 on_unregister -> <<"wamp.registration.on_unregister">>;
+%%                 on_delete -> <<"wamp.registration.on_delete">>
+%%               end,
+%%       {ok,_} = erwa_broker:publish(MetaTopic,#{},[SessionId,SecondArg],undefined,no_session,)
+%%   end,
+%%   ok.
 
 
 %*************************************************************************************************

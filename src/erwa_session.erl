@@ -72,6 +72,42 @@
                 }).
 
 
+-define(BROKER_FEATURES,#{features => #{
+					 event_history => false,
+					 partitioned_pubsub => false,
+					 pattern_based_subscription => false,
+					 publication_trustlevels => false,
+					 publisher_exclusion => true,
+					 publisher_identification => true,
+					 subscriber_blackwhite_listing => true,
+					 subscriber_list => false,
+					 subscriber_metaevents => false
+					}
+
+				  }
+	   ).
+
+-define(DEALER_FEATURES,#{features => #{
+                                 call_canceling =>             true,
+                                 call_timeout =>               true,
+                                 call_trustlevels =>           false,
+                                 callee_blackwhite_listing =>  false,
+                                 caller_exclusion =>           false,
+                                 caller_identification =>      false,
+                                 partitioned_rpc =>            false,
+                                 pattern_based_registration => false,
+                                 progressive_call_results =>   true
+                                 }
+
+                   }
+        ).
+
+
+-define(ROLES, #{ 
+		  broker => ?BROKER_FEATURES,
+		  dealer => ?DEALER_FEATURES
+				}).
+
 %
 % Session Scope IDs
 %
@@ -205,12 +241,11 @@ hndl_msg({hello,RealmName,Details}, #state{trans=Transport} = State) ->
         {ok,RoutingPid} ->
           % the realm does exist
           State1 = create_session(RoutingPid,RealmName,Roles,State),
-          #state{id=SessionId, broker=Broker, dealer=Dealer}=State1,
-          BrokerFeat = erwa_broker:get_features(Broker),
-          DealerFeat = erwa_dealer:get_features(Dealer),
+          #state{id=SessionId}=State1,
           SessionData = #{authid => anonymous, role => anonymous, session =>
                           SessionId},
-          WelcomeMsg ={welcome,SessionId,#{agent => erwa:get_version(), roles => #{broker => BrokerFeat, dealer => DealerFeat}}},
+          WelcomeMsg ={welcome,SessionId,#{agent => erwa:get_version(), roles =>
+										  ?ROLES}},
           {reply,WelcomeMsg,State1#state{is_auth=true,
                                          session_data=SessionData}}; 
         {error,_} ->
@@ -226,10 +261,8 @@ hndl_msg({hello,RealmName,Details}, #state{trans=Transport} = State) ->
 hndl_msg({authenticate,_Signature,_Extra}=Msg,#state{}=State) ->
   % case erwa_middleware:check_perm(Msg,State) of
   %  {true,_} ->
-      #state{id=SessionId,broker=Broker,dealer=Dealer} = State,
-      BrokerFeat = erwa_broker:get_features(Broker),
-      DealerFeat = erwa_dealer:get_features(Dealer),
-      Msg ={welcome,SessionId,#{agent => erwa:get_version(), roles => #{broker => BrokerFeat, dealer => DealerFeat}}},
+      #state{id=SessionId} = State,
+      Msg ={welcome,SessionId,#{agent => erwa:get_version(), roles => ?ROLES }},
       {reply,Msg,State#state{is_auth=true}};
   %%   {false,Details} ->
   %%     OutDetails = maps:get(details,Details,#{}),
@@ -308,8 +341,8 @@ hndl_msg_authed({subscribe,RequestId,Options,Topic},#state{broker=Broker,id=Sess
   %%     {reply, {error,subscribe,RequestId,OutDetails,Error}}
   %% end;
 
-hndl_msg_authed({unsubscribe,RequestId,SubscriptionId},#state{broker=Broker,id=SessionId}=State) ->
-  ok = erwa_broker:unsubscribe(SubscriptionId,SessionId,Broker),
+hndl_msg_authed({unsubscribe,RequestId,SubscriptionId},#state{id=SessionId}=State) ->
+  ok = erwa_broker:unsubscribe(SubscriptionId,SessionId),
   {reply, {unsubscribed,RequestId},State};
 
 hndl_msg_authed({publish,RequestId,Options,Topic,Arguments,ArgumentsKw},#state{broker=Broker,id=SessionId}=State) ->
@@ -439,27 +472,23 @@ hndl_info(Info, State) ->
 
 
 
-close_session(#state{broker=Broker,dealer=Dealer,routing_pid=RoutingPid,id=SessionId}) ->
-  ok = case Broker of
-         none -> ok;
-         Broker ->
-           erwa_broker:unsubscribe_all(SessionId,Broker)
-       end,
-  ok = case Dealer of
-         none -> ok;
-         Dealer ->
-           erwa_dealer:unregister_all(SessionId,Dealer)
-       end,
-  ok = case RoutingPid of
-         none -> ok;
-         RoutingPid ->
-           erwa_routing:disconnect(RoutingPid)
-       end,
+close_session(#state{dealer=Dealer,routing_pid=RoutingPid,id=SessionId}) ->
+	ok = case Dealer of
+			 none -> ok;
+			 Dealer ->
+				 erwa_dealer:unregister_all(SessionId,Dealer)
+		 end,
+	ok = case RoutingPid of
+			 none -> ok;
+			 RoutingPid ->
+				 erwa_routing:disconnect(RoutingPid)
+		 end,
 	ok = case SessionId of
-		none -> ok;
-		_ -> erwa_sessions:unregister_session() 
-	end,
-  ok.
+			 none -> ok;
+			 _ -> erwa_sessions:unregister_session(),
+				  erwa_broker:unsubscribe_all(SessionId)
+		 end,
+	ok.
 
 -ifdef(TEST).
 

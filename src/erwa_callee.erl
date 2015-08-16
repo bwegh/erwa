@@ -42,22 +42,23 @@
 
 -record(state,{
                dealer = unknown,
-               broker = unknown,
+			   realm = unknown,
                routing = unknown,
                sess_id = unknown,
                mapping = #{}
                }).
 
--define(PROCEDURES,[{<<"wamp.subscription.list">>,fun subscription_list/4},
-                 %{<<"wamp.subscription.match">>,fun subscription_match/4},
-                 {<<"wamp.subscription.lookup">>,fun subscription_lookup/4},
-                 {<<"wamp.registration.list">>,fun registration_list/4},
-                 %{<<"wamp.registration.match">>,fun registration_match/4},
-                 {<<"wamp.registration.lookup">>,fun registration_lookup/4},
-                 {<<"wamp.session.count">>,fun session_count/4},
-                 {<<"wamp.session.list">>,fun session_list/4}
-                 %{<<"wamp.session.get">>,fun session_get/4}
-                 ]).
+-define(PROCEDURES,[
+					{<<"wamp.subscription.list">>,fun subscription_list/4},
+					%{<<"wamp.subscription.match">>,fun subscription_match/4},
+					{<<"wamp.subscription.lookup">>,fun subscription_lookup/4},
+					{<<"wamp.registration.list">>,fun registration_list/4},
+					%{<<"wamp.registration.match">>,fun registration_match/4},
+					{<<"wamp.registration.lookup">>,fun registration_lookup/4},
+					{<<"wamp.session.count">>,fun session_count/4},
+					{<<"wamp.session.list">>,fun session_list/4}
+					%{<<"wamp.session.get">>,fun session_get/4}
+				   ]).
 
 start(Args) ->
   gen_server:start(?MODULE, Args, []).
@@ -70,14 +71,14 @@ stop(Pid) ->
 
 
 init(Args) ->
-  #{dealer := Dealer, broker:=Broker, routing:=Routing, realm:=Realm} = Args,
+  #{dealer := Dealer, routing:=Routing, realm:=Realm} = Args,
   {ok,SessionId} = erwa_sessions:register_session(Realm),
   F = fun({Method,Fun},Map) ->
         {ok,RegId} = erwa_dealer:register(Method, #{invoke => single}, SessionId, Dealer),
         maps:put(RegId,Fun,Map)
       end,
   Mapping = lists:foldl(F,#{},?PROCEDURES),
-  {ok,#state{sess_id = SessionId, dealer = Dealer, broker = Broker, mapping=Mapping, routing=Routing}}.
+  {ok,#state{sess_id = SessionId, dealer = Dealer, mapping=Mapping, realm=Realm, routing=Routing}}.
 
 
 handle_call(_Msg,_From,State) ->
@@ -108,17 +109,17 @@ session_list(_Options,_Arguments,_ArgumentsKw,#state{routing=Routing}) ->
   {ok,Ids} = erwa_routing:get_session_ids(Routing),
   {ok,#{},Ids,undefined}.
 
-subscription_list(_Options,_Arguments,_ArgumentsKw,#state{broker=Broker}) ->
-  {ok,List} = erwa_broker:get_subscriptions(Broker),
+subscription_list(_Options,_Arguments,_ArgumentsKw,#state{realm=Realm}) ->
+  {ok,List} = erwa_broker:get_subscriptions(Realm),
   {ok,#{},[List],undefined}.
 
-subscription_lookup(_Options,[SubscriptionId],_ArgumentsKw,#state{broker=Broker}) ->
-  case erwa_broker:get_subscription(Broker,SubscriptionId) of
-    {ok,Details} ->
-      {ok, #{},[Details],undefined};
-    {error,not_found} ->
-      {error,#{},invalid_argument,undefined,undefined}
-  end.
+subscription_lookup(_Options,[SubscriptionId],_ArgumentsKw,#state{}) ->
+	case erwa_broker:get_subscription_details(SubscriptionId) of
+		{ok,Details} ->
+			{ok, #{},[Details],undefined};
+		{error,not_found} ->
+			{error,#{},invalid_argument,undefined,undefined}
+	end.
 
 registration_list(_Options,_Arguments,_ArgumentsKw,#state{dealer=Dealer}) ->
   {ok,List} = erwa_dealer:get_registrations(Dealer),
@@ -134,8 +135,6 @@ registration_lookup(_Options,[RegistrationId],_ArgumentsKw,#state{dealer=Dealer}
 
 empty_result(_,_,_,_) ->
   {#{},undefined,undefined}.
-
-
 
 
 terminate(_Reason, _State) ->
