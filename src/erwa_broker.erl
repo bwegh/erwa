@@ -24,17 +24,17 @@
 -module(erwa_broker).
 
 
--export([create_table/0]).
--export([drop_tables/0]).
+-export([init/1]).
+-export([cleanup/1]).
 
 %% API
 -export([subscribe/4]).
--export([unsubscribe/2]).
--export([unsubscribe_all/1]).
+-export([unsubscribe/3]).
+-export([unsubscribe_all/2]).
 -export([publish/6]).
 
 -export([get_subscriptions/1]).
--export([get_subscription_details/1]).
+-export([get_subscription_details/2]).
 
 
 -record(erwa_subscription, {
@@ -48,28 +48,19 @@
 
 
 
--spec create_table() -> ok.
-create_table() ->
-	{atomic, ok} = mnesia:create_table(erwa_subscription, [{disc_copies, []},
-														   {ram_copies,
-															[node()]}, {type,
-																		set},
-														   {attributes,
-															record_info(fields,
-																		erwa_subscription)},{index,[uri,match,realm]}]),
-	ok.
+-spec init(Realm :: binary()) -> ok.
+init(Realm) ->
+	create_table_for_realm(Realm).
 
--spec drop_tables() -> ok.
-drop_tables() ->
-	{atomic, ok} = mnesia:delete_table(erwa_subscription),
-	ok.
-
+-spec cleanup(Realm :: binary()) -> ok.
+cleanup(Realm) ->
+	delete_table_for_realm(Realm).
 
 
 
 -spec subscribe(Topic::binary(),Options::map(), SessionId :: non_neg_integer(), Realm :: binary())-> {ok, non_neg_integer()}.
 subscribe(Topic,Options,SessionId,Realm) ->
-	Match = maps:get(match,Options,exact),
+	Match = get_match_type(Options),
 	case Match of 
 		prefix -> 
 			{error,not_supported};
@@ -78,11 +69,12 @@ subscribe(Topic,Options,SessionId,Realm) ->
 		exact -> 
 			% just exact for now, others will follow 
 			Id = gen_id(),
+			Database = realm_to_db_name(Realm),
 			InsertSub = fun() -> 
-								case mnesia:read(erwa_subscription, Id) of
+								case mnesia:read(Database, Id) of
 									[] -> 
 										Subscriptions =
-										mnesia:index_read(erwa_subscription,
+										mnesia:index_read(Database,
 														  Topic, uri),
 										Filter = fun(#erwa_subscription{realm=R}=Sub, All) ->
 														 case R of
@@ -95,17 +87,20 @@ subscribe(Topic,Options,SessionId,Realm) ->
 										case lists:foldl(Filter,[],Subscriptions) of 
 											[] -> 
 												ok =
-												mnesia:write(#erwa_subscription{uri=Topic,
+												mnesia:write(Database,
+															 #erwa_subscription{uri=Topic,
 																				match=exact,
 																				realm=Realm,
 																				id=Id,
 																				created=calendar:universal_time(),
-																				subscribers=[SessionId]}),
+																				subscribers=[SessionId]},
+															write),
 												ok = erwa_sessions:add_subscription(Id,SessionId),
 												Id;
 											[#erwa_subscription{subscribers=Subs, id=SubId}=Subscription] ->
 												NewSubs = [SessionId | lists:delete(SessionId,Subs)],
-												ok = mnesia:write(Subscription#erwa_subscription{subscribers=NewSubs}),
+												ok =
+												mnesia:write(Database,Subscription#erwa_subscription{subscribers=NewSubs},write),
 												ok = erwa_sessions:add_subscription(SubId,SessionId),
 												SubId
 										end;
@@ -122,16 +117,21 @@ subscribe(Topic,Options,SessionId,Realm) ->
 
 
 
+get_match_type(Options) ->
+	maps:get(match,Options,exact).
 
--spec unsubscribe(SubscriptionId::non_neg_integer(), SessionId::non_neg_integer()) -> ok | {error, Reason::term()}.
-unsubscribe(SubscriptionId,SessionId) ->
+
+-spec unsubscribe(SubscriptionId::non_neg_integer(),
+				  SessionId::non_neg_integer(), Realm::binary()) -> ok | {error, Reason::term()}.
+unsubscribe(SubscriptionId,SessionId, Realm) ->
+	Database = realm_to_db_name(Realm),
 	Remove = fun() -> 
-					 case mnesia:read(erwa_subscription, SubscriptionId) of
+					 case mnesia:read(Database, SubscriptionId) of
 						 [] -> mnesia:abort(not_found);
 						 [#erwa_subscription{subscribers=Subs, id=SubscriptionId}=Subscription] -> 
 							 NewSubs = lists:delete(SessionId,Subs),
 							 ok =
-							 mnesia:write(Subscription#erwa_subscription{subscribers=NewSubs}),
+							 mnesia:write(Database,Subscription#erwa_subscription{subscribers=NewSubs},write),
 							 ok =
 							 erwa_sessions:rem_subscription(SubscriptionId,
 															SessionId),
@@ -141,15 +141,15 @@ unsubscribe(SubscriptionId,SessionId) ->
 	{atomic,Res} = mnesia:transaction(Remove),
 	Res.
 
--spec unsubscribe_all(SessionId::non_neg_integer()) -> ok.
-unsubscribe_all(SessionId) ->
+-spec unsubscribe_all(SessionId::non_neg_integer(),Realm::binary()) -> ok.
+unsubscribe_all(SessionId,Realm) ->
 	Subs = erwa_sessions:get_subscriptions(SessionId),
-	unsubscribe_all(Subs,SessionId).
+	unsubscribe_all(Subs,SessionId,Realm).
 
-unsubscribe_all([],_SessionId) -> 
+unsubscribe_all([],_SessionId,_Realm) -> 
 	ok;
-unsubscribe_all([H|T],SessionId) ->
-	ok = unsubscribe(H,SessionId),
+unsubscribe_all([H|T],SessionId,Realm) ->
+	ok = unsubscribe(H,SessionId,Realm),
 	unsubscribe_all(T,SessionId).
 
 
@@ -157,21 +157,16 @@ unsubscribe_all([H|T],SessionId) ->
 	{ok, non_neg_integer()}.
 
 publish(TopicUri,Options,Arguments,ArgumentsKw,SessionId,Realm) ->
+	Database = realm_to_db_name(Realm),
 	GetIds = fun() -> 
 					 % just exact for now ..
-					 case mnesia:index_read(erwa_subscription, TopicUri, uri) of
-						 [] -> [];
-						 Subscriptions ->
-							 GetSubs = fun(#erwa_subscription{id=SubId, subscribers=S, realm=R},Subs) ->
-											  case R of 
-												  Realm -> [{SubId, S}|Subs];
-												  _ -> Subs 
-											  end 
-									  end,
-							 lists:foldl(GetSubs, [], Subscriptions)
+					 case mnesia:index_read(Database, TopicUri, uri) of
+						 [] -> {none,[]};
+						 [#erwa_subscription{id=SubId,subscribers=Subs}] ->
+							{SubId,Subs}
 					 end 
 			 end,
-	{atomic, [{SubscriptionId,Subs}]} = mnesia:transaction(GetIds),
+	{atomic, {SubscriptionId,Subs}} = mnesia:transaction(GetIds),
 	{ok,PublicationID} = erwa_publications:get_pub_id(),
 
 	Receipients = case maps:get(exclude_me,Options,true) of
@@ -202,8 +197,9 @@ publish(TopicUri,Options,Arguments,ArgumentsKw,SessionId,Realm) ->
 
 
 get_subscriptions(Realm)  ->
+	Database = realm_to_db_name(Realm),
 	GetSubs = fun() -> 
-					  mnesia:index_read(erwa_subscription, Realm ,realm)
+					  mnesia:index_read(Database, Realm ,realm)
 			  end,
 	{atomic, Subscriptions} = mnesia:transaction(GetSubs),
 	Sort = fun(#erwa_subscription{id=Id, match=Match}, {Exact, Prefix,
@@ -221,14 +217,36 @@ get_subscriptions(Realm)  ->
 	{ok,#{exact => Exact, prefix => Prefix, wildcard => Wildcard}}.
 
 
-get_subscription_details(SubscriptionId)  ->
+get_subscription_details(SubscriptionId, Realm)  ->
+	Database = realm_to_db_name(Realm),
 	GetSubscription = fun() ->
-							  mnesia:read(erwa_subscription, SubscriptionId)
+							  mnesia:read(Database, SubscriptionId)
 					  end,
 	{atomic, #erwa_subscription{uri=Uri, match=Match, created=Created, id=Id}} = mnesia:transaction(GetSubscription),
 	{ok,#{uri => Uri, id => Id, match => Match, created => Created}}.
 
 
+
+create_table_for_realm(Realm) ->
+	{atomic, ok} = mnesia:create_table(realm_to_db_name(Realm), [{disc_copies, []},
+														   {ram_copies,
+															[node()]}, 
+														   {type, set},
+														   {record_name,
+															erwa_subscription},
+														   {attributes,
+															record_info(fields,
+																		erwa_subscription)},{index,[uri,match,realm]}]),
+	ok.
+
+delete_table_for_realm(Realm) ->
+	{atomic, ok} = mnesia:delete_table(realm_to_db_name(Realm)),
+	ok.
+
+
+realm_to_db_name(Realm) ->
+	Prefix = <<"erwa_subscription_">>,
+	binary_to_atom(<< Prefix/binary, Realm/binary >>, utf8 ).
 
 gen_id() ->
 	crypto:rand_uniform(0,9007199254740992).

@@ -113,8 +113,8 @@ subscription_list(_Options,_Arguments,_ArgumentsKw,#state{realm=Realm}) ->
   {ok,List} = erwa_broker:get_subscriptions(Realm),
   {ok,#{},[List],undefined}.
 
-subscription_lookup(_Options,[SubscriptionId],_ArgumentsKw,#state{}) ->
-	case erwa_broker:get_subscription_details(SubscriptionId) of
+subscription_lookup(_Options,[SubscriptionId],_ArgumentsKw,#state{realm=Realm}) ->
+	case erwa_broker:get_subscription_details(SubscriptionId,Realm) of
 		{ok,Details} ->
 			{ok, #{},[Details],undefined};
 		{error,not_found} ->

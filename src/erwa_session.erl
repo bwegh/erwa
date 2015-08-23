@@ -321,19 +321,20 @@ authenticate([_|Tail], RealmName, Details, State) ->
 create_session(RoutingPid,RealmName,Roles,State) ->
   {ok, SessionId} = erwa_sessions:register_session(RealmName),
   ok = erwa_routing:connect(RoutingPid,State),
-  {ok,Broker} = erwa_routing:get_broker(RoutingPid),
+%  {ok,Broker} = erwa_routing:get_broker(RoutingPid),
   {ok,Dealer} = erwa_routing:get_dealer(RoutingPid),
   {ok,MWL} = erwa_realms:get_middleware_list(RealmName),
   State#state{id=SessionId,mwl=MWL,realm_name=RealmName, routing_pid=RoutingPid,
-                       is_auth=false, dealer=Dealer, broker=Broker, client_roles=Roles}.
+                       is_auth=false, dealer=Dealer, client_roles=Roles}.
 
 
 
 
-hndl_msg_authed({subscribe,RequestId,Options,Topic},#state{broker=Broker,id=SessionId}=State) ->
+hndl_msg_authed({subscribe,RequestId,Options,Topic},#state{realm_name=RealmName,id=SessionId}=State) ->
   %% case erwa_middleware:check_perm(Msg,State) of
   %%   {true, _ } ->
-      {ok,SubscriptionId} = erwa_broker:subscribe(Topic,Options,SessionId,Broker),
+      {ok,SubscriptionId} =
+	  erwa_broker:subscribe(Topic,Options,SessionId,RealmName),
       {reply, {subscribed,RequestId,SubscriptionId}, State };
   %%   {false,Details} ->
   %%     OutDetails = maps:get(details,Details,#{}),
@@ -341,12 +342,14 @@ hndl_msg_authed({subscribe,RequestId,Options,Topic},#state{broker=Broker,id=Sess
   %%     {reply, {error,subscribe,RequestId,OutDetails,Error}}
   %% end;
 
-hndl_msg_authed({unsubscribe,RequestId,SubscriptionId},#state{id=SessionId}=State) ->
-  ok = erwa_broker:unsubscribe(SubscriptionId,SessionId),
+hndl_msg_authed({unsubscribe,RequestId,SubscriptionId},#state{id=SessionId,
+															  realm_name=RealmName}=State) ->
+  ok = erwa_broker:unsubscribe(SubscriptionId,SessionId,RealmName),
   {reply, {unsubscribed,RequestId},State};
 
-hndl_msg_authed({publish,RequestId,Options,Topic,Arguments,ArgumentsKw},#state{broker=Broker,id=SessionId}=State) ->
-  {ok,PublicationId} = erwa_broker:publish(Topic,Options,Arguments,ArgumentsKw,SessionId,Broker),
+hndl_msg_authed({publish,RequestId,Options,Topic,Arguments,ArgumentsKw},#state{realm_name=RealmName,id=SessionId}=State) ->
+  {ok,PublicationId} =
+  erwa_broker:publish(Topic,Options,Arguments,ArgumentsKw,SessionId,RealmName),
   case maps:get(acknowledge,Options,false) of
     true ->
       {reply,{published,RequestId,PublicationId},State};
@@ -472,7 +475,7 @@ hndl_info(Info, State) ->
 
 
 
-close_session(#state{dealer=Dealer,routing_pid=RoutingPid,id=SessionId}) ->
+close_session(#state{dealer=Dealer,routing_pid=RoutingPid,id=SessionId,realm_name=RealmName}) ->
 	ok = case Dealer of
 			 none -> ok;
 			 Dealer ->
@@ -486,7 +489,7 @@ close_session(#state{dealer=Dealer,routing_pid=RoutingPid,id=SessionId}) ->
 	ok = case SessionId of
 			 none -> ok;
 			 _ -> erwa_sessions:unregister_session(),
-				  erwa_broker:unsubscribe_all(SessionId)
+				  erwa_broker:unsubscribe_all(SessionId,RealmName)
 		 end,
 	ok.
 
