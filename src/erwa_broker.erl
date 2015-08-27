@@ -228,7 +228,13 @@ get_subscription_details(SubscriptionId, Realm)  ->
 
 
 create_table_for_realm(Realm) ->
-	{atomic, ok} = mnesia:create_table(realm_to_db_name(Realm), [{disc_copies, []},
+	Table = realm_to_db_name(Realm),
+	case lists:member(Table, mnesia:system_info(local_tables)) of
+		true ->
+			mnesia:delete_table(Table);
+		_-> do_nthing
+	end,
+	{atomic, ok} = mnesia:create_table(Table, [{disc_copies, []},
 														   {ram_copies,
 															[node()]}, 
 														   {type, set},

@@ -52,6 +52,11 @@
 
 -spec create_table() -> ok.
 create_table() -> 
+	case lists:member(erwa_session_record, mnesia:system_info(local_tables)) of
+		true ->
+			mnesia:delete_table(erwa_session_record);
+		_-> do_nthing
+	end,
 	mnesia:create_table(erwa_session_record,[{disc_copies,[]}, {disc_only_copies, []},
 																					 {ram_copies, [node()]}, {type, set},
 																					 {attributes, record_info(fields,
