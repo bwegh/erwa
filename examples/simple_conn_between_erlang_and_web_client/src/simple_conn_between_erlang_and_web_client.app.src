@@ -1,0 +1,20 @@
+{application, simple_conn_between_erlang_and_web_client, [
+	{description, ""},
+	{vsn, "0.1.0"},
+	{id, "git"},
+	{modules, []},
+	{registered, []},
+	{applications, [
+		kernel,
+		stdlib,
+    	sasl,
+		crypto,
+    	ranch,
+    	cowboy,
+    	erwa,
+    	awre,
+    	runtime_tools
+	]},
+	{mod, {simple_conn_between_erlang_and_web_client_app, []}},
+	{env, []}
+]}.
