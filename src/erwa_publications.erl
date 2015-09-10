@@ -35,6 +35,12 @@
 
 -spec create_table() -> ok.
 create_table() ->
+	case lists:member(erwa_pub_rec, mnesia:system_info(local_tables)) of
+		true ->
+			mnesia:delete_table(erwa_pub_rec);
+		_-> do_nthing
+	end,
+	
     {atomic, ok} = mnesia:create_table(erwa_pub_rec, [{disc_copies,[]}, {ram_copies, [node()]},
                                        {type, set}, {attributes,
                                                      record_info(fields,
