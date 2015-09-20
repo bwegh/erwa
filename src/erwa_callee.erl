@@ -41,7 +41,6 @@
 
 
 -record(state,{
-               dealer = unknown,
 			   realm = unknown,
                routing = unknown,
                sess_id = unknown,
@@ -71,14 +70,14 @@ stop(Pid) ->
 
 
 init(Args) ->
-  #{dealer := Dealer, routing:=Routing, realm:=Realm} = Args,
+  #{routing:=Routing, realm:=Realm} = Args,
   {ok,SessionId} = erwa_sessions:register_session(Realm),
   F = fun({Method,Fun},Map) ->
-        {ok,RegId} = erwa_dealer:register(Method, #{invoke => single}, SessionId, Dealer),
+        {ok,RegId} = erwa_dealer:register(Method, #{match => exact, invoke => single}, SessionId, Realm),
         maps:put(RegId,Fun,Map)
       end,
   Mapping = lists:foldl(F,#{},?PROCEDURES),
-  {ok,#state{sess_id = SessionId, dealer = Dealer, mapping=Mapping, realm=Realm, routing=Routing}}.
+  {ok,#state{sess_id = SessionId, mapping=Mapping, realm=Realm, routing=Routing}}.
 
 
 handle_call(_Msg,_From,State) ->
@@ -121,12 +120,12 @@ subscription_lookup(_Options,[SubscriptionId],_ArgumentsKw,#state{realm=Realm}) 
 			{error,#{},invalid_argument,undefined,undefined}
 	end.
 
-registration_list(_Options,_Arguments,_ArgumentsKw,#state{dealer=Dealer}) ->
-  {ok,List} = erwa_dealer:get_registrations(Dealer),
+registration_list(_Options,_Arguments,_ArgumentsKw,#state{realm=Realm}) ->
+  {ok,List} = erwa_dealer:get_registrations(Realm),
   {ok,#{},[List],undefined}.
 
-registration_lookup(_Options,[RegistrationId],_ArgumentsKw,#state{dealer=Dealer}) ->
-  case erwa_dealer:get_registration(Dealer,RegistrationId) of
+registration_lookup(_Options,[RegistrationId],_ArgumentsKw,#state{realm=Realm}) ->
+  case erwa_dealer:get_registration(RegistrationId, Realm) of
     {ok,Details} ->
       {ok, #{},[Details],undefined};
     {error,not_found} ->

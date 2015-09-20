@@ -33,10 +33,16 @@
 -export([register_session/1]).
 -export([unregister_session/0]).
 -export([get_realm/1]).
+
 -export([add_subscription/2]).
 -export([rem_subscription/2]).
 -export([get_subscriptions/1]).
 -export([clear_subscriptions/1]).
+
+-export([add_registration/2]).
+-export([rem_registration/2]).
+-export([get_registrations/1]).
+-export([clear_registrations/1]).
 
 -export([send_message_to/2]).
 
@@ -153,6 +159,56 @@ clear_subscriptions(SessionId) ->
     {atomic, Res} = mnesia:transaction(ClearSubs) ,
     Res.
 
+-spec add_registration(RegistrationId::non_neg_integer(), SessionId::non_neg_integer()) -> ok | {error, atom()}.
+add_registration(RegistrationId, SessionId) -> 
+    {atomic, Res} =
+	mnesia:transaction(mnes_addRemReg(RegistrationId,SessionId,add)),
+    Res.
+
+
+-spec rem_registration(RegistrationId::non_neg_integer(),
+					   SessionId::non_neg_integer()) -> ok | {error, atom()}.
+rem_registration(RegistrationId, SessionId) ->
+	{atomic, Res} =
+	mnesia:transaction(mnes_addRemReg(RegistrationId,SessionId,del)),
+	Res.	
+
+-spec clear_registrations(SessionId::non_neg_integer()) -> ok.
+clear_registrations(SessionId) ->
+    ClearRegs = fun() ->
+                        case mnesia:read(erwa_session_record, SessionId) of
+                            [] -> ok;
+                            [#erwa_session_record{} = Sess] ->
+                                ok = mnesia:write(Sess#erwa_session_record{registrations=[]}),
+                                ok
+                        end 
+                end,
+    {atomic, Res} = mnesia:transaction(ClearRegs),
+    Res.
+
+-spec get_registrations(SessionId::non_neg_integer()) -> [non_neg_integer()] .
+get_registrations(SessionId) ->
+    case get_record_for_id(SessionId) of 
+        not_found -> [];
+        {ok, Sess} -> Sess#erwa_session_record.registrations
+    end.
+
+mnes_addRemReg(RegistrationId,SessionId,Add) ->
+	F = fun () -> 
+			case mnesia:read(erwa_session_record, SessionId) of
+				[] -> {error, not_found};
+				[#erwa_session_record{registrations=Regs}=Sess] ->
+					Regs2 = lists:delete(RegistrationId, Regs),
+					NewRegs = case Add of 
+								  add -> [RegistrationId | Regs2];
+								  _ -> Regs2
+							  end,
+					ok =
+					mnesia:write(Sess#erwa_session_record{registrations=NewRegs}),
+					ok
+			end 
+		end,
+	F.
 
 
 add_session(Pid,Realm) ->

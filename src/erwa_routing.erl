@@ -59,8 +59,6 @@
 
 -record(state, {
                 realm_name = unknown,
-                broker = unknown,
-                dealer = unknown,
                 %api_pid = unknown,
                 con_ets=none,
                 going_down = false,
@@ -129,13 +127,11 @@ stop(Pid) ->
 init(RealmName) ->
   Ets = ets:new(connections,[set,{keypos,2},protected]),
   ok =  erwa_broker:init(RealmName),
+  ok =  erwa_dealer:init(RealmName),
 
-  {ok,DealerPid} =erwa_dealer:start_link(),
-  {ok,Dealer} = erwa_dealer:get_data(DealerPid),
+  {ok, _CalleePid} = erwa_callee:start_link(#{ routing=>self(), realm=>RealmName}),
 
-  {ok, _CalleePid} = erwa_callee:start_link(#{ dealer=>Dealer, routing=>self(), realm=>RealmName}),
-
-	{ok, #state{con_ets=Ets, dealer=Dealer, realm_name=RealmName}}.
+	{ok, #state{con_ets=Ets, realm_name=RealmName}}.
 
 
 handle_call(stop, _From, State) ->
@@ -178,20 +174,6 @@ handle_call({connect,Session}, {Pid, _Ref}, #state{con_ets=Ets, realm_name=Realm
   end,
   true = ets:insert(Ets,#pid_info{pid=Pid,id=SessionId}),
 	{reply,ok,State};
-handle_call(get_broker, {Pid,_}, #state{broker=Broker,con_ets=Ets} = State) ->
-  case ets:lookup(Ets,Pid) of
-    [] ->
-      {reply,{error,not_connected},State};
-    _ ->
-	    {reply,{ok,Broker},State}
-  end;
-handle_call(get_dealer, {Pid,_}, #state{dealer=Dealer,con_ets=Ets} = State) ->
-  case ets:lookup(Ets,Pid) of
-    [] ->
-      {reply,{error,not_connected},State};
-    _ ->
-	    {reply,{ok,Dealer},State}
-  end;
 handle_call(shutdown, _From, #state{con_ets=Ets} = State) ->
   case ets:info(Ets,size) of
     0 ->
@@ -232,11 +214,11 @@ code_change(_OldVsn, State, _Extra) ->
 	{ok, State}.
 
 
-close_routing(#state{ dealer=Dealer, timer_ref=TRef, realm_name=RealmName}=State) ->
+close_routing(#state{ timer_ref=TRef, realm_name=RealmName}=State) ->
   _ = timer:cancel(TRef),
   send_all_clients(shutdown,State),
   ok = erwa_broker:cleanup(RealmName),
-  {ok,stopped} = erwa_dealer:stop(Dealer),
+  ok = erwa_dealer:cleanup(RealmName),
   ok.
 
 
@@ -270,8 +252,6 @@ simple_routing_test() ->
   {ok,Pid} = start(?REALM),
   Session = erwa_session:set_id(234,erwa_session:create()),
   ok = connect(Pid,Session),
-  {ok,_} = get_dealer(Pid),
-  %{ok,_} = get_broker(Pid),
   ok = disconnect(Pid),
   {ok,stopped} = stop(Pid),
   erwa_publications:drop_table(),
@@ -281,8 +261,6 @@ simple_routing_test() ->
 forced_connection_test() ->
   erwa_sessions:create_table(),
   {ok,Pid} = start(?REALM),
-  %{error,not_connected} = get_broker(Pid),
-  {error,not_connected} = get_dealer(Pid),
   {ok,stopped} = stop(Pid),
   erwa_sessions:drop_table().
 

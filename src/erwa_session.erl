@@ -55,8 +55,6 @@
                 mwl = [],
                 client_roles = unknown,
                 routing_pid = none,
-                broker = none,
-                dealer = none,
                 source = unknown,
                 peer = unknown,
                 ssl = false,
@@ -321,11 +319,9 @@ authenticate([_|Tail], RealmName, Details, State) ->
 create_session(RoutingPid,RealmName,Roles,State) ->
   {ok, SessionId} = erwa_sessions:register_session(RealmName),
   ok = erwa_routing:connect(RoutingPid,State),
-%  {ok,Broker} = erwa_routing:get_broker(RoutingPid),
-  {ok,Dealer} = erwa_routing:get_dealer(RoutingPid),
   {ok,MWL} = erwa_realms:get_middleware_list(RealmName),
   State#state{id=SessionId,mwl=MWL,realm_name=RealmName, routing_pid=RoutingPid,
-                       is_auth=false, dealer=Dealer, client_roles=Roles}.
+                       is_auth=false, client_roles=Roles}.
 
 
 
@@ -359,16 +355,16 @@ hndl_msg_authed({publish,RequestId,Options,Topic,Arguments,ArgumentsKw},#state{r
 
 
 
-hndl_msg_authed({register,RequestId,Options,ProcedureUri},#state{dealer=Dealer,id=SessionId}=State) ->
-  {ok,RegistrationId} = erwa_dealer:register(ProcedureUri,Options,SessionId,Dealer),
+hndl_msg_authed({register,RequestId,Options,ProcedureUri},#state{realm_name=Realm,id=SessionId}=State) ->
+  {ok,RegistrationId} = erwa_dealer:register(ProcedureUri,Options,SessionId,Realm),
   {reply,{registered,RequestId,RegistrationId},State};
 
-hndl_msg_authed({unregister,RequestId,RegistrationId},#state{dealer=Dealer,id=SessionId} = State) ->
-  ok = erwa_dealer:unregister(RegistrationId,SessionId,Dealer),
+hndl_msg_authed({unregister,RequestId,RegistrationId},#state{realm_name=Realm,id=SessionId} = State) ->
+  ok = erwa_dealer:unregister(RegistrationId,SessionId,Realm),
   {reply,{unregistered,RequestId} ,State};
 
-hndl_msg_authed({call,RequestId,Options,ProcedureUri,Arguments,ArgumentsKw},#state{dealer=Dealer,calls=Calls,id=SessionId}=State) ->
-  case erwa_dealer:call(ProcedureUri,RequestId,Options,Arguments,ArgumentsKw,SessionId,Dealer) of
+hndl_msg_authed({call,RequestId,Options,ProcedureUri,Arguments,ArgumentsKw},#state{realm_name=Realm,calls=Calls,id=SessionId}=State) ->
+  case erwa_dealer:call(ProcedureUri,RequestId,Options,Arguments,ArgumentsKw,SessionId,Realm) of
     {ok,Pid} ->
       {ok,State#state{calls=[{RequestId,Pid}|Calls]}};
     {error,procedure_not_found} ->
@@ -475,12 +471,7 @@ hndl_info(Info, State) ->
 
 
 
-close_session(#state{dealer=Dealer,routing_pid=RoutingPid,id=SessionId,realm_name=RealmName}) ->
-	ok = case Dealer of
-			 none -> ok;
-			 Dealer ->
-				 erwa_dealer:unregister_all(SessionId,Dealer)
-		 end,
+close_session(#state{routing_pid=RoutingPid,id=SessionId,realm_name=RealmName}) ->
 	ok = case RoutingPid of
 			 none -> ok;
 			 RoutingPid ->
@@ -489,7 +480,8 @@ close_session(#state{dealer=Dealer,routing_pid=RoutingPid,id=SessionId,realm_nam
 	ok = case SessionId of
 			 none -> ok;
 			 _ -> erwa_sessions:unregister_session(),
-				  erwa_broker:unsubscribe_all(SessionId,RealmName)
+                  erwa_broker:unsubscribe_all(SessionId,RealmName),
+                  erwa_dealer:unregister_all(SessionId,RealmName)
 		 end,
 	ok.
 
