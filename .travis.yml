@@ -2,7 +2,6 @@ language: erlang
 notifications:
   email: false
 otp_release:
-   - 18.0
    - 17.5
    - 17.4
    - 17.3
