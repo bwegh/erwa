@@ -32,7 +32,6 @@
 
 %% API for router
 -export([start_realm/1]).
--export([start_realm/2]).
 -export([stop_realm/1]).
 -export([get_routing_for_realm/1]).
 
@@ -88,16 +87,11 @@ start_realm(Name) ->
   ok = erwa_realms:add(Name),
   ok.
 
--spec start_realm(Name :: binary(), Middlewares :: [atom()] ) -> ok | {error, Reason :: term()}.
-start_realm(Name,Middlewares) when is_list(Middlewares) ->
-  ok = erwa_realms:add(Name,Middlewares),
-  ok.
-
 
 %% @doc Stop the router of a realm.
 -spec stop_realm(Name :: binary()) -> {ok,Info :: atom()} | {error, Reason :: atom()}.
 stop_realm(Name) ->
-  erwa_realms:shutdown(Name).
+  erwa_realms:remove(Name).
 
 %% @doc Get the router of a realm.
 -spec get_routing_for_realm(Realm :: binary() ) -> {ok, Pid :: pid()} | {error, not_found}.

@@ -43,13 +43,11 @@ start_link() ->
 init([]) ->
 	InvocationSup = ?CHILD(erwa_invocation_sup, supervisor),
 	RoutingSup = ?CHILD(erwa_routing_sup, supervisor),
-	Realms = ?CHILD(erwa_realms, worker),
 	UserDb = ?CHILD(erwa_user_db, worker),
 
 Procs = [
 				 InvocationSup,
 				 RoutingSup,
-				 Realms,
 				 UserDb
         ],
 {ok, {{one_for_one, 10, 10}, Procs}}.

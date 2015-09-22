@@ -319,8 +319,7 @@ authenticate([_|Tail], RealmName, Details, State) ->
 create_session(RoutingPid,RealmName,Roles,State) ->
   {ok, SessionId} = erwa_sessions:register_session(RealmName),
   ok = erwa_routing:connect(RoutingPid,State),
-  {ok,MWL} = erwa_realms:get_middleware_list(RealmName),
-  State#state{id=SessionId,mwl=MWL,realm_name=RealmName, routing_pid=RoutingPid,
+  State#state{id=SessionId,realm_name=RealmName, routing_pid=RoutingPid,
                        is_auth=false, client_roles=Roles}.
 
 

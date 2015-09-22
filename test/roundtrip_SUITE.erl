@@ -110,7 +110,7 @@ pubsub_tcp(_) ->
 
 
 pubsub_combined(_) ->
-  Realm = <<"realm2">>,
+  Realm = <<"realm3">>,
   ok = erwa:start_realm(Realm),
   RpcUrl1 = <<"com.test.tcp.sum">>,
   RpcUrl2 = <<"com.test.tcp.diff">>,
