@@ -26,7 +26,7 @@
 -include_lib("eunit/include/eunit.hrl").
 -endif.
 
--export([create/0]).
+-export([init/0]).
 -export([
         set_peer/2,
         set_ssl/2,
@@ -131,7 +131,7 @@
 %
 
 
-create() ->
+init() ->
   #state{}.
 
 set_peer(Peer,State) ->
