@@ -27,23 +27,6 @@
 -endif.
 
 -export([init/0]).
--export([
-        set_peer/2,
-        set_ssl/2,
-        set_source/2,
-        set_id/2,
-        set_trans/2
-        ]).
--export([
-        get_peer/1,
-        get_ssl/1,
-        get_source/1,
-        get_id/1,
-        get_mwl/1,
-	get_authid/1,
-	get_role/1,
-  get_trans/1
-        ]).
 -export([handle_message/2]).
 -export([handle_info/2]).
 
@@ -52,20 +35,12 @@
                 id = none,
                 is_auth = false,
                 realm_name = none,
-                mwl = [],
-                client_roles = unknown,
-                source = unknown,
-                peer = unknown,
-                ssl = false,
-                trans = unknown,
                 goodbye_sent = false,
-                calls = [],
-                session_data = #{},
-                authid = anonymous,
-                role = guest,
                 will_pass = false,
                 invocation_id = 1,
-                invocations = []
+                invocations = [],
+                calls = [],
+                client_roles = none
                 }).
 
 
@@ -134,46 +109,6 @@
 init() ->
   #state{}.
 
-set_peer(Peer,State) ->
-  State#state{peer=Peer}.
-
-set_source(Source,State) ->
-  State#state{source=Source}.
-
-set_ssl(SSL,State) ->
-  State#state{ssl=SSL}.
-
-set_trans(Transport, State) ->
-  State#state{trans=Transport}.
-
-get_peer(#state{peer=Peer}) ->
-  Peer.
-
-get_source(#state{source=Source}) ->
-  Source.
-
-get_ssl(#state{ssl=SSL}) ->
-  SSL.
-
-get_trans(#state{trans=Transport}) ->
-  Transport.
-
-set_id(Id,State) ->
-  State#state{id=Id}.
-
-get_id(#state{id=ID}) ->
-  ID.
-
-get_mwl(#state{mwl=MWL}) ->
-  MWL.
-
-get_authid(#state{authid=AuthId}) ->
-	AuthId.
-
-get_role(#state{role=Role}) ->
-	Role.
-
-
 -spec handle_message( term() , record(state)) ->
   { ok, record(state) } |
   {stop, record(state)} |
@@ -229,22 +164,22 @@ check_out_message(Result, Msg,State) ->
   {Result, Msg, State}.
 
 
-hndl_msg({hello,RealmName,Details}, #state{trans=Transport} = State) ->
+hndl_msg({hello,RealmName,Details}, State) ->
   AuthId = maps:get(authid, Details, anonymous),
   Roles = maps:get(roles, Details, []),
-  case {AuthId == anonymous, erwa_user_db:allow_anonymous(RealmName, Transport)} of 
+  case {AuthId == anonymous, erwa_user_db:allow_anonymous(RealmName, tcp)} of 
     {true, true} -> 
       case erwa_sess_man:register_session(RealmName) of
         {ok,SessionId} ->
-          SessionData = #{authid => anonymous, role => anonymous, session =>
-                          SessionId},
+          %% SessionData = #{authid => anonymous, role => anonymous, session =>
+          %%                 SessionId},
           WelcomeMsg ={welcome,SessionId,#{agent => erwa:get_version(), roles =>
 										  ?ROLES}},
           {reply,WelcomeMsg,State#state{is_auth=true,
                                         realm_name=RealmName,
                                         client_roles=Roles,
-                                        id=SessionId,
-                                        session_data=SessionData}}; 
+                                        id=SessionId
+                                        }}; 
         {error,_} ->
           {reply_stop, {abort, #{}, no_such_realm},State}
       end;
@@ -280,11 +215,10 @@ hndl_msg(_Msg,State) ->
 
 authenticate([], _RealmName, _Details, State) ->
   {reply_stop, {abort, #{}, no_such_realm}, State};
-authenticate([wampcra|_], RealmName, Details, #state{trans=Transport
-                                                     }=State) -> 
+authenticate([wampcra|_], RealmName, Details,State) -> 
   AuthId = maps:get(authid, Details, anonymous),
   ClientRoles = maps:get(roles, Details, []),
-  case erwa_user_db:can_join(AuthId, RealmName, Transport ) of 
+  case erwa_user_db:can_join(AuthId, RealmName, tcp ) of 
     {true, Role} -> 
       case erwa_sess_man:register_session(RealmName) of
         {ok,SessionId} ->
@@ -292,15 +226,13 @@ authenticate([wampcra|_], RealmName, Details, #state{trans=Transport
           % need to create a a challenge  
           SessionData = #{authid => AuthId, role => Role, session =>
                           SessionId},
-          {Result, ChallengeData} = erwa_user_db:wampcra_challenge(SessionData),
+          {_Result, ChallengeData} = erwa_user_db:wampcra_challenge(SessionData),
           ChallengeMsg = {challenge, wampcra, ChallengeData},
-          WillPass = case Result of 
-                       ok -> true;
-                       _ -> false
-                     end,
-          {reply, ChallengeMsg, State#state{authid=AuthId, role=Role,
-                                             will_pass=WillPass,
-                                             session_data=SessionData,
+          %% WillPass = case Result of 
+          %%              ok -> true;
+          %%              _ -> false
+          %%            end,
+          {reply, ChallengeMsg, State#state{
                                             realm_name=RealmName, is_auth=false,
                                             client_roles=ClientRoles,id=SessionId}};
         {error,_} ->

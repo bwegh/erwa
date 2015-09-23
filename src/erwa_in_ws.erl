@@ -60,7 +60,7 @@ init( Req, _Opts) ->
   case find_supported_protocol(Protocols) of
     {Enc,WsEncoding,Header} ->
       Req1  = cowboy_req:set_resp_header(?SUBPROTHEADER,Header,Req),
-      Peer = cowboy_req:peer(Req1),
+      %% Peer = cowboy_req:peer(Req1),
       Routing = erwa_routing:init(),
       %% Routing1 = erwa_routing:set_peer(Peer,Routing),
       %% Routing2 = erwa_routing:set_source(websocket,Routing1),

@@ -254,7 +254,7 @@ updateState(ProtocolName, MaxLength, Routing, State) ->
 	  routing = Routing
 	 }.
 
-updateErwaRouting(Transport, Peer, Routing) ->
+updateErwaRouting(_Transport, _Peer, Routing) ->
 	%% Routing1 = erwa_routing:set_peer(Peer,Routing),
 	%% Routing2 = erwa_routing:set_source(Transport,Routing1),
 	Routing.
