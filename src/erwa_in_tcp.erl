@@ -117,7 +117,7 @@ create_intial_state(Transport,Socket) ->
      ok=Ok,
 	 closed=Closed,
 	 error=Error,
-	 session=erwa_session:create()
+	 session=erwa_routing:create()
 	 }.
 
 
@@ -164,7 +164,7 @@ handle_result_of_session({stop,NewSession},_Tail,State) ->
 
 
 handle_message_by_session(Msg,#state{session=Session}) ->
-	erwa_session:handle_message(Msg,Session).
+	erwa_routing:handle_message(Msg,Session).
 
 
 handle_message_from_routing(Msg,#state{session=Session}=State) ->
@@ -173,7 +173,7 @@ handle_message_from_routing(Msg,#state{session=Session}=State) ->
 
 
 handle_routing_message_by_session(Msg,Session) ->
-	erwa_session:handle_info(Msg,Session).
+	erwa_routing:handle_info(Msg,Session).
 
 
 handle_result_of_session_for_routing({ok, NewSession},State) ->
@@ -200,7 +200,7 @@ handle_handshake_message(MaxLengthExp, ProtocolNumber, State ) ->
 	ProtocolName = translate_protocol_number_to_name(ProtocolNumber),
 	MaxLength = calculateMaxLength(MaxLengthExp),
 	send_handshake_reply(ProtocolName, State),
-	NewState = update_erwa_session_and_state(ProtocolName,MaxLength,State),
+	NewState = update_erwa_routing_and_state(ProtocolName,MaxLength,State),
 	closeOrActivateConnection(ProtocolName,NewState).
 
 
@@ -234,9 +234,9 @@ send_handshake_reply(raw_erlbin, State) ->
 send_handshake_reply(_, State) ->
 	send_to_peer(unsupported_message(), State).
 
-update_erwa_session_and_state(unsupported,_,State) ->
+update_erwa_routing_and_state(unsupported,_,State) ->
 	State;
-update_erwa_session_and_state(ProtocolName, MaxLength, #state{session=Session,
+update_erwa_routing_and_state(ProtocolName, MaxLength, #state{session=Session,
 														  transport=Transport
 														 } = State) ->
 	updateState(ProtocolName,
@@ -255,8 +255,8 @@ updateState(ProtocolName, MaxLength, Session, State) ->
 	 }.
 
 updateErwaSession(Transport, Peer, Session) ->
-	Session1 = erwa_session:set_peer(Peer,Session),
-	Session2 = erwa_session:set_source(Transport,Session1),
+	Session1 = erwa_routing:set_peer(Peer,Session),
+	Session2 = erwa_routing:set_source(Transport,Session1),
 	Session2.
 
 closeOrActivateConnection(unsupported,State) ->

@@ -20,7 +20,7 @@
 %% SOFTWARE.
 %%
 
--module(erwa_session).
+-module(erwa_routing).
 
 -ifdef(TEST).
 -include_lib("eunit/include/eunit.hrl").
@@ -234,7 +234,7 @@ hndl_msg({hello,RealmName,Details}, #state{trans=Transport} = State) ->
   Roles = maps:get(roles, Details, []),
   case {AuthId == anonymous, erwa_user_db:allow_anonymous(RealmName, Transport)} of 
     {true, true} -> 
-      case erwa_sessions:register_session(RealmName) of
+      case erwa_sess_man:register_session(RealmName) of
         {ok,SessionId} ->
           SessionData = #{authid => anonymous, role => anonymous, session =>
                           SessionId},
@@ -286,7 +286,7 @@ authenticate([wampcra|_], RealmName, Details, #state{trans=Transport
   ClientRoles = maps:get(roles, Details, []),
   case erwa_user_db:can_join(AuthId, RealmName, Transport ) of 
     {true, Role} -> 
-      case erwa_sessions:register_session(RealmName) of
+      case erwa_sess_man:register_session(RealmName) of
         {ok,SessionId} ->
           % a user that needs to authenticate
           % need to create a a challenge  
@@ -464,7 +464,7 @@ hndl_info(Info, State) ->
 close_session(#state{id=SessionId,realm_name=RealmName}) ->
 	ok = case SessionId of
 			 none -> ok;
-			 _ -> erwa_sessions:unregister_session(),
+			 _ -> erwa_sess_man:unregister_session(),
                   erwa_broker:unsubscribe_all(SessionId,RealmName),
                   erwa_dealer:unregister_all(SessionId,RealmName)
 		 end,

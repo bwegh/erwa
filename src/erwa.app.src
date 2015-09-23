@@ -27,14 +27,12 @@
 	{modules, []},
 	{registered, [
     erwa_con_sup,
-    erwa_realms,
-    erwa_router_sup,
     erwa_user_db
   ]},
 	{applications, [
 		kernel,
 		stdlib,
-    wamper,
+        wamper,
 		mnesia,
     crypto
 	]},

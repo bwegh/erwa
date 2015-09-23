@@ -61,9 +61,9 @@ init( Req, _Opts) ->
     {Enc,WsEncoding,Header} ->
       Req1  = cowboy_req:set_resp_header(?SUBPROTHEADER,Header,Req),
       Peer = cowboy_req:peer(Req1),
-      Session = erwa_session:create(),
-      Session1 = erwa_session:set_peer(Peer,Session),
-      Session2 = erwa_session:set_source(websocket,Session1),
+      Session = erwa_routing:create(),
+      Session1 = erwa_routing:set_peer(Peer,Session),
+      Session2 = erwa_routing:set_source(websocket,Session1),
       {cowboy_websocket,Req1,#state{enc=Enc,ws_enc=WsEncoding,session=Session2}};
     _ ->
       % unsupported
@@ -86,7 +86,7 @@ websocket_info({erwa,Msg}, Req, #state{session=Session,ws_enc=WsEnc,enc=Enc}=Sta
   Encode = fun(M) ->
              {WsEnc,wamper_protocol:serialize(M,Enc)}
            end,
-  case erwa_session:handle_info(Msg, Session) of
+  case erwa_routing:handle_info(Msg, Session) of
     {ok, NewSession} ->
       {ok,Req,State#state{session=NewSession}};
     {send, OutMsg, NewSession} ->
@@ -111,7 +111,7 @@ handle_messages([Msg|Tail],ToSend,Session,#state{ws_enc=WsEnc,enc=Enc}=State) ->
   Encode = fun(M) ->
              {WsEnc,wamper_protocol:serialize(M,Enc)}
            end,
-  case erwa_session:handle_message(Msg, Session) of
+  case erwa_routing:handle_message(Msg, Session) of
     {ok, NewSession} ->
       handle_messages(Tail,ToSend,NewSession,State);
     {reply, OutMsg, NewSession} ->

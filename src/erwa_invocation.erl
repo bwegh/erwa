@@ -225,7 +225,7 @@ send_message_to(Msg,SessionId) when is_integer(SessionId) ->
   send_message_to(Msg,[SessionId]);
 send_message_to(Msg,Peers) when is_list(Peers) ->
   Send = fun(SessionId,[]) ->
-           erwa_sessions:send_message_to(Msg,SessionId),
+           erwa_sess_man:send_message_to(Msg,SessionId),
            []
          end,
   lists:foldl(Send,[],Peers),
@@ -253,11 +253,11 @@ flush() ->
 
 call_result_test() ->
   flush(),
-  erwa_sessions:create_table(),
+  erwa_sess_man:create_table(),
   erwa_publications:create_table(),
   erwa_realms:init(),
   erwa_realms:add(<<"erwa.test">>),
-  {ok,SessionId} = erwa_sessions:register_session(<<"erwa.test">>),
+  {ok,SessionId} = erwa_sess_man:register_session(<<"erwa.test">>),
   CallInfo = #{procedure_id => 123,
                caller_id => SessionId,
                call_req_id => 124,
@@ -279,18 +279,18 @@ call_result_test() ->
   ok = receive
          {'DOWN', _, process, Pid, _ } -> ok
        end,
-	erwa_sessions:drop_table(),
+	erwa_sess_man:drop_table(),
   ok.
 
 
 
 call_error_test() ->
   flush(),
-  erwa_sessions:create_table(),
+  erwa_sess_man:create_table(),
   erwa_publications:create_table(),
   erwa_realms:init(),
   erwa_realms:add(<<"erwa.test">>),
-  {ok,SessionId} = erwa_sessions:register_session(<<"erwa.test">>),
+  {ok,SessionId} = erwa_sess_man:register_session(<<"erwa.test">>),
   CallInfo = #{procedure_id => 123,
                caller_id => SessionId,
                call_req_id => 124,
@@ -312,18 +312,18 @@ call_error_test() ->
   ok = receive
          {'DOWN', _, process, Pid, _ } -> ok
        end,
-	erwa_sessions:drop_table(),
+	erwa_sess_man:drop_table(),
   ok.
 
 
 
 cancel_test() ->
   flush(),
-  erwa_sessions:create_table(),
+  erwa_sess_man:create_table(),
   erwa_publications:create_table(),
   erwa_realms:init(),
   erwa_realms:add(<<"erwa.test">>),
-  {ok,SessionId} = erwa_sessions:register_session(<<"erwa.test">>),
+  {ok,SessionId} = erwa_sess_man:register_session(<<"erwa.test">>),
   CallInfo = #{procedure_id => 123,
                caller_id => SessionId,
                call_req_id => 124,
@@ -349,16 +349,16 @@ cancel_test() ->
   ok = receive
          {'DOWN', _, process, Pid, _ } -> ok
        end,
-	erwa_sessions:drop_table(),
+	erwa_sess_man:drop_table(),
   ok.
 
 timeout_test() ->
   flush(),
-  erwa_sessions:create_table(),
+  erwa_sess_man:create_table(),
   erwa_publications:create_table(),
   erwa_realms:init(),
   erwa_realms:add(<<"erwa.test">>),
-  {ok,SessionId} = erwa_sessions:register_session(<<"erwa.test">>),
+  {ok,SessionId} = erwa_sess_man:register_session(<<"erwa.test">>),
   CallInfo = #{procedure_id => 123,
                caller_id => SessionId,
                call_req_id => 124,
@@ -383,7 +383,7 @@ timeout_test() ->
   ok = receive
          {'DOWN', _, process, Pid, _ } -> ok
        end,
-	erwa_sessions:drop_table(),
+	erwa_sess_man:drop_table(),
   ok.
 
 
@@ -420,7 +420,7 @@ failed_init_test() ->
 
 
 garbage_test() ->
-	ok = erwa_sessions:create_table(),
+	ok = erwa_sess_man:create_table(),
   erwa_publications:create_table(),
   erwa_realms:init(),
   erwa_realms:add(<<"erwa.test">>),
@@ -436,7 +436,7 @@ garbage_test() ->
   ignored = gen_server:call(Pid,some_garbage),
   ok = gen_server:cast(Pid,some_garbage),
   Pid ! some_garbage,
-	ok = erwa_sessions:drop_table(),
+	ok = erwa_sess_man:drop_table(),
   {ok,stopped} = stop(Pid).
 
 -endif.

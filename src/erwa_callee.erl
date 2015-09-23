@@ -70,7 +70,7 @@ stop(Pid) ->
 
 init(Args) ->
   #{realm:=Realm} = Args,
-  {ok,SessionId} = erwa_sessions:register_session(Realm),
+  {ok,SessionId} = erwa_sess_man:register_session(Realm),
   F = fun({Method,Fun},Map) ->
         {ok,RegId} = erwa_dealer:register(Method, #{match => exact, invoke => single}, SessionId, Realm),
         maps:put(RegId,Fun,Map)
@@ -100,11 +100,11 @@ handle_info(_Info, State) ->
 
 
 session_count(_Options,_Arguments,_ArgumentsKw,#state{realm=Realm}) ->
-  {ok,Count} = erwa_sessions:get_session_count(Realm),
+  {ok,Count} = erwa_sess_man:get_session_count(Realm),
   {ok,#{},[Count],undefined}.
 
 session_list(_Options,_Arguments,_ArgumentsKw,#state{realm=Realm}) ->
-  {ok,Ids} = erwa_sessions:get_session_ids(Realm),
+  {ok,Ids} = erwa_sess_man:get_session_ids(Realm),
   {ok,#{},Ids,undefined}.
 
 subscription_list(_Options,_Arguments,_ArgumentsKw,#state{realm=Realm}) ->

@@ -96,13 +96,13 @@ subscribe(Topic,Options,SessionId,Realm) ->
 																				created=calendar:universal_time(),
 																				subscribers=[SessionId]},
 															write),
-												ok = erwa_sessions:add_subscription(Id,SessionId),
+												ok = erwa_sess_man:add_subscription(Id,SessionId),
                                                 {ok,Id};
 											[#erwa_subscription{subscribers=Subs, id=SubId}=Subscription] ->
 												NewSubs = [SessionId | lists:delete(SessionId,Subs)],
 												ok =
 												mnesia:write(Table,Subscription#erwa_subscription{subscribers=NewSubs},write),
-												ok = erwa_sessions:add_subscription(SubId,SessionId),
+												ok = erwa_sess_man:add_subscription(SubId,SessionId),
                                                 {ok,SubId}
 										end;
                                     [#erwa_subscription{}] -> {error, already_exist}
@@ -130,7 +130,7 @@ unsubscribe(SubscriptionId,SessionId, Realm) ->
 							 ok =
 							 mnesia:write(Database,Subscription#erwa_subscription{subscribers=NewSubs},write),
 							 ok =
-							 erwa_sessions:rem_subscription(SubscriptionId,
+							 erwa_sess_man:rem_subscription(SubscriptionId,
 															SessionId),
 							 ok
 					 end 
@@ -140,7 +140,7 @@ unsubscribe(SubscriptionId,SessionId, Realm) ->
 
 -spec unsubscribe_all(SessionId::non_neg_integer(),Realm::binary()) -> ok.
 unsubscribe_all(SessionId,Realm) ->
-	Subs = erwa_sessions:get_subscriptions(SessionId),
+	Subs = erwa_sess_man:get_subscriptions(SessionId),
 	unsubscribe_all(Subs,SessionId,Realm).
 
 unsubscribe_all([],_SessionId,_Realm) -> 
@@ -183,7 +183,7 @@ publish(TopicUri,Options,Arguments,ArgumentsKw,SessionId,Realm) ->
 						 case (not lists:member(SessId,ToExclude)) and lists:member(SessId,ToEligible) of
 							 true ->
 								 Msg = {event,SubscriptionId,PublicationID,Details,Arguments,ArgumentsKw},
-								 erwa_sessions:send_message_to(Msg,SessId),
+								 erwa_sess_man:send_message_to(Msg,SessId),
 								 true;
 							 false ->
 								 false
@@ -311,11 +311,11 @@ gen_id() ->
 %%
 %%
 %% multiple_un_subscribe_test() ->
-%% 	erwa_sessions:create_table(),
+%% 	erwa_sess_man:create_table(),
 %% 	{ok,Pid} = start(),
 %% 	{ok,Data} = get_data(Pid),
 %% 	ok = disable_metaevents(Data),
-%% 	{ok,SessionId} = erwa_sessions:register_session(<<"erwa.test">>),
+%% 	{ok,SessionId} = erwa_sess_man:register_session(<<"erwa.test">>),
 %% 	0 = get_tablesize(Data),
 %% 	{ok,ID1} = subscribe(<<"topic.test1">>,#{},SessionId,Data),
 %% 	3 = get_tablesize(Data),
@@ -323,7 +323,7 @@ gen_id() ->
 %% 	5 = get_tablesize(Data),
 %% 	MyPid = self(),
 %% 	F = fun() ->
-%% 					{ok,S2} = erwa_sessions:register_session(<<"erwa.test">>),
+%% 					{ok,S2} = erwa_sess_man:register_session(<<"erwa.test">>),
 %% 					{ok,ID3} = erwa_broker:subscribe(<<"topic.test1">>,#{},S2,Data),
 %% 					MyPid ! {first_subscription,ID3},
 %% 					receive
@@ -358,21 +358,21 @@ gen_id() ->
 %% 	3 = get_tablesize(Data),
 %% 	ok = unsubscribe_all(SessionId,Data),
 %% 	0 = get_tablesize(Data),
-%% 	erwa_sessions:drop_table(),
+%% 	erwa_sess_man:drop_table(),
 %% 	{ok,stopped} = stop(Data).
 %%
 %%
 %% publish_test() ->
-%% 	erwa_sessions:create_table(),
+%% 	erwa_sess_man:create_table(),
 %%     ok = erwa_publications:create_table(),
 %% 	{ok,Pid} = start(),
 %% 	{ok,Data} = get_data(Pid),
 %% 	ok = disable_metaevents(Data),
-%% 	{ok,SessionId} = erwa_sessions:register_session(<<"erwa.test">>),
+%% 	{ok,SessionId} = erwa_sess_man:register_session(<<"erwa.test">>),
 %% 	{ok,ID} = erwa_broker:subscribe(<<"topic.test1">>,#{},SessionId,Data),
 %% 	MyPid = self(),
 %% 	F = fun() ->
-%% 					{ok,S2} = erwa_sessions:register_session(<<"erwa.test">>),
+%% 					{ok,S2} = erwa_sess_man:register_session(<<"erwa.test">>),
 %% 					{ok,ID} = erwa_broker:subscribe(<<"topic.test1">>,#{},S2,Data),
 %% 					MyPid ! subscribed,
 %% 					receive
@@ -395,19 +395,19 @@ gen_id() ->
 %% 				 {erwa,{event,ID,PublicationID2,#{},undefined,undefined}} ->
 %% 					 ok
 %% 			 end,
-%% 	erwa_sessions:drop_table(),
+%% 	erwa_sess_man:drop_table(),
 %% 	{ok,stopped} = stop(Data),
 %%     ok = erwa_publications:drop_table().
 %%
 %%
 %% exclude_test() ->
-%% 	erwa_sessions:create_table(),
+%% 	erwa_sess_man:create_table(),
 %%     ok = erwa_publications:create_table(),
 %% 	{ok,Pid} = start(),
 %% 	{ok,Data} = get_data(Pid),
 %% 	ok = disable_metaevents(Data),
-%% 	{ok,SessionId1} = erwa_sessions:register_session(<<"erwa.test">>),
-%% 	{ok,SessionId2} = erwa_sessions:register_session(<<"erwa.test">>),
+%% 	{ok,SessionId1} = erwa_sess_man:register_session(<<"erwa.test">>),
+%% 	{ok,SessionId2} = erwa_sess_man:register_session(<<"erwa.test">>),
 %% 	{ok,ID} = erwa_broker:subscribe(<<"topic.test1">>,#{},SessionId1,Data),
 %% 	MyPid = self(),
 %% 	F = fun() ->
@@ -450,20 +450,20 @@ gen_id() ->
 %% 				 nothing -> ok;
 %% 				 yes_got_it -> wrong
 %% 			 end,
-%% 	erwa_sessions:drop_table(),
+%% 	erwa_sess_man:drop_table(),
 %% 	{ok,stopped} = stop(Data),
 %%     ok = erwa_publications:drop_table().
 %%
 %%
 %%
 %% eligible_test() ->
-%% 	erwa_sessions:create_table(),
+%% 	erwa_sess_man:create_table(),
 %%     ok = erwa_publications:create_table(),
 %% 	{ok,Pid} = start(),
 %% 	{ok,Data} = get_data(Pid),
 %% 	ok = disable_metaevents(Data),
-%% 	{ok, SessionId1} = erwa_sessions:register_session(<<"erwa.test">>),
-%% 	{ok, SessionId2} = erwa_sessions:register_session(<<"erwa.test">>),
+%% 	{ok, SessionId1} = erwa_sess_man:register_session(<<"erwa.test">>),
+%% 	{ok, SessionId2} = erwa_sess_man:register_session(<<"erwa.test">>),
 %%
 %% 	{ok,ID} = erwa_broker:subscribe(<<"topic.test1">>,#{},SessionId1,Data),
 %% 	MyPid = self(),
@@ -507,7 +507,7 @@ gen_id() ->
 %% 				 nothing -> ok;
 %% 				 yes_got_it -> wrong
 %% 			 end,
-%% 	erwa_sessions:drop_table(),
+%% 	erwa_sess_man:drop_table(),
 %% 	{ok,stopped} = stop(Data),
 %%     ok = erwa_publications:drop_table().
 %%

@@ -36,7 +36,7 @@
 %% API.
 
 start(_Type, _Args) ->
-    erwa_sessions:create_table(),
+    erwa_sess_man:create_table(),
     erwa_publications:create_table(),
     erwa_realms:init(),
     erwa_sup:start_link().

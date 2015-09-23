@@ -126,7 +126,7 @@ register_exact_single_procedure(Args) ->
                     false ->
                         {ok,ProcId} = do_create_procedure(Args),
                         SessionId = maps:get(session, Args),
-                        ok = erwa_sessions:add_registration(ProcId, SessionId),
+                        ok = erwa_sess_man:add_registration(ProcId, SessionId),
                         publish_metaevent(on_register,Args),
                         {ok, ProcId}
                 end 
@@ -195,7 +195,7 @@ unregister( RegistrationId,SessionId, Realm) ->
                     [#erwa_procedure{id=ProcId, ids=Ids, uri=Uri} = Proc ] ->
                         case lists:member(SessionId,Ids) of
                             true -> 
-                                ok = erwa_sessions:rem_registration(RegistrationId, SessionId),
+                                ok = erwa_sess_man:rem_registration(RegistrationId, SessionId),
                                 publish_metaevent(on_unregister,Uri,ProcId,SessionId,Realm,undefined),
                                 NewIds = lists:delete(SessionId, Ids),
                                 case NewIds of 
@@ -217,7 +217,7 @@ unregister( RegistrationId,SessionId, Realm) ->
 
 -spec unregister_all( SessionId::non_neg_integer(), Realm :: binary() ) -> ok.
 unregister_all( SessionId, Realm ) ->
-    RegistrationIds = erwa_sessions:get_registrations(SessionId),
+    RegistrationIds = erwa_sess_man:get_registrations(SessionId),
     unregister_all(RegistrationIds,SessionId,Realm). 
 
 unregister_all([],_SessionId, _Realm) ->
@@ -486,14 +486,14 @@ publish_metaevent(Event,ProcedureUri,ProcId,SessionId,Realm,Args) ->
 %%
 %% call_test() ->
 %%   erwa_invocation_sup:start_link(),
-%%   erwa_sessions:create_table(),
+%%   erwa_sess_man:create_table(),
 %%   flush(),
 %%   {ok,Pid} = start(),
 %%   {ok,Data} = get_data(Pid),
 %%   Realm = <<"erwa.test">>,
 %%   MyPid = self(),
 %%   F = fun() ->
-%%         {ok,SessionId} = erwa_sessions:register_session(Realm),
+%%         {ok,SessionId} = erwa_sess_man:register_session(Realm),
 %%         {ok,ProcId} = erwa_dealer:register(<<"proc.sum">>,#{},SessionId,Data),
 %%         MyPid ! subscribed,
 %%         {ok,A,B,InvocationPid} = receive
@@ -505,7 +505,7 @@ publish_metaevent(Event,ProcedureUri,ProcId,SessionId,Realm,Args) ->
 %%         ok
 %%       end,
 %%   CPid = spawn(F),
-%%   {ok,SessionId} = erwa_sessions:register_session(Realm),
+%%   {ok,SessionId} = erwa_sess_man:register_session(Realm),
 %%   monitor(process,CPid),
 %%   ok = receive
 %%          subscribed -> ok
@@ -529,21 +529,21 @@ publish_metaevent(Event,ProcedureUri,ProcId,SessionId,Realm,Args) ->
 %%            ok
 %%        end,
 %%   flush(),
-%%   erwa_sessions:drop_table(),
+%%   erwa_sess_man:drop_table(),
 %%   ok.
 %%
 %%
 %% caller_identification_test() ->
 %%   erwa_invocation_sup:start_link(),
-%%   erwa_sessions:create_table(),
+%%   erwa_sess_man:create_table(),
 %%   flush(),
 %%   Realm = <<"erwa.test">>,
 %%   {ok,Pid} = start(),
 %%   {ok,Data} = get_data(Pid),
-%%   {ok,SessionId} = erwa_sessions:register_session(Realm),
+%%   {ok,SessionId} = erwa_sess_man:register_session(Realm),
 %%   MyPid = self(),
 %%   F = fun() ->
-%%         {ok,LocalSessId} = erwa_sessions:register_session(Realm),
+%%         {ok,LocalSessId} = erwa_sess_man:register_session(Realm),
 %%         {ok,ProcId} = erwa_dealer:register(<<"proc.sum">>,#{},LocalSessId,Data),
 %%         MyPid ! subscribed,
 %%         {ok,A,B,InOptions} = receive
@@ -582,13 +582,13 @@ publish_metaevent(Event,ProcedureUri,ProcId,SessionId,Realm,Args) ->
 %%          done -> ok
 %%        end,
 %%   flush(),
-%%   erwa_sessions:drop_table(),
+%%   erwa_sess_man:drop_table(),
 %%   ok.
 %%
 %%
 %% call_cancel_test() ->
 %%   erwa_invocation_sup:start_link(),
-%%   erwa_sessions:create_table(),
+%%   erwa_sess_man:create_table(),
 %%   flush(),
 %%   Realm = <<"erwa.test">>,
 %%   {ok,Pid} = start(),
@@ -596,7 +596,7 @@ publish_metaevent(Event,ProcedureUri,ProcId,SessionId,Realm,Args) ->
 %%
 %%   MyPid = self(),
 %%   F = fun() ->
-%%         {ok,SessionId} = erwa_sessions:register_session(Realm),
+%%         {ok,SessionId} = erwa_sess_man:register_session(Realm),
 %%         {ok,ProcId} = erwa_dealer:register(<<"proc.sum">>,#{},SessionId,Data),
 %%         MyPid ! subscribed,
 %%         {ok,InOptions} = receive
@@ -617,7 +617,7 @@ publish_metaevent(Event,ProcedureUri,ProcId,SessionId,Realm,Args) ->
 %%         ok
 %%       end,
 %%   spawn(F),
-%%   {ok,SessionId} = erwa_sessions:register_session(Realm),
+%%   {ok,SessionId} = erwa_sess_man:register_session(Realm),
 %%   ok = receive
 %%          subscribed -> ok
 %%        end,
@@ -642,13 +642,13 @@ publish_metaevent(Event,ProcedureUri,ProcId,SessionId,Realm,Args) ->
 %%          done -> ok
 %%        end,
 %%   flush(),
-%%   erwa_sessions:drop_table(),
+%%   erwa_sess_man:drop_table(),
 %%   ok.
 %%
 %%
 %% call_progressive_test() ->
 %%   erwa_invocation_sup:start_link(),
-%%   erwa_sessions:create_table(),
+%%   erwa_sess_man:create_table(),
 %%   flush(),
 %%   Realm = <<"erwa.test">>,
 %%   {ok,Pid} = start(),
@@ -656,7 +656,7 @@ publish_metaevent(Event,ProcedureUri,ProcId,SessionId,Realm,Args) ->
 %%
 %%   MyPid = self(),
 %%   F = fun() ->
-%%         {ok,SessionId} = erwa_sessions:register_session(Realm),
+%%         {ok,SessionId} = erwa_sess_man:register_session(Realm),
 %%         {ok,ProcId} = erwa_dealer:register(<<"proc.sum">>,#{},SessionId,Data),
 %%         MyPid ! subscribed,
 %%         {ok,InOptions} = receive
@@ -674,7 +674,7 @@ publish_metaevent(Event,ProcedureUri,ProcId,SessionId,Realm,Args) ->
 %%         ok
 %%       end,
 %%   spawn(F),
-%%   {ok,SessionId} = erwa_sessions:register_session(Realm),
+%%   {ok,SessionId} = erwa_sess_man:register_session(Realm),
 %%   ok = receive
 %%          subscribed -> ok
 %%        end,
@@ -694,7 +694,7 @@ publish_metaevent(Event,ProcedureUri,ProcId,SessionId,Realm,Args) ->
 %%            ok
 %%        end,
 %%   flush(),
-%% 	erwa_sessions:drop_table(),
+%% 	erwa_sess_man:drop_table(),
 %%   ok.
 %%
 %% garbage_test() ->

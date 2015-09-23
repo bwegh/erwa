@@ -20,7 +20,7 @@
 %% SOFTWARE.
 %%
 
--module(erwa_sessions).
+-module(erwa_sess_man).
 
 -ifdef(TEST).
 -include_lib("eunit/include/eunit.hrl").
