@@ -25,13 +25,11 @@
 -export([init/0]).
 -export([add/1]).
 -export([remove/1]).
--export([kill/1]).
 
--export([get_routing/1]).
+-export([exists/1]).
 
 -record(erwa_realm, {
           name = unknown,
-          pid = unknown,
           state = running
          }).
 
@@ -39,15 +37,20 @@
 add(Name) ->
     F = fun() -> 
                 case mnesia:read(erwa_realms, Name) of 
-                    [] -> 
-                        {ok,Pid} = erwa_routing_sup:start_routing(Name),
-                        ok = mnesia:write(erwa_realms, #erwa_realm{name=Name, pid=Pid}, write),
+                    [] ->
+                        ok = mnesia:write(erwa_realms, #erwa_realm{name=Name}, write),
                         ok;
                     _ -> 
                         {error, already_exists}
                 end 
         end,
     {atomic, Res} =  mnesia:transaction(F),
+    case Res of
+        ok ->
+            ok = erwa_broker:init(Name),
+            ok = erwa_dealer:init(Name),
+            {ok, _CalleePid} = erwa_callee:start(#{realm=>Name})
+    end,
     Res.
 
 -spec remove(Name :: binary()) -> {ok, removing} | {error, Reason :: term()}.
@@ -56,12 +59,9 @@ remove(Name) ->
                 case mnesia:read(erwa_realms, Name) of
                     [] ->
                         {error, not_running};
-                    [#erwa_realm{pid=Pid,state=running}=Realm] ->
-                        ok = erwa_routing:shutdown(Pid),
-                        ok = mnesia:write(erwa_realms,Realm#erwa_realm{state=closing},write),
-                        {ok, shutting_down};
-                    [#erwa_realm{state=closing}] ->
-                        {ok, shutting_down};
+                    [#erwa_realm{}] ->
+                        ok = mnesia:delete(erwa_realms,Name,write),
+                        {ok, removed};
                     Other ->
                         {error,Other}
                 end 
@@ -69,38 +69,17 @@ remove(Name) ->
     {atomic, Result} = mnesia:transaction(F),
     Result.
 
-
--spec kill(Name :: binary()) -> {ok, killing} | {error, Reason :: term()}.
-kill(Name) ->
+-spec exists(Realm::binary()) -> true | false.
+exists(Realm) ->
     F = fun() ->
-                case mnesia:read(erwa_realms, Name) of 
-                    [] -> 
-                        {error, not_running};
-                    [#erwa_realm{pid=Pid}] ->
-                        {ok, stopped} = erwa_routing:stop(Pid),
-                        ok = mnsia:delete(erwa_realms,Name,write),
-                        {ok, killed};
-                    Other ->
-                        {error, Other}
+                case mnesia:read(erwa_realms, Realm) of 
+                    [] -> false;
+                    [#erwa_realm{}] -> true 
                 end 
         end,
     {atomic, Result} = mnesia:transaction(F),
     Result.
 
--spec get_routing(Name :: binary()) -> {ok, Realm :: pid()} | {error,not_found}.
-get_routing(Name) ->
-    F = fun() ->
-                case mnesia:read(erwa_realms, Name) of 
-                    [] -> 
-                        {error, not_found};
-                    [#erwa_realm{pid=Pid}] ->
-                        {ok, Pid};
-                    Other ->
-                        {error, Other}
-                end 
-        end,
-    {atomic, Result} = mnesia:transaction(F),
-    Result.
 
 
 init() ->
@@ -121,8 +100,7 @@ create_table() ->
                                                {ram_copies, [node()]}, 
                                                {type, set},
                                                {record_name, erwa_realm},
-                                               {attributes, record_info(fields, erwa_realm)},
-                                               {index,[pid]}
+                                               {attributes, record_info(fields, erwa_realm)}
                                               ]),
 	ok.
 
@@ -168,7 +146,6 @@ create_table() ->
 %%
 %% add_remove_test() ->
 %% 	ok = erwa_sessions:create_table(),
-%% 	{ok,_} = erwa_routing_sup:start_link(), 
 %% 	{ok,_} = start(),
 %%   Name1 = <<"com.doesnotexist.wamp">>,
 %%   Name2 = <<"com.doesnotexist.pamw">>,

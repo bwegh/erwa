@@ -1,4 +1,5 @@
 %%
+%%lol
 %% Copyright (c) 2015 Bas Wegh
 %%
 %% Permission is hereby granted, free of charge, to any person obtaining a copy
@@ -69,12 +70,12 @@ subscribe(Topic,Options,SessionId,Realm) ->
 		exact -> 
 			% just exact for now, others will follow 
 			Id = gen_id(),
-			Database = realm_to_db_name(Realm),
+			Table = realm_to_db_name(Realm),
 			InsertSub = fun() -> 
-								case mnesia:read(Database, Id) of
+								case mnesia:read(Table, Id) of
 									[] -> 
 										Subscriptions =
-										mnesia:index_read(Database,
+										mnesia:index_read(Table,
 														  Topic, uri),
 										Filter = fun(#erwa_subscription{realm=R}=Sub, All) ->
 														 case R of
@@ -87,7 +88,7 @@ subscribe(Topic,Options,SessionId,Realm) ->
 										case lists:foldl(Filter,[],Subscriptions) of 
 											[] -> 
 												ok =
-												mnesia:write(Database,
+												mnesia:write(Table,
 															 #erwa_subscription{uri=Topic,
 																				match=exact,
 																				realm=Realm,
@@ -96,23 +97,19 @@ subscribe(Topic,Options,SessionId,Realm) ->
 																				subscribers=[SessionId]},
 															write),
 												ok = erwa_sessions:add_subscription(Id,SessionId),
-												Id;
+                                                {ok,Id};
 											[#erwa_subscription{subscribers=Subs, id=SubId}=Subscription] ->
 												NewSubs = [SessionId | lists:delete(SessionId,Subs)],
 												ok =
-												mnesia:write(Database,Subscription#erwa_subscription{subscribers=NewSubs},write),
+												mnesia:write(Table,Subscription#erwa_subscription{subscribers=NewSubs},write),
 												ok = erwa_sessions:add_subscription(SubId,SessionId),
-												SubId
+                                                {ok,SubId}
 										end;
-									[#erwa_subscription{}] -> mnesia:abort(already_exist)
+                                    [#erwa_subscription{}] -> {error, already_exist}
 								end 
 						end, 
-			case mnesia:transaction(InsertSub) of
-				{atomic, SubId} ->
-					{ok, SubId};
-				{aborted, already_exist} ->
-					subscribe(Topic, Options, SessionId, Realm)
-			end
+            {atomic, Result} = mnesia:transaction(InsertSub),
+            Result
 	end.
 
 

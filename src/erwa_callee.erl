@@ -42,7 +42,6 @@
 
 -record(state,{
 			   realm = unknown,
-               routing = unknown,
                sess_id = unknown,
                mapping = #{}
                }).
@@ -70,14 +69,14 @@ stop(Pid) ->
 
 
 init(Args) ->
-  #{routing:=Routing, realm:=Realm} = Args,
+  #{realm:=Realm} = Args,
   {ok,SessionId} = erwa_sessions:register_session(Realm),
   F = fun({Method,Fun},Map) ->
         {ok,RegId} = erwa_dealer:register(Method, #{match => exact, invoke => single}, SessionId, Realm),
         maps:put(RegId,Fun,Map)
       end,
   Mapping = lists:foldl(F,#{},?PROCEDURES),
-  {ok,#state{sess_id = SessionId, mapping=Mapping, realm=Realm, routing=Routing}}.
+  {ok,#state{sess_id = SessionId, mapping=Mapping, realm=Realm}}.
 
 
 handle_call(_Msg,_From,State) ->
@@ -100,12 +99,12 @@ handle_info(_Info, State) ->
 	{noreply, State}.
 
 
-session_count(_Options,_Arguments,_ArgumentsKw,#state{routing=Routing}) ->
-  {ok,Count} = erwa_routing:get_session_count(Routing),
+session_count(_Options,_Arguments,_ArgumentsKw,#state{realm=Realm}) ->
+  {ok,Count} = erwa_sessions:get_session_count(Realm),
   {ok,#{},[Count],undefined}.
 
-session_list(_Options,_Arguments,_ArgumentsKw,#state{routing=Routing}) ->
-  {ok,Ids} = erwa_routing:get_session_ids(Routing),
+session_list(_Options,_Arguments,_ArgumentsKw,#state{realm=Realm}) ->
+  {ok,Ids} = erwa_sessions:get_session_ids(Realm),
   {ok,#{},Ids,undefined}.
 
 subscription_list(_Options,_Arguments,_ArgumentsKw,#state{realm=Realm}) ->

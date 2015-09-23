@@ -59,7 +59,7 @@ api_call(_) ->
   SessionList = <<"wamp.session.list">>,
 
   {ok,Con} = awre:start_client(),
-  {ok,_SessionId,_RouterDetails} = awre:connect(Con,?REALM),
+  {ok,SessionId,_RouterDetails} = awre:connect(Con,?REALM),
 
   {ok,_,SubResult,undefined} = awre:call(Con,#{},SubList),
   [#{exact := [], wildcard := [], prefix := []}] = SubResult,
@@ -68,10 +68,11 @@ api_call(_) ->
   [#{exact := [], wildcard := [], prefix := []}] = RegResult,
 
   {ok,_,CountResult,undefined} = awre:call(Con,#{},SessionCount),
-  [1] = CountResult,
+  [2] = CountResult,
 
   {ok,_,Ids,undefined} = awre:call(Con,#{},SessionList),
-  1 = length(Ids),
+  2 = length(Ids),
+  true = lists:member(SessionId,Ids),
   ok = awre:stop_client(Con),
   ok.
 

@@ -254,6 +254,9 @@ flush() ->
 call_result_test() ->
   flush(),
   erwa_sessions:create_table(),
+  erwa_publications:create_table(),
+  erwa_realms:init(),
+  erwa_realms:add(<<"erwa.test">>),
   {ok,SessionId} = erwa_sessions:register_session(<<"erwa.test">>),
   CallInfo = #{procedure_id => 123,
                caller_id => SessionId,
@@ -284,6 +287,9 @@ call_result_test() ->
 call_error_test() ->
   flush(),
   erwa_sessions:create_table(),
+  erwa_publications:create_table(),
+  erwa_realms:init(),
+  erwa_realms:add(<<"erwa.test">>),
   {ok,SessionId} = erwa_sessions:register_session(<<"erwa.test">>),
   CallInfo = #{procedure_id => 123,
                caller_id => SessionId,
@@ -314,6 +320,9 @@ call_error_test() ->
 cancel_test() ->
   flush(),
   erwa_sessions:create_table(),
+  erwa_publications:create_table(),
+  erwa_realms:init(),
+  erwa_realms:add(<<"erwa.test">>),
   {ok,SessionId} = erwa_sessions:register_session(<<"erwa.test">>),
   CallInfo = #{procedure_id => 123,
                caller_id => SessionId,
@@ -346,6 +355,9 @@ cancel_test() ->
 timeout_test() ->
   flush(),
   erwa_sessions:create_table(),
+  erwa_publications:create_table(),
+  erwa_realms:init(),
+  erwa_realms:add(<<"erwa.test">>),
   {ok,SessionId} = erwa_sessions:register_session(<<"erwa.test">>),
   CallInfo = #{procedure_id => 123,
                caller_id => SessionId,
@@ -409,6 +421,9 @@ failed_init_test() ->
 
 garbage_test() ->
 	ok = erwa_sessions:create_table(),
+  erwa_publications:create_table(),
+  erwa_realms:init(),
+  erwa_realms:add(<<"erwa.test">>),
   CallInfo = #{procedure_id => 123,
                caller_id => 2393874,
                call_req_id => 124,

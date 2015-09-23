@@ -33,7 +33,6 @@
 %% API for router
 -export([start_realm/1]).
 -export([stop_realm/1]).
--export([get_routing_for_realm/1]).
 
 
 -export([get_version/0]).
@@ -93,10 +92,6 @@ start_realm(Name) ->
 stop_realm(Name) ->
   erwa_realms:remove(Name).
 
-%% @doc Get the router of a realm.
--spec get_routing_for_realm(Realm :: binary() ) -> {ok, Pid :: pid()} | {error, not_found}.
-get_routing_for_realm(Realm) ->
-  erwa_realms:get_routing(Realm).
 
 
 

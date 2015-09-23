@@ -54,7 +54,6 @@
                 realm_name = none,
                 mwl = [],
                 client_roles = unknown,
-                routing_pid = none,
                 source = unknown,
                 peer = unknown,
                 ssl = false,
@@ -235,17 +234,17 @@ hndl_msg({hello,RealmName,Details}, #state{trans=Transport} = State) ->
   Roles = maps:get(roles, Details, []),
   case {AuthId == anonymous, erwa_user_db:allow_anonymous(RealmName, Transport)} of 
     {true, true} -> 
-      case erwa_realms:get_routing(RealmName) of
-        {ok,RoutingPid} ->
-          % the realm does exist
-          State1 = create_session(RoutingPid,RealmName,Roles,State),
-          #state{id=SessionId}=State1,
+      case erwa_sessions:register_session(RealmName) of
+        {ok,SessionId} ->
           SessionData = #{authid => anonymous, role => anonymous, session =>
                           SessionId},
           WelcomeMsg ={welcome,SessionId,#{agent => erwa:get_version(), roles =>
 										  ?ROLES}},
-          {reply,WelcomeMsg,State1#state{is_auth=true,
-                                         session_data=SessionData}}; 
+          {reply,WelcomeMsg,State#state{is_auth=true,
+                                        realm_name=RealmName,
+                                        client_roles=Roles,
+                                        id=SessionId,
+                                        session_data=SessionData}}; 
         {error,_} ->
           {reply_stop, {abort, #{}, no_such_realm},State}
       end;
@@ -287,11 +286,8 @@ authenticate([wampcra|_], RealmName, Details, #state{trans=Transport
   ClientRoles = maps:get(roles, Details, []),
   case erwa_user_db:can_join(AuthId, RealmName, Transport ) of 
     {true, Role} -> 
-      case erwa_realms:get_routing(RealmName) of
-        {ok,RoutingPid} ->
-          % the realm does exist
-          State1 = create_session(RoutingPid,RealmName,ClientRoles,State),
-          #state{id = SessionId} = State1,
+      case erwa_sessions:register_session(RealmName) of
+        {ok,SessionId} ->
           % a user that needs to authenticate
           % need to create a a challenge  
           SessionData = #{authid => AuthId, role => Role, session =>
@@ -302,9 +298,11 @@ authenticate([wampcra|_], RealmName, Details, #state{trans=Transport
                        ok -> true;
                        _ -> false
                      end,
-          {reply, ChallengeMsg, State1#state{authid=AuthId, role=Role,
+          {reply, ChallengeMsg, State#state{authid=AuthId, role=Role,
                                              will_pass=WillPass,
-                                             session_data=SessionData}};
+                                             session_data=SessionData,
+                                            realm_name=RealmName, is_auth=false,
+                                            client_roles=ClientRoles,id=SessionId}};
         {error,_} ->
           {reply_stop,{abort,#{},no_such_realm},State}
       end;
@@ -314,13 +312,6 @@ authenticate([wampcra|_], RealmName, Details, #state{trans=Transport
 authenticate([_|Tail], RealmName, Details, State) ->
   authenticate(Tail, RealmName, Details, State).
 
-
-
-create_session(RoutingPid,RealmName,Roles,State) ->
-  {ok, SessionId} = erwa_sessions:register_session(RealmName),
-  ok = erwa_routing:connect(RoutingPid,State),
-  State#state{id=SessionId,realm_name=RealmName, routing_pid=RoutingPid,
-                       is_auth=false, client_roles=Roles}.
 
 
 
@@ -470,12 +461,7 @@ hndl_info(Info, State) ->
 
 
 
-close_session(#state{routing_pid=RoutingPid,id=SessionId,realm_name=RealmName}) ->
-	ok = case RoutingPid of
-			 none -> ok;
-			 RoutingPid ->
-				 erwa_routing:disconnect(RoutingPid)
-		 end,
+close_session(#state{id=SessionId,realm_name=RealmName}) ->
 	ok = case SessionId of
 			 none -> ok;
 			 _ -> erwa_sessions:unregister_session(),

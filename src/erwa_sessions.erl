@@ -44,6 +44,9 @@
 -export([get_registrations/1]).
 -export([clear_registrations/1]).
 
+-export([get_session_count/1]).
+-export([get_session_ids/1]).
+
 -export([send_message_to/2]).
 
 
@@ -91,8 +94,11 @@ send_message_to(Msg,SessionId) ->
 
 -spec register_session(Realm :: binary()) -> {ok,non_neg_integer()}.
 register_session(Realm) ->
-	ID = add_session(self(), Realm),
-	{ok, ID}.
+    case erwa_realms:exists(Realm) of
+        true -> ID = add_session(self(), Realm),
+                {ok, ID};
+        false -> {error, no_such_realm}
+    end.
 
 
 -spec unregister_session() -> ok | not_found.
@@ -211,6 +217,28 @@ mnes_addRemReg(RegistrationId,SessionId,Add) ->
 	F.
 
 
+
+-spec get_session_count(Realm::binary()) -> {ok, non_neg_integer()} | {error, Reason::term()}.
+get_session_count(Realm) ->
+    F = fun() ->
+                Records =  mnesia:index_read(erwa_session_record, Realm, realm),
+                length(Records)
+        end,
+    {atomic, Result} = mnesia:transaction(F),
+    {ok, Result}.
+
+-spec get_session_ids(Realm::binary()) -> {ok,[non_neg_integer()]} | {error, Reason::term()}.
+get_session_ids(Realm) ->
+    F = fun() ->
+                mnesia:index_read(erwa_session_record, Realm, realm)
+        end,
+    {atomic, Records} = mnesia:transaction(F),
+    ExtractId = fun(#erwa_session_record{id=ID},List) ->
+                        [ID|List]
+                end,
+    {ok,lists:foldl(ExtractId,[],Records)}.
+
+
 add_session(Pid,Realm) ->
   ID = crypto:rand_uniform(0,9007199254740992),
 	Data = #erwa_session_record{id=ID, pid=Pid, realm=Realm},
@@ -220,7 +248,8 @@ add_session(Pid,Realm) ->
                           end 
                  end,
 	case mnesia:transaction(AddSession) of
-		{atomic, ok} -> 
+		{atomic, ok} ->
+            publish_metaevent(on_join,#{realm => Realm, session => ID}, Realm),
             ID;
 		{aborted, already_exists}  -> 
             add_session(Pid,Realm)
@@ -231,12 +260,15 @@ delete_session(Pid) when is_pid(Pid) ->
     RemoveSession = fun() ->
                             case mnesia:index_read(erwa_session_record, Pid, pid)	of 
                                 [] -> {atomic, not_found};
-                                [Session] -> mnesia:delete({erwa_session_record,
-                                                            Session#erwa_session_record.id})
+                                [#erwa_session_record{id=SessionId,realm=Realm}] -> mnesia:delete({erwa_session_record,
+                                                            SessionId}),
+                                             {ok,SessionId,Realm}
                             end 
                     end,
     case mnesia:transaction(RemoveSession) of
-        {atomic, ok} -> ok;
+        {atomic, {ok, SessionId,Realm}} -> 
+            publish_metaevent(on_leave,SessionId,Realm),
+            ok;
         _ -> not_found
     end;
 delete_session(ID) ->
@@ -255,10 +287,20 @@ get_record_for_id(SessionId) ->
         {atomic,[El]} -> {ok,El}
     end.
 
+publish_metaevent(Event,Arg,Realm) ->
+    MetaTopic = case Event of 
+                    on_join -> <<"wamp.session.on_join">>;
+                    on_leave -> <<"wamp.session.on_leave">>
+                end, 
+    erwa_broker:publish(MetaTopic,#{},[Arg],undefined,no_session,Realm).
+
 -ifdef(TEST).
 
 simple_test() ->
-	mnesia:start(),
+    mnesia:start(),
+    create_table(),
+    erwa_realms:init(),
+    erwa_realms:add(<<"test_realm">>),
 	ok = create_table(),
 	not_found = unregister_session(), 
   {ok,_} = register_session(<<"test_realm">>),
