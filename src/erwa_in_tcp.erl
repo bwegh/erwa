@@ -55,7 +55,7 @@
                enc = undefined,
                length = infitity,
                buffer = <<"">>,
-               session = undefined
+               routing = undefined
               }).
 
 
@@ -117,7 +117,7 @@ create_intial_state(Transport,Socket) ->
      ok=Ok,
 	 closed=Closed,
 	 error=Error,
-	 session=erwa_routing:create()
+	 routing=erwa_routing:init()
 	 }.
 
 
@@ -145,47 +145,47 @@ deserialize_messages_update_state(Data,#state{buffer=Buffer, enc=Enc} = State) -
 handle_incomming_wamp_messages([],#state{} = State) ->
 	{noreply, State};
 handle_incomming_wamp_messages([Msg | Tail], State) ->
-	Result = handle_message_by_session(Msg,State),	
-	handle_result_of_session(Result,Tail,State).
+	Result = handle_message_by_routing(Msg,State),	
+	handle_result_of_routing(Result,Tail,State).
 
 
-handle_result_of_session({ok,NewSession},Tail,State) ->
-	handle_incomming_wamp_messages(Tail,State#state{session=NewSession});
-handle_result_of_session({reply, OutMsg, NewSession},Tail,State) ->
+handle_result_of_routing({ok,NewRouting},Tail,State) ->
+	handle_incomming_wamp_messages(Tail,State#state{routing=NewRouting});
+handle_result_of_routing({reply, OutMsg, NewRouting},Tail,State) ->
 	serialize_and_send_to_peer(OutMsg,State),
-	handle_incomming_wamp_messages(Tail,State#state{session=NewSession});
-handle_result_of_session({reply_stop,OutMsg, NewSession}, _Tail, State) ->
+	handle_incomming_wamp_messages(Tail,State#state{routing=NewRouting});
+handle_result_of_routing({reply_stop,OutMsg, NewRouting}, _Tail, State) ->
 	serialize_and_send_to_peer(OutMsg, State),
-	close_connection(State#state{session=NewSession});
-handle_result_of_session({stop,NewSession},_Tail,State) ->
-	close_connection(State#state{session=NewSession}).
+	close_connection(State#state{routing=NewRouting});
+handle_result_of_routing({stop,NewRouting},_Tail,State) ->
+	close_connection(State#state{routing=NewRouting}).
 
 
 
 
-handle_message_by_session(Msg,#state{session=Session}) ->
-	erwa_routing:handle_message(Msg,Session).
+handle_message_by_routing(Msg,#state{routing=Routing}) ->
+	erwa_routing:handle_message(Msg,Routing).
 
 
-handle_message_from_routing(Msg,#state{session=Session}=State) ->
-	Result = handle_routing_message_by_session(Msg,Session),
-	handle_result_of_session_for_routing(Result,State).
+handle_message_from_routing(Msg,#state{routing=Routing}=State) ->
+	Result = handle_routing_message_by_routing(Msg,Routing),
+	handle_result_of_routing_for_routing(Result,State).
 
 
-handle_routing_message_by_session(Msg,Session) ->
-	erwa_routing:handle_info(Msg,Session).
+handle_routing_message_by_routing(Msg,Routing) ->
+	erwa_routing:handle_info(Msg,Routing).
 
 
-handle_result_of_session_for_routing({ok, NewSession},State) ->
-	{noreply,State#state{session=NewSession}};
-handle_result_of_session_for_routing({send, OutMsg, NewSession},State) ->
+handle_result_of_routing_for_routing({ok, NewRouting},State) ->
+	{noreply,State#state{routing=NewRouting}};
+handle_result_of_routing_for_routing({send, OutMsg, NewRouting},State) ->
 	serialize_and_send_to_peer(OutMsg,State),
-	{noreply,State#state{session=NewSession}};
-handle_result_of_session_for_routing({send_stop, OutMsg, NewSession},State) ->
+	{noreply,State#state{routing=NewRouting}};
+handle_result_of_routing_for_routing({send_stop, OutMsg, NewRouting},State) ->
 	serialize_and_send_to_peer(OutMsg,State),
-	close_connection( State#state{session=NewSession});
-handle_result_of_session_for_routing({stop, NewSession},State) ->
-	close_connection(State#state{session=NewSession}).
+	close_connection( State#state{routing=NewRouting});
+handle_result_of_routing_for_routing({stop, NewRouting},State) ->
+	close_connection(State#state{routing=NewRouting}).
 
 
 handle_handshake(<<127,MaxLengthExp:4,ProtocolNumber:4,0,0>>, State) ->
@@ -236,28 +236,28 @@ send_handshake_reply(_, State) ->
 
 update_erwa_routing_and_state(unsupported,_,State) ->
 	State;
-update_erwa_routing_and_state(ProtocolName, MaxLength, #state{session=Session,
+update_erwa_routing_and_state(ProtocolName, MaxLength, #state{routing=Routing,
 														  transport=Transport
 														 } = State) ->
 	updateState(ProtocolName,
 				MaxLength,
-				updateErwaSession(Transport, 
+				updateErwaRouting(Transport, 
 								  get_peername(State), 
-								  Session),
+								  Routing),
 				State).
 	
 
-updateState(ProtocolName, MaxLength, Session, State) ->
+updateState(ProtocolName, MaxLength, Routing, State) ->
 	State#state{
 	  enc = ProtocolName,
 	  length = MaxLength,
-	  session = Session
+	  routing = Routing
 	 }.
 
-updateErwaSession(Transport, Peer, Session) ->
-	Session1 = erwa_routing:set_peer(Peer,Session),
-	Session2 = erwa_routing:set_source(Transport,Session1),
-	Session2.
+updateErwaRouting(Transport, Peer, Routing) ->
+	%% Routing1 = erwa_routing:set_peer(Peer,Routing),
+	%% Routing2 = erwa_routing:set_source(Transport,Routing1),
+	Routing.
 
 closeOrActivateConnection(unsupported,State) ->
 	close_connection(State);
@@ -280,11 +280,11 @@ enable_socket_once(Transport, Socket) ->
   ok.
 
 handle_socket_closed(State) ->
-	% need to close the session - maybe
+	% need to close the routing - maybe
 	{stop, normal, State}.
 
 handle_socket_error(Error, State) ->
-	% need to close the session - maybe
+	% need to close the routing - maybe
 	{stop, {error, Error}, State }.
 
 

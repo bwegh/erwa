@@ -50,7 +50,7 @@
                ws_enc = undefined,
                length = infitity,
                buffer = <<"">>,
-               session = undefined
+               routing = undefined
               }).
 
 
@@ -61,10 +61,10 @@ init( Req, _Opts) ->
     {Enc,WsEncoding,Header} ->
       Req1  = cowboy_req:set_resp_header(?SUBPROTHEADER,Header,Req),
       Peer = cowboy_req:peer(Req1),
-      Session = erwa_routing:create(),
-      Session1 = erwa_routing:set_peer(Peer,Session),
-      Session2 = erwa_routing:set_source(websocket,Session1),
-      {cowboy_websocket,Req1,#state{enc=Enc,ws_enc=WsEncoding,session=Session2}};
+      Routing = erwa_routing:init(),
+      %% Routing1 = erwa_routing:set_peer(Peer,Routing),
+      %% Routing2 = erwa_routing:set_source(websocket,Routing1),
+      {cowboy_websocket,Req1,#state{enc=Enc,ws_enc=WsEncoding,routing=Routing}};
     _ ->
       % unsupported
       {shutdown,Req}
@@ -72,30 +72,30 @@ init( Req, _Opts) ->
 
 
 
-websocket_handle({WsEnc, Data}, Req, #state{ws_enc=WsEnc,enc=Enc,buffer=Buffer,session=Session}=State) ->
+websocket_handle({WsEnc, Data}, Req, #state{ws_enc=WsEnc,enc=Enc,buffer=Buffer,routing=Routing}=State) ->
   {MList,NewBuffer} = wamper_protocol:deserialize(<<Buffer/binary, Data/binary>>,Enc),
-  {ok,OutFrames,NewSession} = handle_messages(MList,[],Session,State),
-  {reply,OutFrames,Req,State#state{buffer=NewBuffer,session=NewSession}};
+  {ok,OutFrames,NewRouting} = handle_messages(MList,[],Routing,State),
+  {reply,OutFrames,Req,State#state{buffer=NewBuffer,routing=NewRouting}};
 websocket_handle(Data, Req, State) ->
   erlang:error(unsupported,[Data,Req,State]),
   {ok, Req, State}.
 
 websocket_info(erwa_stop, Req, State) ->
   {stop,Req,State};
-websocket_info({erwa,Msg}, Req, #state{session=Session,ws_enc=WsEnc,enc=Enc}=State) when is_tuple(Msg)->
+websocket_info({erwa,Msg}, Req, #state{routing=Routing,ws_enc=WsEnc,enc=Enc}=State) when is_tuple(Msg)->
   Encode = fun(M) ->
              {WsEnc,wamper_protocol:serialize(M,Enc)}
            end,
-  case erwa_routing:handle_info(Msg, Session) of
-    {ok, NewSession} ->
-      {ok,Req,State#state{session=NewSession}};
-    {send, OutMsg, NewSession} ->
-      {reply,Encode(OutMsg),Req,State#state{session=NewSession}};
-    {send_stop, OutMsg, NewSession} ->
+  case erwa_routing:handle_info(Msg, Routing) of
+    {ok, NewRouting} ->
+      {ok,Req,State#state{routing=NewRouting}};
+    {send, OutMsg, NewRouting} ->
+      {reply,Encode(OutMsg),Req,State#state{routing=NewRouting}};
+    {send_stop, OutMsg, NewRouting} ->
       self() ! erwa_stop,
-      {reply,Encode(OutMsg),Req,State#state{session=NewSession}};
-    {stop, NewSession} ->
-      {stop,Req,State#state{session=NewSession}}
+      {reply,Encode(OutMsg),Req,State#state{routing=NewRouting}};
+    {stop, NewRouting} ->
+      {stop,Req,State#state{routing=NewRouting}}
   end;
 
 websocket_info(_Data, Req, State) ->
@@ -105,23 +105,23 @@ terminate(_Reason, _Req, _State) ->
   ok.
 
 
-handle_messages([],ToSend,Session,_State) ->
-  {ok,lists:reverse(ToSend),Session};
-handle_messages([Msg|Tail],ToSend,Session,#state{ws_enc=WsEnc,enc=Enc}=State) ->
+handle_messages([],ToSend,Routing,_State) ->
+  {ok,lists:reverse(ToSend),Routing};
+handle_messages([Msg|Tail],ToSend,Routing,#state{ws_enc=WsEnc,enc=Enc}=State) ->
   Encode = fun(M) ->
              {WsEnc,wamper_protocol:serialize(M,Enc)}
            end,
-  case erwa_routing:handle_message(Msg, Session) of
-    {ok, NewSession} ->
-      handle_messages(Tail,ToSend,NewSession,State);
-    {reply, OutMsg, NewSession} ->
-      handle_messages(Tail,[Encode(OutMsg)|ToSend],NewSession,State);
-    {reply_stop, OutMsg, NewSession} ->
+  case erwa_routing:handle_message(Msg, Routing) of
+    {ok, NewRouting} ->
+      handle_messages(Tail,ToSend,NewRouting,State);
+    {reply, OutMsg, NewRouting} ->
+      handle_messages(Tail,[Encode(OutMsg)|ToSend],NewRouting,State);
+    {reply_stop, OutMsg, NewRouting} ->
       self() ! erwa_stop,
-      {ok,lists:reverse([Encode(OutMsg)|ToSend]),NewSession};
-    {stop, NewSession} ->
+      {ok,lists:reverse([Encode(OutMsg)|ToSend]),NewRouting};
+    {stop, NewRouting} ->
       self() ! erwa_stop,
-      {ok, lists:reverse(ToSend), NewSession}
+      {ok, lists:reverse(ToSend), NewRouting}
   end.
 
 
