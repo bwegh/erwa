@@ -49,6 +49,7 @@ add(Name) ->
         ok ->
             ok = erwa_broker:init(Name),
             ok = erwa_dealer:init(Name),
+            ok = erwa_invocation:init(Name),
             {ok, _CalleePid} = erwa_callee:start(#{realm=>Name})
     end,
     Res.

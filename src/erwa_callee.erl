@@ -85,14 +85,13 @@ handle_call(_Msg,_From,State) ->
 handle_cast(_Msg,State) ->
   {noreply,State}.
 
-handle_info({erwa,{invocation,_,ProcedureId,Options,Arguments,ArgumentsKw}},#state{sess_id=SessionId,mapping=Mapping}=State) ->
-  #{invocation_pid := InvocPid} = Options,
+handle_info({erwa,{invocation,InvocationId,ProcedureId,Options,Arguments,ArgumentsKw}},#state{sess_id=SessionId,mapping=Mapping,realm=Realm}=State) ->
   Fun = maps:get(ProcedureId,Mapping,fun empty_result/4),
   case Fun(Options,Arguments,ArgumentsKw,State) of
     {ok,OutOptions,OutArguments,OutArgumentsKw} ->
-      ok = erwa_invocation:yield(InvocPid,OutOptions,OutArguments,OutArgumentsKw,SessionId);
+      ok = erwa_invocation:yield(InvocationId,OutOptions,OutArguments,OutArgumentsKw,SessionId,Realm);
     {error,ErrDetails,ErrorUri,ErrArguments,ErrArgumentsKw} ->
-      ok = erwa_invocation:error(InvocPid,ErrDetails,ErrorUri,ErrArguments,ErrArgumentsKw,SessionId)
+      ok = erwa_invocation:error(InvocationId,ErrDetails,ErrorUri,ErrArguments,ErrArgumentsKw,SessionId,Realm)
   end,
   {noreply,State};
 handle_info(_Info, State) ->

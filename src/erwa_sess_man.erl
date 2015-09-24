@@ -299,6 +299,7 @@ publish_metaevent(Event,Arg,Realm) ->
 simple_test() ->
     mnesia:start(),
     create_table(),
+    erwa_publications:create_table(),
     erwa_realms:init(),
     erwa_realms:add(<<"test_realm">>),
 	ok = create_table(),

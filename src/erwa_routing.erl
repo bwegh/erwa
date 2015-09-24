@@ -298,8 +298,8 @@ hndl_msg_authed({call,RequestId,Options,ProcedureUri,Arguments,ArgumentsKw},#sta
 
 hndl_msg_authed({cancel,RequestId,Options},#state{calls=Calls}=State) ->
   case lists:keyfind(RequestId,1,Calls) of
-    {RequestId,Pid} ->
-      ok = erwa_invocation:cancel(Pid,Options),
+    {RequestId,InvocationId} ->
+      ok = erwa_invocation:cancel(InvocationId,Options),
       {reply,{error,call,RequestId,#{},canceled},State#state{calls=lists:keydelete(RequestId,1,Calls)}};
 
     false ->
@@ -312,19 +312,19 @@ hndl_msg_authed({cancel,RequestId,Options},#state{calls=Calls}=State) ->
 
 
 
-hndl_msg_authed({error,invocation,InvocationId,Details,Error,Arguments,ArgumentsKw},#state{invocations=Invs,id=SessionId}=State) ->
+hndl_msg_authed({error,invocation,InvocationId,Details,Error,Arguments,ArgumentsKw},#state{invocations=Invs,id=SessionId, realm_name=Realm}=State) ->
   case lists:keyfind(InvocationId,1,Invs) of
-    {InvocationId,Pid} ->
-      ok = erwa_invocation:error(Pid,Details,Error,Arguments,ArgumentsKw,SessionId),
+    {InvocationId,DealerId} ->
+      ok = erwa_invocation:error(DealerId,Details,Error,Arguments,ArgumentsKw,SessionId,Realm),
       {ok,State#state{invocations = lists:keydelete(InvocationId,1,Invs)}};
     _ ->
       {ok,State}
   end;
 
-hndl_msg_authed({yield,InvocationId,Options,Arguments,ArgumentsKw},#state{invocations=Invs,id=SessionId}=State) ->
+hndl_msg_authed({yield,InvocationId,Options,Arguments,ArgumentsKw},#state{invocations=Invs,id=SessionId, realm_name=Realm}=State) ->
   case lists:keyfind(InvocationId,1,Invs) of
-    {InvocationId,Pid} ->
-      ok = erwa_invocation:yield(Pid,Options,Arguments,ArgumentsKw,SessionId),
+    {InvocationId,DealerId} ->
+      ok = erwa_invocation:yield(DealerId,Options,Arguments,ArgumentsKw,SessionId,Realm),
       {ok,State#state{invocations = lists:keydelete(InvocationId,1,Invs)}};
     _ ->
       {ok,State}
@@ -347,22 +347,18 @@ hndl_msg_authed(_Msg, State) ->
 
 
 
-hndl_info({invocation,set_request_id,ProcedureId,Options,Arguments,ArgumentsKw},
+hndl_info({invocation,DealerId,ProcedureId,Options,Arguments,ArgumentsKw},
           #state{invocation_id=ID, invocations=Invs}=State) ->
-  Pid = maps:get(invocation_pid,Options),
-  Options1 = maps:remove(invocation_pid,Options),
-  NewState = State#state{invocations=[{ID,Pid}|Invs],invocation_id=ID+1},
-  {send,{invocation,ID,ProcedureId,Options1,Arguments,ArgumentsKw},NewState};
+  NewState = State#state{invocations=[{ID,DealerId}|Invs],invocation_id=ID+1},
+  {send,{invocation,ID,ProcedureId,Options,Arguments,ArgumentsKw},NewState};
 
-hndl_info({interrupt,set_request_id,Options},#state{invocations=Invs, client_roles=Roles, id=SessionId}=State) ->
-  Pid = maps:get(invocation_pid,Options),
-  {InvocationId,Pid} = lists:keyfind(Pid,2,Invs),
+hndl_info({interrupt,DealerId,Options},#state{invocations=Invs, client_roles=Roles}=State) ->
+  {InvocationId,DealerId} = lists:keyfind(DealerId,2,Invs),
   Features = maps:get(features,maps:get(callee,Roles),#{}),
   case maps:get(call_canceling,Features,false) of
     true ->
-      {send,{interrupt,InvocationId,lists:keydelete(invocation_pid,1,Options)},State};
+      {send,{interrupt,InvocationId,Options},State};
     _ ->
-      ok = erwa_invocation:error(Pid,#{},canceled,undefined,undefined,SessionId),
       {ok,State#state{invocations=lists:keydelete(InvocationId,1,Invs)}}
   end;
 

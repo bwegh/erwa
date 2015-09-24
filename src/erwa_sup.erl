@@ -41,11 +41,9 @@ start_link() ->
 %% supervisor.
 
 init([]) ->
-	InvocationSup = ?CHILD(erwa_invocation_sup, supervisor),
 	UserDb = ?CHILD(erwa_user_db, worker),
 
 Procs = [
-				 InvocationSup,
 				 UserDb
         ],
 {ok, {{one_for_one, 10, 10}, Procs}}.

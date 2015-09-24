@@ -240,7 +240,7 @@ call(Uri, RequestId, Options, Arguments, ArgumentsKw, SessionId, Realm) ->
 start_call ({error, _} = Error) ->
     Error;
 start_call({ok, CallInfo}) ->
-    case erwa_invocation_sup:start_invocation(CallInfo) of
+    case erwa_invocation:perform(CallInfo) of
         {ok,Pid} ->
           {ok,Pid};
         _ -> {error,invocation_failed}
@@ -259,7 +259,8 @@ get_call_params(Uri, Realm, RequestId, SessionId,Options,Arguments,ArgumentsKw) 
                                call_options => Options,
                                call_arguments => Arguments,
                                call_argumentskw => ArgumentsKw,
-                               callee_ids => Ids
+                               callee_ids => Ids,
+                               realm => Realm
                               }}
                 end 
         end,
@@ -272,7 +273,7 @@ create_table_for_realm(Realm) ->
 	case lists:member(Table, mnesia:system_info(local_tables)) of
 		true ->
 			mnesia:delete_table(Table);
-		_-> do_nthing
+		_-> do_nothing
 	end,
 	{atomic, ok} = mnesia:create_table(Table, [{disc_copies, []},
 														   {ram_copies,
