@@ -87,29 +87,42 @@ subscribe(Topic,Options,SessionId,Realm) ->
 												 end,
 										case lists:foldl(Filter,[],Subscriptions) of 
 											[] -> 
+                                                Created = calendar:universal_time(),
 												ok =
 												mnesia:write(Table,
 															 #erwa_subscription{uri=Topic,
 																				match=exact,
 																				realm=Realm,
 																				id=Id,
-																				created=calendar:universal_time(),
+																				created=Created,
 																				subscribers=[SessionId]},
 															write),
 												ok = erwa_sess_man:add_subscription(Id,SessionId),
+                                                Details = #{ id=> Id,
+                                                             created => Created,
+                                                             uri => Topic, 
+                                                             match => exact },
+                                                publish_metaevent(on_create,Topic,SessionId, Details,Realm),
+                                                publish_metaevent(on_subscribe, Topic, SessionId, Id , Realm),
                                                 {ok,Id};
 											[#erwa_subscription{subscribers=Subs, id=SubId}=Subscription] ->
 												NewSubs = [SessionId | lists:delete(SessionId,Subs)],
 												ok =
 												mnesia:write(Table,Subscription#erwa_subscription{subscribers=NewSubs},write),
 												ok = erwa_sess_man:add_subscription(SubId,SessionId),
+                                                publish_metaevent(on_subscribe, Topic, SessionId, SubId , Realm),
                                                 {ok,SubId}
-										end;
+                                        end;
                                     [#erwa_subscription{}] -> {error, already_exist}
 								end 
 						end, 
             {atomic, Result} = mnesia:transaction(InsertSub),
-            Result
+            case Result of 
+                {error, already_exist} -> 
+                    subscribe(Topic, Options, SessionId, Realm);
+                {ok, SubId} ->
+                    {ok, SubId}
+            end
 	end.
 
 
@@ -125,14 +138,18 @@ unsubscribe(SubscriptionId,SessionId, Realm) ->
 	Remove = fun() -> 
 					 case mnesia:read(Database, SubscriptionId) of
 						 [] -> mnesia:abort(not_found);
-						 [#erwa_subscription{subscribers=Subs, id=SubscriptionId}=Subscription] -> 
-							 NewSubs = lists:delete(SessionId,Subs),
-							 ok =
-							 mnesia:write(Database,Subscription#erwa_subscription{subscribers=NewSubs},write),
-							 ok =
-							 erwa_sess_man:rem_subscription(SubscriptionId,
-															SessionId),
-							 ok
+                         [#erwa_subscription{subscribers=Subs, id=SubscriptionId, uri=TopicUri}=Subscription] -> 
+                             NewSubs = lists:delete(SessionId,Subs),
+                             publish_metaevent(on_unsubscribe, TopicUri, SessionId, SubscriptionId, Realm),
+                             case NewSubs of 
+                                 [] -> 
+                                     ok = mnesia:delete(Database, SubscriptionId, write),
+                                     publish_metaevent(on_delete, TopicUri, SessionId, SubscriptionId, Realm);
+                                 NewSubs -> 
+                                     ok = mnesia:write(Database,Subscription#erwa_subscription{subscribers=NewSubs},write),
+                                     ok = erwa_sess_man:rem_subscription(SubscriptionId, SessionId)
+                             end,
+                             ok
 					 end 
 			 end,
 	{atomic,Res} = mnesia:transaction(Remove),
@@ -254,7 +271,20 @@ realm_to_db_name(Realm) ->
 gen_id() ->
 	crypto:rand_uniform(0,9007199254740992).
 
-
+publish_metaevent(Event, TopicUri, SessionId, SecondArg, Realm) ->
+    case binary:part(TopicUri,{0,5}) == <<"wamp.">> of
+        true ->
+            do_nothing;
+        false ->
+            MetaTopic = case Event of
+                            on_create -> <<"wamp.subscription.on_create">>;
+                            on_subscribe -> <<"wamp.subscription.on_subscribe">>;
+                            on_unsubscribe -> <<"wamp.subscription.on_unsubscribe">>;
+                            on_delete -> <<"wamp.subscription.on_delete">>
+                        end,
+            {ok, _} = publish(MetaTopic, #{}, [SessionId, SecondArg], undefined, no_session, Realm)     
+    end,
+    ok.
 
 %% -ifdef(TEST).
 %%
