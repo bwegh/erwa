@@ -41,101 +41,101 @@
 
 
 -record(state,{
-			   realm = unknown,
-               sess_id = unknown,
-               mapping = #{}
-               }).
+          realm = unknown,
+          sess_id = unknown,
+          mapping = #{}
+         }).
 
 -define(PROCEDURES,[
-					{<<"wamp.subscription.list">>,fun subscription_list/4},
-					%{<<"wamp.subscription.match">>,fun subscription_match/4},
-					{<<"wamp.subscription.lookup">>,fun subscription_lookup/4},
-					{<<"wamp.registration.list">>,fun registration_list/4},
-					%{<<"wamp.registration.match">>,fun registration_match/4},
-					{<<"wamp.registration.lookup">>,fun registration_lookup/4},
-					{<<"wamp.session.count">>,fun session_count/4},
-					{<<"wamp.session.list">>,fun session_list/4}
-					%{<<"wamp.session.get">>,fun session_get/4}
-				   ]).
+                    {<<"wamp.subscription.list">>,fun subscription_list/4},
+                    %{<<"wamp.subscription.match">>,fun subscription_match/4},
+                    {<<"wamp.subscription.lookup">>,fun subscription_lookup/4},
+                    {<<"wamp.registration.list">>,fun registration_list/4},
+                    %{<<"wamp.registration.match">>,fun registration_match/4},
+                    {<<"wamp.registration.lookup">>,fun registration_lookup/4},
+                    {<<"wamp.session.count">>,fun session_count/4},
+                    {<<"wamp.session.list">>,fun session_list/4}
+                    %{<<"wamp.session.get">>,fun session_get/4}
+                   ]).
 
 start(Args) ->
-  gen_server:start(?MODULE, Args, []).
+    gen_server:start(?MODULE, Args, []).
 
 start_link(Args) ->
-  gen_server:start_link(?MODULE, Args, []).
+    gen_server:start_link(?MODULE, Args, []).
 
 stop(Pid) ->
-  gen_server:call(Pid, stop).
+    gen_server:call(Pid, stop).
 
 
 init(Args) ->
-  #{realm:=Realm} = Args,
-  {ok,SessionId} = erwa_sess_man:register_session(Realm),
-  F = fun({Method,Fun},Map) ->
-        {ok,RegId} = erwa_dealer:register(Method, #{match => exact, invoke => single}, SessionId, Realm),
-        maps:put(RegId,Fun,Map)
-      end,
-  Mapping = lists:foldl(F,#{},?PROCEDURES),
-  {ok,#state{sess_id = SessionId, mapping=Mapping, realm=Realm}}.
+    #{realm:=Realm} = Args,
+    {ok,SessionId} = erwa_sess_man:register_session(Realm),
+    F = fun({Method,Fun},Map) ->
+                {ok,RegId} = erwa_dealer:register(Method, #{match => exact, invoke => single}, SessionId, Realm),
+                maps:put(RegId,Fun,Map)
+        end,
+    Mapping = lists:foldl(F,#{},?PROCEDURES),
+    {ok,#state{sess_id = SessionId, mapping=Mapping, realm=Realm}}.
 
 
 handle_call(_Msg,_From,State) ->
-  {reply,ignored,State}.
+    {reply,ignored,State}.
 
 handle_cast(_Msg,State) ->
-  {noreply,State}.
+    {noreply,State}.
 
 handle_info({erwa,{invocation,InvocationId,ProcedureId,Options,Arguments,ArgumentsKw}},#state{sess_id=SessionId,mapping=Mapping,realm=Realm}=State) ->
-  Fun = maps:get(ProcedureId,Mapping,fun empty_result/4),
-  case Fun(Options,Arguments,ArgumentsKw,State) of
-    {ok,OutOptions,OutArguments,OutArgumentsKw} ->
-      ok = erwa_invocation:yield(InvocationId,OutOptions,OutArguments,OutArgumentsKw,SessionId,Realm);
-    {error,ErrDetails,ErrorUri,ErrArguments,ErrArgumentsKw} ->
-      ok = erwa_invocation:error(InvocationId,ErrDetails,ErrorUri,ErrArguments,ErrArgumentsKw,SessionId,Realm)
-  end,
-  {noreply,State};
+    Fun = maps:get(ProcedureId,Mapping,fun empty_result/4),
+    case Fun(Options,Arguments,ArgumentsKw,State) of
+        {ok,OutOptions,OutArguments,OutArgumentsKw} ->
+            ok = erwa_invocation:yield(InvocationId,OutOptions,OutArguments,OutArgumentsKw,SessionId,Realm);
+        {error,ErrDetails,ErrorUri,ErrArguments,ErrArgumentsKw} ->
+            ok = erwa_invocation:error(InvocationId,ErrDetails,ErrorUri,ErrArguments,ErrArgumentsKw,SessionId,Realm)
+    end,
+    {noreply,State};
 handle_info(_Info, State) ->
-	{noreply, State}.
+    {noreply, State}.
 
 
 session_count(_Options,_Arguments,_ArgumentsKw,#state{realm=Realm}) ->
-  {ok,Count} = erwa_sess_man:get_session_count(Realm),
-  {ok,#{},[Count],undefined}.
+    {ok,Count} = erwa_sess_man:get_session_count(Realm),
+    {ok,#{},[Count],undefined}.
 
 session_list(_Options,_Arguments,_ArgumentsKw,#state{realm=Realm}) ->
-  {ok,Ids} = erwa_sess_man:get_session_ids(Realm),
-  {ok,#{},Ids,undefined}.
+    {ok,Ids} = erwa_sess_man:get_session_ids(Realm),
+    {ok,#{},Ids,undefined}.
 
 subscription_list(_Options,_Arguments,_ArgumentsKw,#state{realm=Realm}) ->
-  {ok,List} = erwa_broker:get_subscriptions(Realm),
-  {ok,#{},[List],undefined}.
+    {ok,List} = erwa_broker:get_subscriptions(Realm),
+    {ok,#{},[List],undefined}.
 
 subscription_lookup(_Options,[SubscriptionId],_ArgumentsKw,#state{realm=Realm}) ->
-	case erwa_broker:get_subscription_details(SubscriptionId,Realm) of
-		{ok,Details} ->
-			{ok, #{},[Details],undefined};
-		{error,not_found} ->
-			{error,#{},invalid_argument,undefined,undefined}
-	end.
+    case erwa_broker:get_subscription_details(SubscriptionId,Realm) of
+        {ok,Details} ->
+            {ok, #{},[Details],undefined};
+        {error,not_found} ->
+            {error,#{},invalid_argument,undefined,undefined}
+    end.
 
 registration_list(_Options,_Arguments,_ArgumentsKw,#state{realm=Realm}) ->
-  {ok,List} = erwa_dealer:get_registrations(Realm),
-  {ok,#{},[List],undefined}.
+    {ok,List} = erwa_dealer:get_registrations(Realm),
+    {ok,#{},[List],undefined}.
 
 registration_lookup(_Options,[RegistrationId],_ArgumentsKw,#state{realm=Realm}) ->
-  case erwa_dealer:get_registration(RegistrationId, Realm) of
-    {ok,Details} ->
-      {ok, #{},[Details],undefined};
-    {error,not_found} ->
-      {error,#{},invalid_argument,undefined,undefined}
-  end.
+    case erwa_dealer:get_registration(RegistrationId, Realm) of
+        {ok,Details} ->
+            {ok, #{},[Details],undefined};
+        {error,not_found} ->
+            {error,#{},invalid_argument,undefined,undefined}
+    end.
 
 empty_result(_,_,_,_) ->
-  {#{},undefined,undefined}.
+    {#{},undefined,undefined}.
 
 
 terminate(_Reason, _State) ->
-	ok.
+    ok.
 
 code_change(_OldVsn, State, _Extra) ->
-	{ok, State}.
+    {ok, State}.

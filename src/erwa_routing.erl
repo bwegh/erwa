@@ -45,19 +45,19 @@
 
 
 -define(BROKER_FEATURES,#{features => #{
-					 event_history => false,
-					 partitioned_pubsub => false,
-					 pattern_based_subscription => false,
-					 publication_trustlevels => false,
-					 publisher_exclusion => true,
-					 publisher_identification => true,
-					 subscriber_blackwhite_listing => true,
-					 subscriber_list => false,
-					 subscriber_metaevents => false
-					}
+                            event_history => false,
+                            partitioned_pubsub => false,
+                            pattern_based_subscription => false,
+                            publication_trustlevels => false,
+                            publisher_exclusion => true,
+                            publisher_identification => true,
+                            subscriber_blackwhite_listing => true,
+                            subscriber_list => false,
+                            subscriber_metaevents => false
+                           }
 
-				  }
-	   ).
+                         }
+       ).
 
 -define(DEALER_FEATURES,#{features => #{
                                  call_canceling =>             true,
@@ -68,7 +68,8 @@
                                  caller_identification =>      false,
                                  partitioned_rpc =>            false,
                                  pattern_based_registration => false,
-                                 progressive_call_results =>   true
+                                 progressive_call_results =>   true,
+                                 shared_registration =>         true
                                  }
 
                    }

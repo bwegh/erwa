@@ -48,8 +48,9 @@
 		  match = exact,
 		  invoke = single,
 		  options = [],
-		  ids = []
-		 }).
+          ids = [],
+          last = 0 
+         }).
 
 
 
@@ -111,45 +112,80 @@ register(ProcedureUri, Options, SessionId, Realm) ->
     register_procedure(Args).
 
 
-register_procedure(#{match := exact, invoke := single} = Args) ->
-    register_exact_single_procedure(Args);
+register_procedure(#{match := exact} = Args) ->
+    send_metaevents(register_exact_procedure(Args));
 register_procedure(_) ->
     {error, not_supported}.
 
+send_metaevents({ok,created,#{id := Id} = Args}) ->
+    publish_metaevent(on_create,Args),
+    publish_metaevent(on_register,Args),
+    {ok,Id};
+send_metaevents({ok,registered, #{id := Id} = Args}) ->
+    publish_metaevent(on_register,Args),
+    {ok, Id};
+send_metaevents({ok,unregistered,Args}) ->
+    publish_metaevent(on_unregister,Args),
+    ok;
+send_metaevents({ok,deleted,Args}) ->
+    publish_metaevent(on_unregister,Args),
+    publish_metaevent(on_delete,Args),
+    ok.
 
-register_exact_single_procedure(Args) ->
+
+register_exact_procedure(Args) ->
+    true = is_valid_invoke(Args),
     %Invoke = maps:get(invoke,Args),
     F = fun() ->
-                case is_registered_uri(Args) of
-                    true -> 
+                case can_uri_be_used(Args) of
+                    false -> 
                         {error, procedure_already_exists};
-                    false ->
-                        {ok,ProcId} = do_create_procedure(Args),
+                    true ->
+                        {ok, Created, ProcId} = create_or_update_procedure(get_procedure(Args)),
                         SessionId = maps:get(session, Args),
                         ok = erwa_sess_man:add_registration(ProcId, SessionId),
-                        publish_metaevent(on_register,Args),
-                        {ok, ProcId}
+                        {ok, Created, ProcId}
                 end 
         end, 
     {atomic, Res} = mnesia:transaction(F),
     Res.
 
+is_valid_invoke(#{invoke := Invoke}) ->
+    lists:member(Invoke,[single,roundrobin,random,first,last]).
 
-is_registered_uri(Args) -> 
-    #{ uri := Uri, realm := Realm } = Args,
+
+can_uri_be_used(#{ uri := Uri, realm := Realm, invoke := Invoke }) -> 
     Table = realm_to_table_name(Realm),
-    case mnesia:index_read(Table, Uri, uri) of
-        [] -> false;
-        _ -> true 
-    end.
+    is_resusable_procedure(mnesia:index_read(Table,Uri,uri),Invoke).
 
 
-do_create_procedure(ArgsIn) ->
+is_resusable_procedure([],_) ->
+    true;
+is_resusable_procedure(#erwa_procedure{invoke=single},_) ->
+    false;
+is_resusable_procedure(#erwa_procedure{invoke=Invoke},Invoke) ->
+    true;
+is_resusable_procedure(_,_) ->
+    false.
+
+
+get_procedure(#{realm := Realm, uri:= Uri } = Args) ->
+    Table = realm_to_table_name(Realm),
+    {mnesia:index_read(Table,Uri,uri), Args}.
+
+create_or_update_procedure({[#erwa_procedure{id=Id, ids=SessionIds, last=Last}=Proc],#{realm := Realm, session := SessionId}=Args}) ->
+    Table = realm_to_table_name(Realm),
+    {NewSessionIds, NewLast} =  case lists:member(SessionId,SessionIds) of
+                                    true -> {SessionIds, Last};
+                                    false -> {[SessionId | SessionIds], Last+1}
+                                end,
+    ok = mnesia:write(Table,Proc#erwa_procedure{ids=NewSessionIds, last=NewLast}, write),
+    {ok, registered, Args#{id := Id}};
+create_or_update_procedure({[],ArgsIn}) ->
     Args = ensure_unique_id(ArgsIn), 
     Table = realm_to_table_name(maps:get(realm,Args)),
-    publish_metaevent(on_create,Args),
-    mnesia:write(Table,register_args_to_record(Args),write),
-    {ok,maps:get(id,Args)}.
+    ok = mnesia:write(Table,register_args_to_record(Args),write),
+    {ok, created, Args}.
 
 ensure_unique_id(Args) ->
     Id = gen_id(),
@@ -196,14 +232,18 @@ unregister( RegistrationId,SessionId, Realm) ->
                         case lists:member(SessionId,Ids) of
                             true -> 
                                 ok = erwa_sess_man:rem_registration(RegistrationId, SessionId),
-                                publish_metaevent(on_unregister,Uri,ProcId,SessionId,Realm,undefined),
                                 NewIds = lists:delete(SessionId, Ids),
+                                Args = #{uri => Uri, id => ProcId, session => SessionId, realm => Realm},
                                 case NewIds of 
                                     [] ->
                                         ok = mnesia:delete(Table,ProcId,write),
-                                        publish_metaevent(on_delete,Uri,ProcId,SessionId,Realm,undefined);
+                                        {ok,deleted,Args};
+                                        %% publish_metaevent(on_unregister,Uri,ProcId,SessionId,Realm,undefined),
+                                        %% publish_metaevent(on_delete,Uri,ProcId,SessionId,Realm,undefined);
                                     _ -> 
-                                        ok = mnesia:write(Table, Proc#erwa_procedure{ids=NewIds}, write)
+                                        ok = mnesia:write(Table, Proc#erwa_procedure{ids=NewIds}, write),
+                                        {ok,unregistered,Args}
+                                        %% publish_metaevent(on_unregister,Uri,ProcId,SessionId,Realm,undefined),
                                 end;
                             false ->
                                 {error, not_registered}
@@ -211,7 +251,7 @@ unregister( RegistrationId,SessionId, Realm) ->
                 end 
         end,
     {atomic, Res} =  mnesia:transaction(F),
-    Res.
+    send_metaevents(Res).
 
 
 
@@ -231,9 +271,6 @@ unregister_all([H|T],SessionId, Realm) ->
            Arguments :: list(), ArgumentsKw :: map(), Session::term(),
 		   Realm::binary()) ->
   {ok, pid()} | {error,invocation_failed} | {error, procedure_not_found}.
-
-
-
 call(Uri, RequestId, Options, Arguments, ArgumentsKw, SessionId, Realm) ->
     start_call(get_call_params(Uri, Realm, RequestId, SessionId, Options, Arguments, ArgumentsKw)).
 
@@ -252,21 +289,58 @@ get_call_params(Uri, Realm, RequestId, SessionId,Options,Arguments,ArgumentsKw) 
                 case mnesia:index_read(Table, Uri, uri) of
                     [] -> 
                         {error, procedure_not_found};
-                    [#erwa_procedure{uri = Uri, id = Id, ids = Ids}] ->
+                    [#erwa_procedure{uri = Uri, id = Id, ids = Ids, last=L, invoke = Invoke}=Proc] ->
+                        Callee = get_callee(Ids, Invoke, L+1 ),
+                        ok = update_last_if_needed(Proc, Invoke, Callee, Realm),
                         {ok, #{procedure_id => Id,
                                caller_id => SessionId,
                                call_req_id => RequestId,
                                call_options => Options,
                                call_arguments => Arguments,
                                call_argumentskw => ArgumentsKw,
-                               callee_ids => Ids,
+                               callee_ids => [Callee],
                                realm => Realm
                               }}
+                        
                 end 
         end,
     {atomic, Res} = mnesia:transaction(F),
     Res.
 
+get_callee([H|_],single,_) ->
+    H;
+get_callee(Callees,random,_) ->
+    Len = length(Callees),
+    lists:nth(crypto:rand_uniform(1,Len),Callees);
+get_callee(Callees,roundrobin,NextIn) ->
+    Next = case NextIn > length(Callees) of 
+               true ->
+                   1;
+               false ->
+                   NextIn
+           end,
+    lists:nth(Next,Callees);
+get_callee([H|_],first,_) ->
+    H;
+get_callee(Callees,last,_) -> 
+    [H|_] = lists:reverse(Callees),
+    H.
+
+update_last_if_needed(#erwa_procedure{ids = Callees} = Proc, roundrobin, Callee, Realm) ->
+    Table = realm_to_table_name(Realm),
+    Last = get_last(Callee, Callees),
+    ok = mnesia:write(Table,Proc#erwa_procedure{last=Last},write);
+update_last_if_needed(_,_,_,_) ->
+    ok.
+
+
+get_last(Callee, Callees) ->
+    get_last(Callee, Callees, 1).
+
+get_last(_Callee, [], _Pos) -> 1;
+get_last(Callee, [Callee|T], Pos) -> Pos;
+get_last(Callee, [H|T], Pos ) -> get_last(Callee, T, Pos +1).
+    
 
 create_table_for_realm(Realm) ->
 	Table = realm_to_table_name(Realm),
@@ -301,32 +375,29 @@ gen_id() ->
   crypto:rand_uniform(0,9007199254740992).
 
 publish_metaevent(Event,Args) ->
-    #{uri := Uri, id := Id, session := SessionId, realm := Realm} = Args,
-    publish_metaevent(Event, Uri, Id, SessionId, Realm, Args).
-
-publish_metaevent(Event,ProcedureUri,ProcId,SessionId,Realm,Args) -> 
-  case binary:part(ProcedureUri,{0,5}) == <<"wamp.">> of
-    true ->
-      % do not fire metaevents on "wamp.*" uris
-      ok;
-    false ->
-          {MetaTopic, SecondArg} = case Event of
-                                       on_create -> 
-                                           {<<"wamp.registration.on_create">>,
-                                            maps:with([id,created,uri,match,invoke],Args)};
-                                       on_register -> 
-                                           {<<"wamp.registration.on_register">>,
-                                            ProcId};
-                                       on_unregister -> 
-                                           {<<"wamp.registration.on_unregister">>,
-                                            ProcId};
-                                       on_delete -> 
-                                           {<<"wamp.registration.on_delete">>,
-                                            ProcId}
-              end,
-      {ok,_} = erwa_broker:publish(MetaTopic,#{},[SessionId,SecondArg],undefined,no_session,Realm)
-  end,
-  ok.
+    #{uri := ProcedureUri, id := ProcId, session := SessionId, realm := Realm} = Args,
+    case binary:part(ProcedureUri,{0,5}) == <<"wamp.">> of
+        true ->
+            % do not fire metaevents on "wamp.*" uris
+            ok;
+        false ->
+            {MetaTopic, SecondArg} = case Event of
+                                         on_create -> 
+                                             {<<"wamp.registration.on_create">>,
+                                              maps:with([id,created,uri,match,invoke],Args)};
+                                         on_register -> 
+                                             {<<"wamp.registration.on_register">>,
+                                              ProcId};
+                                         on_unregister -> 
+                                             {<<"wamp.registration.on_unregister">>,
+                                              ProcId};
+                                         on_delete -> 
+                                             {<<"wamp.registration.on_delete">>,
+                                              ProcId}
+                                     end,
+            {ok,_} = erwa_broker:publish(MetaTopic,#{},[SessionId,SecondArg],undefined,no_session,Realm)
+    end,
+    ok.
 
 
 %*************************************************************************************************
