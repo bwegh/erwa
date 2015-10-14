@@ -110,11 +110,11 @@
 init() ->
   #state{}.
 
--spec handle_message( term() , record(state)) ->
-  { ok, record(state) } |
-  {stop, record(state)} |
-  {reply, Message:: term(), record(state)} |
-  {reply_stop, Message:: term(), record(state) }.
+-spec handle_message( term() , #state{}) ->
+  { ok, #state{} } |
+  {stop, #state{}} |
+  {reply, Message:: term(), #state{}} |
+  {reply_stop, Message:: term(), #state{} }.
 
 
 handle_message(InMsg,State) ->
@@ -132,11 +132,11 @@ handle_message(InMsg,State) ->
 		Other -> Other
   end.
 
--spec handle_info( term() , record(state)) ->
-  { ok, record(state) } |
-  {stop, record(state)} |
-  {send, Message:: term(), record(state)} |
-  {send_stop, Message:: term(), record(state) }.
+-spec handle_info( term() , #state{}) ->
+  { ok, #state{} } |
+  {stop, #state{}} |
+  {send, Message:: term(), #state{}} |
+  {send_stop, Message:: term(), #state{} }.
 
 handle_info(Info,State) ->
   case hndl_info(Info,State) of
@@ -154,7 +154,9 @@ handle_info(Info,State) ->
   end.
 
 
--spec check_out_message(atom(), term(), record(state) ) -> {atom(), term(), record(state)} | {ok, record(state)}.
+-spec check_out_message(atom(), term(), #state{} ) -> {atom(), term(),
+                                                            #state{} } |
+                                                           {ok, #state{} }.
 check_out_message(Result, Msg,State) ->
   %% case erwa_middleware:validate_out_message(Msg,State) of
   %%   false ->

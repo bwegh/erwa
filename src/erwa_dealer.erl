@@ -338,8 +338,8 @@ get_last(Callee, Callees) ->
     get_last(Callee, Callees, 1).
 
 get_last(_Callee, [], _Pos) -> 1;
-get_last(Callee, [Callee|T], Pos) -> Pos;
-get_last(Callee, [H|T], Pos ) -> get_last(Callee, T, Pos +1).
+get_last(Callee, [Callee|_], Pos) -> Pos;
+get_last(Callee, [_|T], Pos ) -> get_last(Callee, T, Pos +1).
     
 
 create_table_for_realm(Realm) ->
