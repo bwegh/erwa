@@ -30,10 +30,17 @@
 -export([create_table/0]).
 -export([drop_table/0]).
 
--export([register_session/1]).
+-export([create_session/0]).
+-export([connect_to/1]).
 -export([unregister_session/0]).
 -export([get_realm/1]).
 
+-export([set_transport/1]).
+-export([set_authdata/1]).
+%% -export([set_authrole/1]).
+%% -export([set_authmethod/1]).
+%% -export([set_authprovider/1]).
+%%
 -export([add_subscription/2]).
 -export([rem_subscription/2]).
 -export([get_subscriptions/1]).
@@ -52,8 +59,13 @@
 
 -record(erwa_session_record, {
 					id = none,
+                    authid = anonymous,
 					pid = unknown,
-					realm = unknown,
+                    role = none,
+					realm = none,
+                    authmethod = none,
+                    authprovider = none,
+                    transport = unknown,
 					subscriptions = [],
 					registrations = []
 				 }).
@@ -61,18 +73,18 @@
 
 -spec create_table() -> ok.
 create_table() -> 
-	case lists:member(erwa_session_record, mnesia:system_info(local_tables)) of
-		true ->
-			mnesia:delete_table(erwa_session_record);
-		_-> do_nthing
-	end,
-	mnesia:create_table(erwa_session_record,[{disc_copies,[]}, {disc_only_copies, []},
-																					 {ram_copies, [node()]}, {type, set},
-																					 {attributes, record_info(fields,
-																																		erwa_session_record)},
-																					 {index, [pid, realm]}]),
-	mnesia:wait_for_tables([erwa_session_record],60000),
-	ok.
+    case lists:member(erwa_session_record, mnesia:system_info(local_tables)) of
+        true ->
+            mnesia:delete_table(erwa_session_record);
+        _-> do_nthing
+    end,
+    mnesia:create_table(erwa_session_record,[{disc_copies,[]}, {disc_only_copies, []},
+                                             {ram_copies, [node()]}, {type, set},
+                                             {attributes, record_info(fields,
+                                                                      erwa_session_record)},
+                                             {index, [pid, realm]}]),
+    mnesia:wait_for_tables([erwa_session_record],60000),
+    ok.
 
 
 -spec drop_table() -> ok.
@@ -91,12 +103,83 @@ send_message_to(Msg,SessionId) ->
             {error,unknown}
     end.
 
+-spec create_session() -> {ok,non_neg_integer()}.
+create_session() ->
+    Pid = self(),
+    AddSession = fun() -> 
+                         ID = ensure_unique_id(),
+                         Data = #erwa_session_record{id=ID, pid=Pid},
+                         ok = mnesia:write(Data),
+                         {ok,ID}
+                 end,
+    {atomic, Res} =  mnesia:transaction(AddSession),
+    Res.
 
--spec register_session(Realm :: binary()) -> {ok,non_neg_integer()}.
-register_session(Realm) ->
+ensure_unique_id() ->
+    ID = crypto:rand_uniform(0,9007199254740992),
+    case mnesia:read({erwa_session_record,ID}) of
+        [] -> ID;
+        _ -> ensure_unique_id()
+    end.
+
+
+set_transport(Dict) ->
+    Pid = self(),
+    {atomic, Res} = mensia:transaction(update_session(Pid,[{transport,Dict}])),
+    Res.
+
+
+set_authdata(Map) ->
+    Pid = self(),
+    {atomic, Res} = mensia:transaction(update_session(Pid,Map)),
+    Res.
+
+%% set_role(Role) ->
+%%     Pid = self(),
+%%     {atomic, Res} = mensia:transaction(update_session(Pid,role,Role)),
+%%     Res.
+%%
+%% set_authmethod(Method) ->
+%%     Pid = self(),
+%%     {atomic, Res} = mensia:transaction(update_session(Pid,authmethod,Method)),
+%%     Res.
+%%
+%% set_authprovider(Provider) ->
+%%     Pid = self(),
+%%     {atomic, Res} = mensia:transaction(update_session(Pid,authprovider,Provider)),
+%%     Res.
+update_session(Pid, Map) when is_map(Map) ->
+    update_session(Pid, maps:to_list(Map));
+update_session(Pid, PropList) ->
+    case mnesia:index_read(erwa_session_record,Pid, pid) of
+        [#erwa_session_record{} = Session] ->
+            ok = mnesia:write(update_session_records(Session, PropList)),
+            ok;
+        _ ->  {error, not_found}
+    end.
+
+update_session_records(Sess, []) ->
+    Sess;
+update_session_records(Sess, [{transport, Trans} | Rest ] ) ->
+    update_session_records(Sess#erwa_session_record{transport = Trans}, Rest);
+update_session_records(Sess, [{authid, AuthId}| Rest]) ->
+    update_session_records(Sess#erwa_session_record{authid = AuthId}, Rest);
+update_session_records(Sess, [{role, Role} | Rest]) ->
+    update_session_records(Sess#erwa_session_record{role = Role}, Rest);
+update_session_records(Sess, [{authmethod, Method} | Rest]) ->
+    update_session_records(Sess#erwa_session_record{authmethod = Method}, Rest);
+update_session_records(Sess, [{authprovider, Provider} | Rest ]) ->
+    update_session_records(Sess#erwa_session_record{authprovider = Provider}, Rest);
+update_session_records(Sess, [_|Rest]) ->
+    update_session_records(Sess, Rest). 
+
+
+
+-spec connect_to(Realm :: binary()) -> ok | {error, term()}.
+connect_to(Realm) ->
+    Pid = self(),
     case erwa_realms:exists(Realm) of
-        true -> ID = add_session(self(), Realm),
-                {ok, ID};
+        true -> session_to_realm(Pid, Realm);
         false -> {error, no_such_realm}
     end.
 
@@ -239,21 +322,48 @@ get_session_ids(Realm) ->
     {ok,lists:foldl(ExtractId,[],Records)}.
 
 
-add_session(Pid,Realm) ->
-  ID = crypto:rand_uniform(0,9007199254740992),
-	Data = #erwa_session_record{id=ID, pid=Pid, realm=Realm},
-    AddSession = fun() -> case mnesia:read({erwa_session_record, ID}) of 
-                              [] -> mnesia:write(Data);
-                              _ -> mnesia:abort(already_exists)
-                          end 
-                 end,
-	case mnesia:transaction(AddSession) of
-		{atomic, ok} ->
-            publish_metaevent(on_join,#{realm => Realm, session => ID}, Realm),
-            ID;
-		{aborted, already_exists}  -> 
-            add_session(Pid,Realm)
-	end.
+session_to_realm(Pid, Realm) ->
+    Connect = fun() ->
+                      case mnesia:index_read(erwa_session_record,Pid, pid) of
+                          [#erwa_session_record{realm = none} = Session] ->
+                              ok = mnesia:write(Session#erwa_session_record{realm=Realm}),
+                              {ok, Session};
+                          _ ->  {error, not_found}
+                      end 
+              end,  
+    {atomic, Res} = mnesia:transaction(Connect),
+    case Res of 
+        {ok,Session} ->
+            Info = session_to_dict(Session),
+            publish_metaevent(on_join,maps:with([id,authid,role,authmethod,authprovider,transport],Info), Realm),
+            ok;
+        Res -> Res 
+    end.
+
+session_to_dict(Session) ->
+    #erwa_session_record{
+       id = Id,
+       authid = AuthId,
+       pid = Pid,
+       role = Role,
+       realm = Realm,
+       authmethod = AuthMethod,
+       authprovider = AuthProvider,
+       transport = Transport,
+       subscriptions = Subs,
+       registrations = Regs 
+      } = Session,
+    #{ id => Id,
+       authid => AuthId,
+       pid => Pid,
+       role => Role,
+       realm => Realm,
+       authmethod => AuthMethod,
+       authprovider => AuthProvider,
+       transport => Transport,
+       subscriptions => Subs,
+       registrations => Regs
+     }.
 
 
 delete_session(Pid) when is_pid(Pid) ->
@@ -294,18 +404,18 @@ publish_metaevent(Event,Arg,Realm) ->
                 end, 
     erwa_broker:publish(MetaTopic,#{},[Arg],undefined,no_session,Realm).
 
--ifdef(TEST).
-
-simple_test() ->
-    mnesia:start(),
-    create_table(),
-    erwa_publications:create_table(),
-    erwa_realms:init(),
-    erwa_realms:add(<<"test_realm">>),
-	ok = create_table(),
-	not_found = unregister_session(), 
-  {ok,_} = register_session(<<"test_realm">>),
-  ok = unregister_session(),
-	ok = drop_table().
--endif.
+%% -ifdef(TEST).
+%%
+%% simple_test() ->
+%%     mnesia:start(),
+%%     create_table(),
+%%     erwa_publications:create_table(),
+%%     erwa_realms:init(),
+%%     erwa_realms:add(<<"test_realm">>),
+%% 	ok = create_table(),
+%% 	not_found = unregister_session(), 
+%%     {ok,_} = create_session(),
+%%   ok = unregister_session(),
+%% 	ok = drop_table().
+%% -endif.
 

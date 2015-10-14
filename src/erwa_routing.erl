@@ -170,10 +170,11 @@ check_out_message(Result, Msg,State) ->
 hndl_msg({hello,RealmName,Details}, State) ->
   AuthId = maps:get(authid, Details, anonymous),
   Roles = maps:get(roles, Details, []),
+  {ok, SessionId} = erwa_sess_man:create_session(),
   case {AuthId == anonymous, erwa_user_db:allow_anonymous(RealmName, tcp)} of 
     {true, true} -> 
-      case erwa_sess_man:register_session(RealmName) of
-        {ok,SessionId} ->
+      case erwa_sess_man:connect_to(RealmName) of
+        ok ->
           %% SessionData = #{authid => anonymous, role => anonymous, session =>
           %%                 SessionId},
           WelcomeMsg ={welcome,SessionId,#{agent => erwa:get_version(), roles =>
@@ -184,9 +185,11 @@ hndl_msg({hello,RealmName,Details}, State) ->
                                         id=SessionId
                                         }}; 
         {error,_} ->
+              erwa_sess_man:unregister_session(),
           {reply_stop, {abort, #{}, no_such_realm},State}
       end;
     {true, false} -> 
+              erwa_sess_man:unregister_session(),
       {reply_stop, {abort, #{}, no_such_realm}, State};
     {false,_} ->
       AuthMethods = maps:get(authmethods, Details, []),
