@@ -58,7 +58,7 @@ get_pub_id() ->
 
 
 new_pub_id() ->
-  ID = crypto:rand_uniform(0,9007199254740992),
+  ID = crypto:rand_uniform(0,9007199254740993),
   Data = #erwa_pub_rec{id=ID},
   Trans = fun() -> 
                   case mnesia:read({erwa_pub_rec, ID}) of 

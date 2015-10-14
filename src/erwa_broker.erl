@@ -269,7 +269,7 @@ realm_to_db_name(Realm) ->
 	binary_to_atom(<< Prefix/binary, Realm/binary >>, utf8 ).
 
 gen_id() ->
-	crypto:rand_uniform(0,9007199254740992).
+	crypto:rand_uniform(0,9007199254740993).
 
 publish_metaevent(Event, TopicUri, SessionId, SecondArg, Realm) ->
     case binary:part(TopicUri,{0,5}) == <<"wamp.">> of

@@ -73,7 +73,7 @@ init(Args) ->
     {ok, SessionId} = erwa_sess_man:create_session(),
     ok = erwa_sess_man:connect_to(Realm),
     F = fun({Method,Fun},Map) ->
-                {ok,RegId} = erwa_dealer:register(Method, #{match => exact, invoke => single}, SessionId, Realm),
+                {ok,RegId} = erwa_dealer:register(Method, #{match => exact, invoke => random}, SessionId, Realm),
                 maps:put(RegId,Fun,Map)
         end,
     Mapping = lists:foldl(F,#{},?PROCEDURES),
