@@ -27,6 +27,7 @@
 -endif.
 
 -export([init/0]).
+-export([close/0]).
 -export([handle_message/2]).
 -export([handle_info/2]).
 
@@ -108,7 +109,12 @@
 
 
 init() ->
-  #state{}.
+    {ok, Id} = erwa_sess_man:create_session(),
+  #state{id=Id}.
+
+close() ->
+    erwa_sess_man:unregister_session(),
+    ok.
 
 -spec handle_message( term() , #state{}) ->
   { ok, #state{} } |
@@ -167,10 +173,9 @@ check_out_message(Result, Msg,State) ->
   {Result, Msg, State}.
 
 
-hndl_msg({hello,RealmName,Details}, State) ->
+hndl_msg({hello,RealmName,Details}, #state{id=SessionId} = State) ->
   AuthId = maps:get(authid, Details, anonymous),
   Roles = maps:get(roles, Details, []),
-  {ok, SessionId} = erwa_sess_man:create_session(),
   case {AuthId == anonymous, erwa_user_db:allow_anonymous(RealmName, tcp)} of 
     {true, true} -> 
       case erwa_sess_man:connect_to(RealmName) of
@@ -266,14 +271,12 @@ hndl_msg_authed({subscribe,RequestId,Options,Topic},#state{realm_name=RealmName,
   %%     {reply, {error,subscribe,RequestId,OutDetails,Error}}
   %% end;
 
-hndl_msg_authed({unsubscribe,RequestId,SubscriptionId},#state{id=SessionId,
-															  realm_name=RealmName}=State) ->
+hndl_msg_authed({unsubscribe,RequestId,SubscriptionId},#state{id=SessionId, realm_name=RealmName}=State) ->
   ok = erwa_broker:unsubscribe(SubscriptionId,SessionId,RealmName),
   {reply, {unsubscribed,RequestId},State};
 
 hndl_msg_authed({publish,RequestId,Options,Topic,Arguments,ArgumentsKw},#state{realm_name=RealmName,id=SessionId}=State) ->
-  {ok,PublicationId} =
-  erwa_broker:publish(Topic,Options,Arguments,ArgumentsKw,SessionId,RealmName),
+  {ok,PublicationId} = erwa_broker:publish(Topic,Options,Arguments,ArgumentsKw,SessionId,RealmName),
   case maps:get(acknowledge,Options,false) of
     true ->
       {reply,{published,RequestId,PublicationId},State};
@@ -307,7 +310,6 @@ hndl_msg_authed({cancel,RequestId,Options},#state{calls=Calls}=State) ->
     {RequestId,InvocationId} ->
       ok = erwa_invocation:cancel(InvocationId,Options),
       {reply,{error,call,RequestId,#{},canceled},State#state{calls=lists:keydelete(RequestId,1,Calls)}};
-
     false ->
       {reply, {error,call,RequestId,#{},no_such_procedure}, State};
     {error,_} ->
@@ -353,8 +355,7 @@ hndl_msg_authed(_Msg, State) ->
 
 
 
-hndl_info({invocation,DealerId,ProcedureId,Options,Arguments,ArgumentsKw},
-          #state{invocation_id=ID, invocations=Invs}=State) ->
+hndl_info({invocation,DealerId,ProcedureId,Options,Arguments,ArgumentsKw}, #state{invocation_id=ID, invocations=Invs}=State) ->
   NewState = State#state{invocations=[{ID,DealerId}|Invs],invocation_id=ID+1},
   {send,{invocation,ID,ProcedureId,Options,Arguments,ArgumentsKw},NewState};
 
@@ -396,17 +397,7 @@ hndl_info(Info, State) ->
 
 
 close_session(#state{id=SessionId,realm_name=RealmName}) ->
-	ok = case SessionId of
-			 none -> ok;
-			 _ -> erwa_sess_man:unregister_session(),
-                  erwa_broker:unsubscribe_all(SessionId,RealmName),
-                  erwa_dealer:unregister_all(SessionId,RealmName)
-		 end,
-	ok.
+    erwa_sess_man:unregister_session(),
+    erwa_broker:unsubscribe_all(SessionId,RealmName),
+    erwa_dealer:unregister_all(SessionId,RealmName).
 
--ifdef(TEST).
-
-
-
-
--endif.

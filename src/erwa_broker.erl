@@ -155,7 +155,9 @@ unsubscribe(SubscriptionId,SessionId, Realm) ->
 	{atomic,Res} = mnesia:transaction(Remove),
 	Res.
 
--spec unsubscribe_all(SessionId::non_neg_integer(),Realm::binary()) -> ok.
+-spec unsubscribe_all(SessionId::non_neg_integer(),Realm::binary() | none) -> ok.
+unsubscribe_all(_,none) ->
+    ok;
 unsubscribe_all(SessionId,Realm) ->
 	Subs = erwa_sess_man:get_subscriptions(SessionId),
 	unsubscribe_all(Subs,SessionId,Realm).

@@ -74,8 +74,8 @@ start_link(Ref, Socket, Transport, Opts) ->
 	start_link_tcp_connection_server(Ref, Socket, Transport, Opts).
 
 init(Ref, Socket, Transport, _Opts = []) ->
-	ok = ack_otp_starting(Ref),
-	ok = enable_socket_once(Transport, Socket),
+	ack_otp_starting(Ref),
+	enable_socket_once(Transport, Socket),
 	State = create_intial_state(Transport,Socket),
 	gen_server:enter_loop(?MODULE, [], State).
 
@@ -106,8 +106,7 @@ handle_info(Msg,State) ->
 
 ack_otp_starting(Ref) ->
 	ok = proc_lib:init_ack({ok, self()}),
-	ok = ranch:accept_ack(Ref),
-	ok.
+	ok = ranch:accept_ack(Ref).
 
 create_intial_state(Transport,Socket) ->
   {Ok,Closed, Error} = Transport:messages(),
@@ -137,8 +136,7 @@ deserialize_and_handle_incomming_messages(Data,State) ->
 	handle_incomming_wamp_messages( Messages, State ).
 
 deserialize_messages_update_state(Data,#state{buffer=Buffer, enc=Enc} = State) ->
-	{Messages, NewBuffer} = wamper_protocol:deserialize(<<Buffer/binary,
-														  Data/binary>>,Enc),
+	{Messages, NewBuffer} = wamper_protocol:deserialize(<<Buffer/binary, Data/binary>>,Enc),
 	{Messages, State#state{buffer=NewBuffer}}.
 
 
@@ -264,11 +262,12 @@ closeOrActivateConnection(unsupported,State) ->
 closeOrActivateConnection(_, State) ->
  	activateConnectionOnce(State).
 
-close_connection( State) ->
+close_connection( State ) ->
+    erwa_routing:close(),
 	{stop, normal, State}.
 
 activateConnectionOnce(#state{transport=Transport, socket=Socket} = State) ->
-	ok = enable_socket_once(Transport,Socket),
+	enable_socket_once(Transport,Socket),
 	{noreply,State}.
 
 handle_unsupported_info(_Msg,#state{} = State) ->
@@ -276,8 +275,7 @@ handle_unsupported_info(_Msg,#state{} = State) ->
 	{noreply, State}.
 
 enable_socket_once(Transport, Socket) ->
-  ok = Transport:setopts(Socket, [{active, once}]),
-  ok.
+  ok = Transport:setopts(Socket, [{active, once}]).
 
 handle_socket_closed(State) ->
 	% need to close the routing - maybe

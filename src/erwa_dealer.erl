@@ -255,7 +255,9 @@ unregister( RegistrationId,SessionId, Realm) ->
 
 
 
--spec unregister_all( SessionId::non_neg_integer(), Realm :: binary() ) -> ok.
+-spec unregister_all( SessionId::non_neg_integer(), Realm :: binary() | none ) -> ok.
+unregister_all(_, none) ->
+    ok;
 unregister_all( SessionId, Realm ) ->
     RegistrationIds = erwa_sess_man:get_registrations(SessionId),
     unregister_all(RegistrationIds,SessionId,Realm). 

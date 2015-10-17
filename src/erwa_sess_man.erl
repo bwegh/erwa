@@ -37,10 +37,6 @@
 
 -export([set_transport/1]).
 -export([set_authdata/1]).
-%% -export([set_authrole/1]).
-%% -export([set_authmethod/1]).
-%% -export([set_authprovider/1]).
-%%
 -export([add_subscription/2]).
 -export([rem_subscription/2]).
 -export([get_subscriptions/1]).
@@ -134,20 +130,6 @@ set_authdata(Map) ->
     {atomic, Res} = mensia:transaction(update_session(Pid,Map)),
     Res.
 
-%% set_role(Role) ->
-%%     Pid = self(),
-%%     {atomic, Res} = mensia:transaction(update_session(Pid,role,Role)),
-%%     Res.
-%%
-%% set_authmethod(Method) ->
-%%     Pid = self(),
-%%     {atomic, Res} = mensia:transaction(update_session(Pid,authmethod,Method)),
-%%     Res.
-%%
-%% set_authprovider(Provider) ->
-%%     Pid = self(),
-%%     {atomic, Res} = mensia:transaction(update_session(Pid,authprovider,Provider)),
-%%     Res.
 update_session(Pid, Map) when is_map(Map) ->
     update_session(Pid, maps:to_list(Map));
 update_session(Pid, PropList) ->
@@ -413,7 +395,7 @@ publish_metaevent(Event,Arg,Realm) ->
 %%     erwa_realms:init(),
 %%     erwa_realms:add(<<"test_realm">>),
 %% 	ok = create_table(),
-%% 	not_found = unregister_session(), 
+%% 	not_found = u_nregister_session(), 
 %%     {ok,_} = create_session(),
 %%   ok = unregister_session(),
 %% 	ok = drop_table().
