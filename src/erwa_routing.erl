@@ -125,6 +125,7 @@ close() ->
 
 
 handle_message(InMsg,State) ->
+  ?DEBUG("incomming message ~p [~p]~n",[InMsg,State]),
   send_message_or_close_session(hndl_msg(InMsg,State)).
 
 
@@ -135,6 +136,7 @@ handle_message(InMsg,State) ->
   {send_stop, Message:: term(), #state{} }.
 
 handle_info(Info,State) ->
+  ?DEBUG("incomming info ~p [~p]~n",[Info,State]),
   send_message_or_close_session(hndl_info(Info,State)).
 
 
