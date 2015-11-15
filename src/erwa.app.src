@@ -32,8 +32,9 @@
 	{applications, [
 		kernel,
 		stdlib,
-        wamper,
+    wamper,
 		mnesia,
+    elogger,
     crypto
 	]},
 	{mod, {erwa_app, []}},

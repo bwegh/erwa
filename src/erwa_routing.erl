@@ -157,7 +157,7 @@ send_message_or_close_session({stop,State}) ->
                                                             #state{} } |
                                                            {ok, #state{} }.
 check_and_return_out_message(Result, Msg,State) ->
-  % TODO: implememnt
+  % TODO: implement
   {Result, Msg, State}.
 
 
@@ -247,7 +247,8 @@ reply_to_hello(anonymous, #{ realm := RealmName }, #state{id=SessionId}=State) -
           {reply_stop, {abort, #{}, no_such_realm},State}
       end;
 
-reply_to_hello(authenticate,#{details := Details},State) ->
+reply_to_hello(authenticate,#{details := _Details},State) ->
+  ?ERROR("authentication not yet implemented~n",[]),
   %% AuthMethods = maps:get(authmethods, Details, []),
   %% authenticate(AuthMethods, RealmName, Details, State)
   erwa_sess_man:unregister_session(),
@@ -428,7 +429,8 @@ handle_goodbye_message(_Details,_Reason,#state{goodbye_sent=GBSent}=State) ->
 
 
 %%%%%%%%%%% unkonwn messages %%%%%%%%%%%%%%%%%%
-handle_unknown_message(_Msg,State) ->
+handle_unknown_message(Msg,State) ->
+  ?WARNING("unknown message ~p~n",[Msg]),
   {stop, State }.
 
 
@@ -487,7 +489,7 @@ handle_shutdown_info(State) ->
 
 %%%%%%%%%%%% unknown info %%%%%%%%%%%%%%%%
 handle_unknown_info(Info, State) ->
-  error("unknown Msg ~p~n",[Info]),
+  ?WARNING("unknown info ~p~n",[Info]),
   {ok,State}.
 
 
