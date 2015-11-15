@@ -41,7 +41,7 @@
                 invocation_id = 1,
                 invocations = [],
                 calls = [],
-                client_roles = none
+                client_role = anonymous 
                 }).
 
 
@@ -124,19 +124,8 @@ close() ->
 
 
 handle_message(InMsg,State) ->
-  case hndl_msg(InMsg,State) of
-    {Result, OutMsg, State1} ->
-      case Result of
-        reply_stop ->
-          close_session(State1);
-        _ -> ok
-      end,
-      check_out_message(Result, OutMsg, State1);
-    {stop,NewState} ->
-      close_session(NewState),
-      {stop,NewState};
-		Other -> Other
-  end.
+  send_message_or_close_session(hndl_msg(InMsg,State)).
+
 
 -spec handle_info( term() , #state{}) ->
   { ok, #state{} } |
@@ -145,74 +134,40 @@ handle_message(InMsg,State) ->
   {send_stop, Message:: term(), #state{} }.
 
 handle_info(Info,State) ->
-  case hndl_info(Info,State) of
-    {Result, OutMsg, State1} ->
-      case Result of
-        send_stop ->
-          close_session(State1);
-        _ -> ok
-      end,
-      check_out_message(Result, OutMsg, State1);
-    {stop,NewState} ->
-      close_session(NewState),
-      {stop,NewState};
-    Other -> Other
-  end.
+  send_message_or_close_session(hndl_info(Info,State)).
 
 
--spec check_out_message(atom(), term(), #state{} ) -> {atom(), term(),
+send_message_or_close_session({reply_stop,OutMsg,State}) ->
+  close_session(State),
+  check_and_return_out_message(reply_stop,OutMsg,State);
+send_message_or_close_session({send_stop,OutMsg,State}) ->
+  close_session(State),
+  check_and_return_out_message(send_stop,OutMsg,State);
+send_message_or_close_session({Result,OutMsg,State}) ->
+  check_and_return_out_message(Result, OutMsg, State);
+send_message_or_close_session({ok, State}) ->
+  {ok, State};
+send_message_or_close_session({stop,State}) ->
+  close_session(State),
+  {stop, State}.
+
+
+-spec check_and_return_out_message(atom(), term(), #state{} ) -> {atom(), term(),
                                                             #state{} } |
                                                            {ok, #state{} }.
-check_out_message(Result, Msg,State) ->
-  %% case erwa_middleware:validate_out_message(Msg,State) of
-  %%   false ->
-  %%     {ok,State};
-  %%   OutMsg ->
-  %%     {Result,OutMsg,State}
-  %% end.
+check_and_return_out_message(Result, Msg,State) ->
+  % TODO: implememnt
   {Result, Msg, State}.
 
 
-hndl_msg({hello,RealmName,Details}, #state{id=SessionId} = State) ->
-  AuthId = maps:get(authid, Details, anonymous),
-  Roles = maps:get(roles, Details, []),
-  case {AuthId == anonymous, erwa_user_db:allow_anonymous(RealmName, tcp)} of 
-    {true, true} -> 
-      case erwa_sess_man:connect_to(RealmName) of
-        ok ->
-          %% SessionData = #{authid => anonymous, role => anonymous, session =>
-          %%                 SessionId},
-          WelcomeMsg ={welcome,SessionId,#{agent => erwa:get_version(), roles =>
-										  ?ROLES}},
-          {reply,WelcomeMsg,State#state{is_auth=true,
-                                        realm_name=RealmName,
-                                        client_roles=Roles,
-                                        id=SessionId
-                                        }}; 
-        {error,_} ->
-              erwa_sess_man:unregister_session(),
-          {reply_stop, {abort, #{}, no_such_realm},State}
-      end;
-    {true, false} -> 
-              erwa_sess_man:unregister_session(),
-      {reply_stop, {abort, #{}, no_such_realm}, State};
-    {false,_} ->
-      AuthMethods = maps:get(authmethods, Details, []),
-      authenticate(AuthMethods, RealmName, Details, State)
-  end;
 
-hndl_msg({authenticate,_Signature,_Extra}=Msg,#state{}=State) ->
-  % case erwa_middleware:check_perm(Msg,State) of
-  %  {true,_} ->
-      #state{id=SessionId} = State,
-      Msg ={welcome,SessionId,#{agent => erwa:get_version(), roles => ?ROLES }},
-      {reply,Msg,State#state{is_auth=true}};
-  %%   {false,Details} ->
-  %%     OutDetails = maps:get(details,Details,#{}),
-  %%     Error = maps:get(error,Details,#{}),
-  %%     Msg = {abort,OutDetails,Error},
-  %%     {reply_stop,Msg,State}
-  %% end;
+-spec hndl_msg(term(),#state{}) -> {stop, #state{}} | {reply_stop | reply , term(),
+                                              #state{}}.
+
+hndl_msg({hello,RealmName,Details}, State) ->
+  handle_hello_message(RealmName, Details, State);
+hndl_msg({authenticate,Signature,Extra},State) ->
+  handle_authenticate_message(Signature,Extra,State);
 
 hndl_msg({abort,_Details,_ErrorUrl},#state{is_auth=false}=State) ->
   {stop,State#state{is_auth=false}};
@@ -224,77 +179,195 @@ hndl_msg(_Msg,State) ->
   {stop,State}.
 
 
-authenticate([], _RealmName, _Details, State) ->
-  {reply_stop, {abort, #{}, no_such_realm}, State};
-authenticate([wampcra|_], RealmName, Details,State) -> 
-  AuthId = maps:get(authid, Details, anonymous),
-  ClientRoles = maps:get(roles, Details, []),
-  case erwa_user_db:can_join(AuthId, RealmName, tcp ) of 
-    {true, Role} -> 
-      case erwa_sess_man:register_session(RealmName) of
-        {ok,SessionId} ->
-          % a user that needs to authenticate
-          % need to create a a challenge  
-          SessionData = #{authid => AuthId, role => Role, session =>
-                          SessionId},
-          {_Result, ChallengeData} = erwa_user_db:wampcra_challenge(SessionData),
-          ChallengeMsg = {challenge, wampcra, ChallengeData},
-          %% WillPass = case Result of 
-          %%              ok -> true;
-          %%              _ -> false
-          %%            end,
-          {reply, ChallengeMsg, State#state{
-                                            realm_name=RealmName, is_auth=false,
-                                            client_roles=ClientRoles,id=SessionId}};
+
+hndl_msg_authed({subscribe,RequestId,Options,Topic},State) ->
+  handle_subscribe_message(RequestId,Options,Topic,State);
+hndl_msg_authed({unsubscribe,RequestId,SubscriptionId},State) ->
+  handle_unsubscribe_message(RequestId, SubscriptionId, State);
+hndl_msg_authed({publish,RequestId,Options,Topic,Arguments,ArgumentsKw},State) ->
+  handle_publish_message(RequestId,Options,Topic,Arguments, ArgumentsKw, State);
+hndl_msg_authed({register,RequestId,Options,ProcedureUri},State) ->
+  handle_register_message(RequestId,Options,ProcedureUri,State);
+hndl_msg_authed({unregister,RequestId,RegistrationId}, State) ->
+  handle_unregister_message(RequestId,RegistrationId,State);
+hndl_msg_authed({call,RequestId,Options,ProcedureUri,Arguments,ArgumentsKw},State) ->
+  handle_call_message(RequestId,Options, ProcedureUri, Arguments, ArgumentsKw, State);
+hndl_msg_authed({cancel,RequestId,Options},State) ->
+  handle_cancel_message(RequestId,Options,State);
+hndl_msg_authed({error,invocation,InvocationId,Details,Error,Arguments,ArgumentsKw},State) ->
+  handle_error_invocation_message(InvocationId,Details,Error,Arguments,ArgumentsKw,State);
+hndl_msg_authed({yield,InvocationId,Options,Arguments,ArgumentsKw},State) ->
+  handle_yield_message(InvocationId,Options,Arguments,ArgumentsKw,State);
+hndl_msg_authed({goodbye,Details,Reason},State) ->
+  handle_goodbye_message(Details,Reason,State);
+hndl_msg_authed(Msg, State) ->
+  handle_unknown_message(Msg,State).
+
+
+hndl_info({invocation,DealerId,ProcedureId,Options,Arguments,ArgumentsKw}, State) ->
+  handle_invocation_info(DealerId,ProcedureId,Options,Arguments,ArgumentsKw, State);
+hndl_info({interrupt,DealerId,Options},State) ->
+  handle_interrupt_info(DealerId,Options,State);
+hndl_info({result,CallRequestId,Details,Arguments,ArgumentsKw},State) ->
+  handle_result_info(CallRequestId,Details,Arguments,ArgumentsKw,State);
+hndl_info({error,call,CallRequestId,Details,ErrorUri,Arguments,ArgumentsKw},State) ->
+  hndl_error_call_info(error,call,CallRequestId,Details,ErrorUri,Arguments,ArgumentsKw,State);
+hndl_info({event,SubscriptionId,PublicationId,Details,Arguments,ArgumentsKw}, State) ->
+  handl_event_info(SubscriptionId,PublicationId,Details,Arguments,ArgumentsKw,State);
+hndl_info(routing_closing,State) ->
+  handle_routing_closing_info(State); 
+hndl_info(shutdown,State) ->
+  handle_shutdown_info(State);
+hndl_info(Info, State) ->
+  handle_unknown_info(Info, State).
+
+
+
+
+%%%%% hello message %%%%%%%%%%%%%%%%%%%%%
+handle_hello_message(RealmName, Details, State) ->
+  Args = gather_hello_args(Details,RealmName),
+  reply_to_hello(check_authentication(Args),Args,State).
+
+reply_to_hello(anonymous, #{ realm := RealmName }, #state{id=SessionId}=State) ->
+      case erwa_sess_man:connect_to(RealmName) of
+        ok ->
+          %% SessionData = #{authid => anonymous, role => anonymous, session =>
+          %%                 SessionId},
+          WelcomeMsg ={welcome,SessionId,#{agent => erwa:get_version(), roles =>
+										  ?ROLES}},
+          {reply,WelcomeMsg,State#state{is_auth=true,
+                                        realm_name=RealmName,
+                                        client_role=anonymous,
+                                        id=SessionId
+                                        }}; 
         {error,_} ->
-          {reply_stop,{abort,#{},no_such_realm},State}
+              erwa_sess_man:unregister_session(),
+          {reply_stop, {abort, #{}, no_such_realm},State}
       end;
-    false ->
-      {reply_stop,{abort,#{},no_such_realm}, State}
-  end;
-authenticate([_|Tail], RealmName, Details, State) ->
-  authenticate(Tail, RealmName, Details, State).
+
+reply_to_hello(authenticate,#{details := Details},State) ->
+  %% AuthMethods = maps:get(authmethods, Details, []),
+  %% authenticate(AuthMethods, RealmName, Details, State)
+  erwa_sess_man:unregister_session(),
+  {reply_stop, {abort, #{}, no_such_realm}, State};
+
+reply_to_hello(abort,_,State) ->
+  erwa_sess_man:unregister_session(),
+  {reply_stop, {abort, #{}, no_such_realm}, State}.
+
+
+gather_hello_args(Details, RealmName) ->
+  AuthId = maps:get(authid, Details, anonymous),
+  #{auth_id => AuthId, realm => RealmName, details => Details}.
+
+check_authentication(#{realm := RealmName} = Args) -> 
+  get_authentication_mechanism(Args, erwa_user_db:allow_anonymous(RealmName, tcp)).
+
+get_authentication_mechanism(#{auth_id := anonymous}, true) -> 
+  anonymous;
+get_authentication_mechanism(#{auth_id := anonymous}, _) -> 
+  abort;
+get_authentication_mechanism(_, _) -> 
+  authenticate.
+  
+
+%%%%%%%% authenticate message %%%%%%%%%%%%%%%%
+handle_authenticate_message(_Signature,_Extra,State) ->
+  % case erwa_middleware:check_perm(Msg,State) of
+  %  {true,_} ->
+      #state{id=SessionId} = State,
+      Msg ={welcome,SessionId,#{agent => erwa:get_version(), roles => ?ROLES }},
+      {reply,Msg,State#state{is_auth=true}}.
+  %%   {false,Details} ->
+  %%     OutDetails = maps:get(details,Details,#{}),
+  %%     Error = maps:get(error,Details,#{}),
+  %%     Msg = {abort,OutDetails,Error},
+  %%     {reply_stop,Msg,State}
+  %% end;
+
+
+%% authenticate([], _RealmName, _Details, State) ->
+%%   {reply_stop, {abort, #{}, no_such_realm}, State};
+%% authenticate([wampcra|_], RealmName, Details,State) -> 
+%%   AuthId = maps:get(authid, Details, anonymous),
+%%   ClientRoles = maps:get(roles, Details, []),
+%%   case erwa_user_db:can_join(AuthId, RealmName, tcp ) of 
+%%     {true, Role} -> 
+%%       case erwa_sess_man:register_session(RealmName) of
+%%         {ok,SessionId} ->
+%%           % a user that needs to authenticate
+%%           % need to create a a challenge  
+%%           SessionData = #{authid => AuthId, role => Role, session =>
+%%                           SessionId},
+%%           {_Result, ChallengeData} = erwa_user_db:wampcra_challenge(SessionData),
+%%           ChallengeMsg = {challenge, wampcra, ChallengeData},
+%%           %% WillPass = case Result of 
+%%           %%              ok -> true;
+%%           %%              _ -> false
+%%           %%            end,
+%%           {reply, ChallengeMsg, State#state{
+%%                                             realm_name=RealmName, is_auth=false,
+%%                                             client_roles=ClientRoles,id=SessionId}};
+%%         {error,_} ->
+%%           {reply_stop,{abort,#{},no_such_realm},State}
+%%       end;
+%%     false ->
+%%       {reply_stop,{abort,#{},no_such_realm}, State}
+%%   end;
+%% authenticate([_|Tail], RealmName, Details, State) ->
+%%   authenticate(Tail, RealmName, Details, State).
 
 
 
 
-
-hndl_msg_authed({subscribe,RequestId,Options,Topic},#state{realm_name=RealmName,id=SessionId}=State) ->
+%%%%%%%%%%%%% subscribe message %%%%%%%%%%%%%%%%%%%%
+handle_subscribe_message(RequestId,Options,Topic,#state{realm_name=RealmName,id=SessionId}=State) ->
   %% case erwa_middleware:check_perm(Msg,State) of
   %%   {true, _ } ->
       {ok,SubscriptionId} =
 	  erwa_broker:subscribe(Topic,Options,SessionId,RealmName),
-      {reply, {subscribed,RequestId,SubscriptionId}, State };
+      {reply, {subscribed,RequestId,SubscriptionId}, State }.
   %%   {false,Details} ->
   %%     OutDetails = maps:get(details,Details,#{}),
   %%     Error = maps:get(error,Details,not_authorized),
   %%     {reply, {error,subscribe,RequestId,OutDetails,Error}}
   %% end;
 
-hndl_msg_authed({unsubscribe,RequestId,SubscriptionId},#state{id=SessionId, realm_name=RealmName}=State) ->
-  ok = erwa_broker:unsubscribe(SubscriptionId,SessionId,RealmName),
-  {reply, {unsubscribed,RequestId},State};
 
-hndl_msg_authed({publish,RequestId,Options,Topic,Arguments,ArgumentsKw},#state{realm_name=RealmName,id=SessionId}=State) ->
+
+%%%%%%%%%%%% unsubscribe message  %%%%%%%%%%%%%%%%%%%%%%
+handle_unsubscribe_message(RequestId,SubscriptionId,#state{id=SessionId, realm_name=RealmName}=State) ->
+  ok = erwa_broker:unsubscribe(SubscriptionId,SessionId,RealmName),
+  {reply, {unsubscribed,RequestId},State}.
+
+
+%%%%%%%%%%%%5 publish message %%%%%%%%%%%%%%
+handle_publish_message(RequestId,Options,Topic,Arguments,ArgumentsKw,#state{realm_name=RealmName,id=SessionId}=State) ->
   {ok,PublicationId} = erwa_broker:publish(Topic,Options,Arguments,ArgumentsKw,SessionId,RealmName),
   case maps:get(acknowledge,Options,false) of
     true ->
       {reply,{published,RequestId,PublicationId},State};
     _ ->
       {ok,State}
-  end;
+  end.
 
 
-
-hndl_msg_authed({register,RequestId,Options,ProcedureUri},#state{realm_name=Realm,id=SessionId}=State) ->
+%%%%%%%%%%%%%%%%%%% register message %%%%%%%%%%%%%%%%%%%
+handle_register_message(RequestId,Options,ProcedureUri,#state{realm_name=Realm,id=SessionId}=State) ->
   {ok,RegistrationId} = erwa_dealer:register(ProcedureUri,Options,SessionId,Realm),
-  {reply,{registered,RequestId,RegistrationId},State};
+  {reply,{registered,RequestId,RegistrationId},State}.
 
-hndl_msg_authed({unregister,RequestId,RegistrationId},#state{realm_name=Realm,id=SessionId} = State) ->
+
+
+
+%%%%%%%%%%%%%%% unregister message %%%%%%%%%%%%%%%%%%%%%%%
+handle_unregister_message(RequestId,RegistrationId,#state{realm_name=Realm,id=SessionId} = State) ->
   ok = erwa_dealer:unregister(RegistrationId,SessionId,Realm),
-  {reply,{unregistered,RequestId} ,State};
+  {reply,{unregistered,RequestId} ,State}.
 
-hndl_msg_authed({call,RequestId,Options,ProcedureUri,Arguments,ArgumentsKw},#state{realm_name=Realm,calls=Calls,id=SessionId}=State) ->
+%%%%%%%%%%%%%%% call message %%%%%%%%%%%%%%%%%%%%%%%%%
+handle_call_message(RequestId,Options,ProcedureUri,Arguments,ArgumentsKw,#state{realm_name=Realm,calls=Calls,id=SessionId}=State) ->
   case erwa_dealer:call(ProcedureUri,RequestId,Options,Arguments,ArgumentsKw,SessionId,Realm) of
     {ok,Pid} ->
       {ok,State#state{calls=[{RequestId,Pid}|Calls]}};
@@ -303,9 +376,10 @@ hndl_msg_authed({call,RequestId,Options,ProcedureUri,Arguments,ArgumentsKw},#sta
     {error,_} ->
       %% TODO: change the reply for eg partitioned calls
       {reply, {error,call,RequestId,#{},no_such_procedure}, State}
-  end;
+  end.
 
-hndl_msg_authed({cancel,RequestId,Options},#state{calls=Calls}=State) ->
+%%%%%%%%%%%%%%% cancel message %%%%%%%%%%%%%%%%%%%%%%%%%
+handle_cancel_message(RequestId,Options,#state{calls=Calls}=State) ->
   case lists:keyfind(RequestId,1,Calls) of
     {RequestId,InvocationId} ->
       ok = erwa_invocation:cancel(InvocationId,Options),
@@ -315,85 +389,105 @@ hndl_msg_authed({cancel,RequestId,Options},#state{calls=Calls}=State) ->
     {error,_} ->
       %% TODO: change the reply for eg partitioned calls
       {reply, {error,call,RequestId,#{},no_such_procedure}, State}
-  end;
+  end.
 
 
-
-
-hndl_msg_authed({error,invocation,InvocationId,Details,Error,Arguments,ArgumentsKw},#state{invocations=Invs,id=SessionId, realm_name=Realm}=State) ->
+%%%%%%%%%%%%% error invocation message %%%%%%%%%%%%%%%%%%%%%
+handle_error_invocation_message(InvocationId,Details,Error,Arguments,ArgumentsKw,#state{invocations=Invs,id=SessionId, realm_name=Realm}=State) ->
   case lists:keyfind(InvocationId,1,Invs) of
     {InvocationId,DealerId} ->
       ok = erwa_invocation:error(DealerId,Details,Error,Arguments,ArgumentsKw,SessionId,Realm),
       {ok,State#state{invocations = lists:keydelete(InvocationId,1,Invs)}};
     _ ->
       {ok,State}
-  end;
+  end.
 
-hndl_msg_authed({yield,InvocationId,Options,Arguments,ArgumentsKw},#state{invocations=Invs,id=SessionId, realm_name=Realm}=State) ->
+
+
+%%%%%%%%%%%%% yield messag messaee %%%%%%%%%%%%%%%%%%%%%%%%%%5
+handle_yield_message(InvocationId,Options,Arguments,ArgumentsKw,#state{invocations=Invs,id=SessionId, realm_name=Realm}=State) ->
   case lists:keyfind(InvocationId,1,Invs) of
     {InvocationId,DealerId} ->
       ok = erwa_invocation:yield(DealerId,Options,Arguments,ArgumentsKw,SessionId,Realm),
       {ok,State#state{invocations = lists:keydelete(InvocationId,1,Invs)}};
     _ ->
       {ok,State}
-  end;
+  end.
 
-hndl_msg_authed({goodbye,_Details,_Reason},#state{goodbye_sent=GBSent}=State) ->
+
+%%%%%%%%%%%%% goodbye message %%%%%%%%%%%%%%%%%
+handle_goodbye_message(_Details,_Reason,#state{goodbye_sent=GBSent}=State) ->
   case GBSent of
     true ->
       {stop,State};
     false ->
       Msg = {goodbye,#{},goodbye_and_out},
       {reply_stop,Msg,State}
-  end;
+  end.
 
-hndl_msg_authed(_Msg, State) ->
+
+%%%%%%%%%%% unkonwn messages %%%%%%%%%%%%%%%%%%
+handle_unknown_message(_Msg,State) ->
   {stop, State }.
 
 
 
-
-
-
-hndl_info({invocation,DealerId,ProcedureId,Options,Arguments,ArgumentsKw}, #state{invocation_id=ID, invocations=Invs}=State) ->
+%%%%%%%% invocation info %%%%%%%%%%%%%%%%%%%%%%%%%%%%
+handle_invocation_info(DealerId,ProcedureId,Options,Arguments,ArgumentsKw, #state{invocation_id=ID, invocations=Invs}=State) ->
   NewState = State#state{invocations=[{ID,DealerId}|Invs],invocation_id=ID+1},
-  {send,{invocation,ID,ProcedureId,Options,Arguments,ArgumentsKw},NewState};
+  {send,{invocation,ID,ProcedureId,Options,Arguments,ArgumentsKw},NewState}.
 
-hndl_info({interrupt,DealerId,Options},#state{invocations=Invs, client_roles=Roles}=State) ->
+
+
+%%%%%%%%%%% interrupt info %%%%%%%%%%%%%%%%%%%
+handle_interrupt_info(DealerId,Options,#state{invocations=Invs, client_role=Role}=State) ->
   {InvocationId,DealerId} = lists:keyfind(DealerId,2,Invs),
-  Features = maps:get(features,maps:get(callee,Roles),#{}),
+  Features = maps:get(features,maps:get(callee,Role),#{}),
   case maps:get(call_canceling,Features,false) of
     true ->
       {send,{interrupt,InvocationId,Options},State};
     _ ->
       {ok,State#state{invocations=lists:keydelete(InvocationId,1,Invs)}}
-  end;
+  end.
 
-hndl_info({result,CallRequestId,_,_,_}=Msg,#state{calls=Calls}=State) ->
-  {send,Msg,State#state{calls=lists:keydelete(CallRequestId,1,Calls)}};
 
-hndl_info({error,call,CallRequestId,_,_,_,_}=Msg,#state{calls=Calls}=State) ->
-  {send,Msg,State#state{calls=lists:keydelete(CallRequestId,1,Calls)}};
+%%%%%%%%%%%% result info %%%%%%%%%%%%%%%%%%%%
+handle_result_info(CallRequestId,Details,Arguments,ArgumentsKw,#state{calls=Calls}=State) ->
+  Msg = {result,CallRequestId,Details,Arguments,ArgumentsKw},
+  {send,Msg,State#state{calls=lists:keydelete(CallRequestId,1,Calls)}}.
 
-hndl_info({event,_,_,_,_,_}=Msg,State) ->
-  {send,Msg,State};
 
-hndl_info(routing_closing,#state{goodbye_sent=GBsent}=State) ->
+%%%%%%%%%%%% error call info %%%%%%%%%%%%%%%%%
+hndl_error_call_info(error,call,CallRequestId,Details,ErrorUri,Arguments,ArgumentsKw,#state{calls=Calls}=State) ->
+  Msg = {error, call, CallRequestId,Details,ErrorUri,Arguments,ArgumentsKw}, 
+  {send,Msg,State#state{calls=lists:keydelete(CallRequestId,1,Calls)}}.
+
+
+%%%%%%%%%%%% event info %%%%%%%%%%%%%%%%%%
+handl_event_info(SubscriptionId,PublicationId,Details,Arguments,ArgumentsKw,State) ->
+  Msg = {event, SubscriptionId,PublicationId,Details,Arguments,ArgumentsKw},
+  {send,Msg,State}.
+
+
+%%%%%%%%%%%%%%%%% routing closing info %%%%%%%%%%%%%%%%%%%
+handle_routing_closing_info(#state{goodbye_sent=GBsent}=State) ->
   Msg = {goodbye,#{},close_realm},
   case GBsent of
     false ->
       {send_stop,Msg,State#state{goodbye_sent=true}};
     _ ->
       {stop,State}
-  end;
+  end.
 
-hndl_info(shutdown,State) ->
-  {stop,State};
 
-hndl_info(Info, State) ->
+%%%%%%%%%% shutdown info %%%%%%%%%%%%%%%%
+handle_shutdown_info(State) ->
+  {stop,State}.
+
+%%%%%%%%%%%% unknown info %%%%%%%%%%%%%%%%
+handle_unknown_info(Info, State) ->
   error("unknown Msg ~p~n",[Info]),
   {ok,State}.
-
 
 
 close_session(#state{id=SessionId,realm_name=RealmName}) ->
