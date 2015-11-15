@@ -26,6 +26,7 @@
 -include_lib("eunit/include/eunit.hrl").
 -endif.
 
+-include("elogger.hrl").
 -export([init/0]).
 -export([close/0]).
 -export([handle_message/2]).

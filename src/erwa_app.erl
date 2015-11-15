@@ -36,6 +36,8 @@
 %% API.
 
 start(_Type, _Args) ->
+    elogger_config:set_loglevel(info),
+    elogger_config:add_file_logging("logfile.log"),
     erwa_sess_man:create_table(),
     erwa_publications:create_table(),
     erwa_realms:init(),
