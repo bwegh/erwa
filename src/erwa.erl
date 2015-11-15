@@ -38,7 +38,9 @@
 -export([get_version/0]).
 -export([start_websocket/3]).
 -export([start_websocket/4]).
+-export([start_websocket/5]).
 -export([start_socket/2]).
+-export([start_socket/3]).
 
 
 %% @doc returns the version string for the application, used as agent description
@@ -54,17 +56,50 @@ get_version() ->
 -spec start_websocket( Path :: string(), Port :: integer(), Acceptors ::
 											 integer() ) -> ok.
 start_websocket(Path, Port, Acceptors) -> 
-	start_websocket(Path, Port, Acceptors, []).
+	start_websocket(Path, Port, no_cert, Acceptors, []).
+
+
+
+%% @doc start router with ssl websocket
+-spec start_websocket( Path :: string(), Port :: integer(),  PathToCertfile ::
+                       list(), Acceptors ::
+											 integer() ) -> ok.
+start_websocket(Path, Port, PathToCertfile, Acceptors) -> 
+	start_websocket(Path, Port, PathToCertfile, Acceptors, []).
+
+
 
 %% @doc start router listening on websocket with custom handlers added
--spec start_websocket( Path :: string(), Port :: integer(), Acceptors ::
+-spec start_websocket( Path :: string(), Port :: integer(), PathToCertfile ::
+                       list(), Acceptors ::
 								 non_neg_integer(), Handlers :: [term()] ) -> ok.
-start_websocket(Path, Port, Acceptors, Handlers) ->
+start_websocket(Path, Port, no_cert, Acceptors, Handlers) ->
 	Dispatch = cowboy_router:compile([{'_',[ {Path, erwa_in_ws,
 																						[] } | Handlers] }]),
 	{ok, _} = cowboy:start_http(erwa_http, Acceptors, [{port, Port}], [{env,
 																																			[{dispatch,
 																																				Dispatch}]}]),
+	ok;
+start_websocket(Path, Port, PathToCertfile, Acceptors, Handlers) ->
+	Dispatch = cowboy_router:compile([{'_',[ {Path, erwa_in_ws,
+																						[] } | Handlers] }]),
+  {ok, _} = cowboy:start_http(erwa_http, Acceptors, [{port,
+                                                      Port},{certfile,PathToCertfile}], [{env,
+																																			[{dispatch,
+																																				Dispatch}]}]),
+	ok.
+
+
+%% @doc start the router listening for raw tcp, ssl, connections
+-spec start_socket(Port :: non_neg_integer(), PathToCertfile :: list(), Acceptors :: non_neg_integer()) ->
+	ok.
+start_socket(Port, PathToCertfile, Acceptors) ->
+	{ok, _} = ranch:start_listener(erwa_ssl, Acceptors, ranch_ssl, 
+                                 [
+                                  {port, Port},
+                                  {certfile,PathToCertfile}
+                                 ],
+                                 erwa_in_tcp, []),
 	ok.
 
 
@@ -75,6 +110,8 @@ start_socket(Port, Acceptors) ->
 	{ok, _} = ranch:start_listener(erwa_tcp, Acceptors, ranch_tcp, [{port, Port}],
 																 erwa_in_tcp, []),
 	ok.
+
+
 
 
 %% for router
