@@ -21,6 +21,7 @@ start_link() ->
 
 init([]) ->
   elogger_config:set_loglevel(debug),
+  erwa:start_realm(<<"realm1">>),
   Dispatch = cowboy_router:compile([
                                     {'_', [
                                            {"/", cowboy_static, {priv_file, simple_router, "index.html"}},
