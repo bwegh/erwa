@@ -28,10 +28,18 @@
 -include_lib("eunit/include/eunit.hrl").
 -endif.
 
+-include("elogger.hrl").
 
 
 %% for websocket
+% cowboy 1.x
+-export([init/3]).
+-export([websocket_init/3]).
+
+%cowboy 2.x
 -export([init/2]).
+
+% both cowboy versions
 -export([websocket_handle/3]).
 -export([websocket_info/3]).
 -export([terminate/3]).
@@ -53,10 +61,30 @@
                routing = undefined
               }).
 
+% for cowboy 1.x
+init(_, Req, _ ) ->
+  {upgrade, protocol, cowboy_websocket, Req, []}.
+
+websocket_init( _Type, Req, _Opts) ->
+  {ok,Protocols, Req1} = cowboy_req:parse_header(?SUBPROTHEADER, Req),
+  ?DEBUG("protocols are ~p~n",[Protocols]),
+  case find_supported_protocol(Protocols) of
+    {Enc,WsEncoding,Header} ->
+      Req2  = cowboy_req:set_resp_header(?SUBPROTHEADER,Header,Req1),
+      %% Peer = cowboy_req:peer(Req1),
+      Routing = erwa_routing:init(),
+      %% Routing1 = erwa_routing:set_peer(Peer,Routing),
+      %% Routing2 = erwa_routing:set_source(websocket,Routing1),
+      {ok, Req2, #state{enc=Enc,ws_enc=WsEncoding,routing=Routing}};
+    _ ->
+      % unsupported
+      {shutdown,Req1}
+  end.
 
 init( Req, _Opts) ->
   % need to check for the wamp.2.json or wamp.2.msgpack
   Protocols = cowboy_req:parse_header(?SUBPROTHEADER, Req),
+  ?DEBUG("protocols are ~p~n",[Protocols]),
   case find_supported_protocol(Protocols) of
     {Enc,WsEncoding,Header} ->
       Req1  = cowboy_req:set_resp_header(?SUBPROTHEADER,Header,Req),
