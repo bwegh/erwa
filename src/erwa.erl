@@ -74,12 +74,9 @@ start_websocket(Path, Port, PathToCertfile, Acceptors) ->
                        list(), Acceptors ::
 								 non_neg_integer(), Handlers :: [term()] ) -> ok.
 start_websocket(Path, Port, no_cert, Acceptors, Handlers) ->
-	Dispatch = cowboy_router:compile([{'_',[ {Path, erwa_in_ws,
-																						[] } | Handlers] }]),
-	{ok, _} = cowboy:start_http(erwa_http, Acceptors, [{port, Port}], [{env,
-																																			[{dispatch,
-																																				Dispatch}]}]),
-	ok;
+  Dispatch = cowboy_router:compile([{'_',[ {Path, erwa_in_ws, [] } | Handlers] }]),
+  {ok, _} = cowboy:start_http(erwa_http, Acceptors, [{port, Port}], [{env, [{dispatch, Dispatch}]}]),
+  ok;
 start_websocket(Path, Port, PathToCertfile, Acceptors, Handlers) ->
 	Dispatch = cowboy_router:compile([{'_',[ {Path, erwa_in_ws,
 																						[] } | Handlers] }]),

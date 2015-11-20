@@ -34,16 +34,16 @@
 
 
 -record(state, {
-                id = none,
-                is_auth = false,
-                realm_name = none,
-                goodbye_sent = false,
-                will_pass = false,
-                invocation_id = 1,
-                invocations = [],
-                calls = [],
-                client_role = anonymous 
-                }).
+          id = none,
+          is_auth = false,
+          realm_name = none,
+          goodbye_sent = false,
+          will_pass = false,
+          invocation_id = 1,
+          invocations = [],
+          calls = [],
+          client_role = anonymous 
+         }).
 
 
 -define(BROKER_FEATURES,#{features => #{
@@ -62,26 +62,26 @@
        ).
 
 -define(DEALER_FEATURES,#{features => #{
-                                 call_canceling =>             true,
-                                 call_timeout =>               true,
-                                 call_trustlevels =>           false,
-                                 callee_blackwhite_listing =>  false,
-                                 caller_exclusion =>           false,
-                                 caller_identification =>      false,
-                                 partitioned_rpc =>            false,
-                                 pattern_based_registration => false,
-                                 progressive_call_results =>   true,
-                                 shared_registration =>         true
-                                 }
+                            call_canceling =>             true,
+                            call_timeout =>               true,
+                            call_trustlevels =>           false,
+                            callee_blackwhite_listing =>  false,
+                            caller_exclusion =>           false,
+                            caller_identification =>      false,
+                            partitioned_rpc =>            false,
+                            pattern_based_registration => false,
+                            progressive_call_results =>   true,
+                            shared_registration =>         true
+                           }
 
-                   }
-        ).
+                         }
+       ).
 
 
 -define(ROLES, #{ 
-		  broker => ?BROKER_FEATURES,
-		  dealer => ?DEALER_FEATURES
-				}).
+          broker => ?BROKER_FEATURES,
+          dealer => ?DEALER_FEATURES
+         }).
 
 %
 % Session Scope IDs
@@ -110,12 +110,12 @@
 
 
 init() ->
-    {ok, Id} = erwa_sess_man:create_session(),
+  {ok, Id} = erwa_sess_man:create_session(),
   #state{id=Id}.
 
 close() ->
-    erwa_sess_man:unregister_session(),
-    ok.
+  erwa_sess_man:unregister_session(),
+  ok.
 
 -spec handle_message( term() , #state{}) ->
   { ok, #state{} } |
@@ -156,8 +156,8 @@ send_message_or_close_session({stop,State}) ->
 
 
 -spec check_and_return_out_message(atom(), term(), #state{} ) -> {atom(), term(),
-                                                            #state{} } |
-                                                           {ok, #state{} }.
+                                                                  #state{} } |
+                                                                 {ok, #state{} }.
 check_and_return_out_message(Result, Msg,State) ->
   % TODO: implement
   {Result, Msg, State}.
@@ -165,7 +165,7 @@ check_and_return_out_message(Result, Msg,State) ->
 
 
 -spec hndl_msg(term(),#state{}) -> {stop, #state{}} | {reply_stop | reply , term(),
-                                              #state{}}.
+                                                       #state{}}.
 
 hndl_msg({hello,RealmName,Details}, State) ->
   handle_hello_message(RealmName, Details, State);
@@ -214,9 +214,9 @@ hndl_info({interrupt,DealerId,Options},State) ->
 hndl_info({result,CallRequestId,Details,Arguments,ArgumentsKw},State) ->
   handle_result_info(CallRequestId,Details,Arguments,ArgumentsKw,State);
 hndl_info({error,call,CallRequestId,Details,ErrorUri,Arguments,ArgumentsKw},State) ->
-  hndl_error_call_info(error,call,CallRequestId,Details,ErrorUri,Arguments,ArgumentsKw,State);
+  handle_error_call_info(error,call,CallRequestId,Details,ErrorUri,Arguments,ArgumentsKw,State);
 hndl_info({event,SubscriptionId,PublicationId,Details,Arguments,ArgumentsKw}, State) ->
-  handl_event_info(SubscriptionId,PublicationId,Details,Arguments,ArgumentsKw,State);
+  handle_event_info(SubscriptionId,PublicationId,Details,Arguments,ArgumentsKw,State);
 hndl_info(routing_closing,State) ->
   handle_routing_closing_info(State); 
 hndl_info(shutdown,State) ->
@@ -225,29 +225,27 @@ hndl_info(Info, State) ->
   handle_unknown_info(Info, State).
 
 
-
-
 %%%%% hello message %%%%%%%%%%%%%%%%%%%%%
 handle_hello_message(RealmName, Details, State) ->
   Args = gather_hello_args(Details,RealmName),
   reply_to_hello(check_authentication(Args),Args,State).
 
 reply_to_hello(anonymous, #{ realm := RealmName }, #state{id=SessionId}=State) ->
-      case erwa_sess_man:connect_to(RealmName) of
-        ok ->
-          %% SessionData = #{authid => anonymous, role => anonymous, session =>
-          %%                 SessionId},
-          WelcomeMsg ={welcome,SessionId,#{agent => erwa:get_version(), roles =>
-										  ?ROLES}},
-          {reply,WelcomeMsg,State#state{is_auth=true,
-                                        realm_name=RealmName,
-                                        client_role=anonymous,
-                                        id=SessionId
-                                        }}; 
-        {error,_} ->
-              erwa_sess_man:unregister_session(),
-          {reply_stop, {abort, #{}, no_such_realm},State}
-      end;
+  case erwa_sess_man:connect_to(RealmName) of
+    ok ->
+      %% SessionData = #{authid => anonymous, role => anonymous, session =>
+      %%                 SessionId},
+      WelcomeMsg ={welcome,SessionId,#{agent => erwa:get_version(), roles =>
+                                       ?ROLES}},
+      {reply,WelcomeMsg,State#state{is_auth=true,
+                                    realm_name=RealmName,
+                                    client_role=anonymous,
+                                    id=SessionId
+                                   }}; 
+    {error,_} ->
+      erwa_sess_man:unregister_session(),
+      {reply_stop, {abort, #{}, no_such_realm},State}
+  end;
 
 reply_to_hello(authenticate,#{details := _Details},State) ->
   ?ERROR("authentication not yet implemented~n",[]),
@@ -274,21 +272,21 @@ get_authentication_mechanism(#{auth_id := anonymous}, _) ->
   abort;
 get_authentication_mechanism(_, _) -> 
   authenticate.
-  
+
 
 %%%%%%%% authenticate message %%%%%%%%%%%%%%%%
 handle_authenticate_message(_Signature,_Extra,State) ->
   % case erwa_middleware:check_perm(Msg,State) of
   %  {true,_} ->
-      #state{id=SessionId} = State,
-      Msg ={welcome,SessionId,#{agent => erwa:get_version(), roles => ?ROLES }},
-      {reply,Msg,State#state{is_auth=true}}.
-  %%   {false,Details} ->
-  %%     OutDetails = maps:get(details,Details,#{}),
-  %%     Error = maps:get(error,Details,#{}),
-  %%     Msg = {abort,OutDetails,Error},
-  %%     {reply_stop,Msg,State}
-  %% end;
+  #state{id=SessionId} = State,
+  Msg ={welcome,SessionId,#{agent => erwa:get_version(), roles => ?ROLES }},
+  {reply,Msg,State#state{is_auth=true}}.
+%%   {false,Details} ->
+%%     OutDetails = maps:get(details,Details,#{}),
+%%     Error = maps:get(error,Details,#{}),
+%%     Msg = {abort,OutDetails,Error},
+%%     {reply_stop,Msg,State}
+%% end;
 
 
 %% authenticate([], _RealmName, _Details, State) ->
@@ -329,14 +327,14 @@ handle_authenticate_message(_Signature,_Extra,State) ->
 handle_subscribe_message(RequestId,Options,Topic,#state{realm_name=RealmName,id=SessionId}=State) ->
   %% case erwa_middleware:check_perm(Msg,State) of
   %%   {true, _ } ->
-      {ok,SubscriptionId} =
-	  erwa_broker:subscribe(Topic,Options,SessionId,RealmName),
-      {reply, {subscribed,RequestId,SubscriptionId}, State }.
-  %%   {false,Details} ->
-  %%     OutDetails = maps:get(details,Details,#{}),
-  %%     Error = maps:get(error,Details,not_authorized),
-  %%     {reply, {error,subscribe,RequestId,OutDetails,Error}}
-  %% end;
+  {ok,SubscriptionId} =
+  erwa_broker:subscribe(Topic,Options,SessionId,RealmName),
+  {reply, {subscribed,RequestId,SubscriptionId}, State }.
+%%   {false,Details} ->
+%%     OutDetails = maps:get(details,Details,#{}),
+%%     Error = maps:get(error,Details,not_authorized),
+%%     {reply, {error,subscribe,RequestId,OutDetails,Error}}
+%% end;
 
 
 
@@ -463,15 +461,16 @@ handle_result_info(CallRequestId,Details,Arguments,ArgumentsKw,#state{calls=Call
 
 
 %%%%%%%%%%%% error call info %%%%%%%%%%%%%%%%%
-hndl_error_call_info(error,call,CallRequestId,Details,ErrorUri,Arguments,ArgumentsKw,#state{calls=Calls}=State) ->
+handle_error_call_info(error,call,CallRequestId,Details,ErrorUri,Arguments,ArgumentsKw,#state{calls=Calls}=State) ->
   Msg = {error, call, CallRequestId,Details,ErrorUri,Arguments,ArgumentsKw}, 
   {send,Msg,State#state{calls=lists:keydelete(CallRequestId,1,Calls)}}.
 
 
 %%%%%%%%%%%% event info %%%%%%%%%%%%%%%%%%
-handl_event_info(SubscriptionId,PublicationId,Details,Arguments,ArgumentsKw,State) ->
+handle_event_info(SubscriptionId,PublicationId,Details,Arguments,ArgumentsKw,State) ->
   Msg = {event, SubscriptionId,PublicationId,Details,Arguments,ArgumentsKw},
   {send,Msg,State}.
+
 
 
 %%%%%%%%%%%%%%%%% routing closing info %%%%%%%%%%%%%%%%%%%
@@ -496,7 +495,7 @@ handle_unknown_info(Info, State) ->
 
 
 close_session(#state{id=SessionId,realm_name=RealmName}) ->
-    erwa_sess_man:unregister_session(),
-    erwa_broker:unsubscribe_all(SessionId,RealmName),
-    erwa_dealer:unregister_all(SessionId,RealmName).
+  erwa_sess_man:unregister_session(),
+  erwa_broker:unsubscribe_all(SessionId,RealmName),
+  erwa_dealer:unregister_all(SessionId,RealmName).
 
