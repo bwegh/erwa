@@ -11,3 +11,4 @@ relx
 .rebar/
 .eunit/
 .erlang.mk
+*.d
