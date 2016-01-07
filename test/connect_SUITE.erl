@@ -59,6 +59,7 @@ all() ->
 -define(REALM,<<"test">>).
 
 init_per_suite(Config) ->
+  {ok,_} = application:ensure_all_started(lager),
   {ok,_} = application:ensure_all_started(awre),
   {ok,_} = application:ensure_all_started(ranch),
   {ok,_} = application:ensure_all_started(sasl),

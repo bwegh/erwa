@@ -47,6 +47,7 @@ all() ->
 init_per_suite(Config) ->
   ok = application:set_env(awre,erlbin_number,5),
   ok = application:set_env(erwa,erlbin_number,5),
+  {ok,_} = application:ensure_all_started(lager),
   {ok,_} = application:ensure_all_started(awre),
   {ok,_} = application:ensure_all_started(erwa),
   {ok,_} = application:ensure_all_started(ranch),
