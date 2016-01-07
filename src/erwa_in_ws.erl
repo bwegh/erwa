@@ -22,13 +22,12 @@
 
 %% @private
 -module(erwa_in_ws).
+-compile({parse_transform, lager_transform}).
 -behaviour(cowboy_websocket).
 
 -ifdef(TEST).
 -include_lib("eunit/include/eunit.hrl").
 -endif.
-
--include("elogger.hrl").
 
 
 %% for websocket
@@ -67,7 +66,7 @@ init(_, Req, _ ) ->
 
 websocket_init( _Type, Req, _Opts) ->
   {ok,Protocols, Req1} = cowboy_req:parse_header(?SUBPROTHEADER, Req),
-  ?DEBUG("protocols are ~p~n",[Protocols]),
+  lager:debug("protocols are ~p~n",[Protocols]),
   case find_supported_protocol(Protocols) of
     {Enc,WsEncoding,Header} ->
       Req2  = cowboy_req:set_resp_header(?SUBPROTHEADER,Header,Req1),
@@ -84,7 +83,7 @@ websocket_init( _Type, Req, _Opts) ->
 init( Req, _Opts) ->
   % need to check for the wamp.2.json or wamp.2.msgpack
   Protocols = cowboy_req:parse_header(?SUBPROTHEADER, Req),
-  ?DEBUG("protocols are ~p~n",[Protocols]),
+  lager:debug("protocols are ~p~n",[Protocols]),
   case find_supported_protocol(Protocols) of
     {Enc,WsEncoding,Header} ->
       Req1  = cowboy_req:set_resp_header(?SUBPROTHEADER,Header,Req),

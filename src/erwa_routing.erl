@@ -21,12 +21,12 @@
 %%
 
 -module(erwa_routing).
+-compile({parse_transform, lager_transform}).
 
 -ifdef(TEST).
 -include_lib("eunit/include/eunit.hrl").
 -endif.
 
--include("elogger.hrl").
 -export([init/0]).
 -export([close/0]).
 -export([handle_message/2]).
@@ -123,9 +123,10 @@ close() ->
   {reply, Message:: term(), #state{}} |
   {reply_stop, Message:: term(), #state{} }.
 
-
+handle_message(_InMsg,#state{id = none}) ->
+    erlang:error("session not initialized");
 handle_message(InMsg,State) ->
-  ?DEBUG("incomming message ~p [~p]~n",[InMsg,State]),
+  lager:debug("incomming message ~p [~p]~n",[InMsg,State]),
   send_message_or_close_session(hndl_msg(InMsg,State)).
 
 
@@ -136,7 +137,7 @@ handle_message(InMsg,State) ->
   {send_stop, Message:: term(), #state{} }.
 
 handle_info(Info,State) ->
-  ?DEBUG("incomming info ~p [~p]~n",[Info,State]),
+  lager:debug("incomming info ~p [~p]~n",[Info,State]),
   send_message_or_close_session(hndl_info(Info,State)).
 
 
@@ -248,7 +249,7 @@ reply_to_hello(anonymous, #{ realm := RealmName }, #state{id=SessionId}=State) -
   end;
 
 reply_to_hello(authenticate,#{details := _Details},State) ->
-  ?ERROR("authentication not yet implemented~n",[]),
+  lager:error("authentication not yet implemented~n",[]),
   %% AuthMethods = maps:get(authmethods, Details, []),
   %% authenticate(AuthMethods, RealmName, Details, State)
   erwa_sess_man:unregister_session(),
@@ -430,7 +431,7 @@ handle_goodbye_message(_Details,_Reason,#state{goodbye_sent=GBSent}=State) ->
 
 %%%%%%%%%%% unkonwn messages %%%%%%%%%%%%%%%%%%
 handle_unknown_message(Msg,State) ->
-  ?WARNING("unknown message ~p~n",[Msg]),
+  lager:warning("unknown message ~p~n",[Msg]),
   {stop, State }.
 
 
@@ -490,7 +491,7 @@ handle_shutdown_info(State) ->
 
 %%%%%%%%%%%% unknown info %%%%%%%%%%%%%%%%
 handle_unknown_info(Info, State) ->
-  ?WARNING("unknown info ~p~n",[Info]),
+  lager:warning("unknown info ~p~n",[Info]),
   {ok,State}.
 
 
