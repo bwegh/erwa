@@ -100,7 +100,13 @@ get_registration(RegistrationId, Realm) ->
         {atomic, [#erwa_procedure{uri=Uri, invoke=Invoke, id=Id, match=Match,
                              created=Created}]} ->
             {ok,#{uri => Uri, invoke => Invoke, id => Id, match => Match,
-                  created => Created}}
+                  created => Created}};
+		{aborted, ER} ->
+			error_logger:error_report(["Failed to find RegistrationId of ERWA", 
+									   [{registrationId, RegistrationId},
+										{error, ER}]
+									  ]),
+			{error, not_found}
     end.
 
 
