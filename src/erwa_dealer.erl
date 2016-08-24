@@ -92,7 +92,7 @@ get_registrations(Realm) ->
 get_registration(RegistrationId, Realm) ->
 	Tab = realm_to_table_name(Realm),
 	GetReg = fun() ->
-					 mnesia:index_read(Tab,RegistrationId,id)
+					 mnesia:read(Tab,RegistrationId,id)
 			 end,
 	case mnesia:transaction(GetReg) of 
 		{atomic, []} -> 
@@ -358,14 +358,11 @@ create_table_for_realm(Realm) ->
 		_-> do_nothing
 	end,
 	{atomic, ok} = mnesia:create_table(Table, [{disc_copies, []},
-														   {ram_copies,
-															[node()]}, 
-														   {type, set},
-														   {record_name,
-															erwa_procedure},
-														   {attributes,
-															record_info(fields,
-																		erwa_procedure)},{index,[uri,match]}]),
+											   {ram_copies,[node()]}, 
+											   {type, set},
+											   {record_name,erwa_procedure},
+											   {attributes,record_info(fields,erwa_procedure)},
+											   {index,[uri,match]}]),
 	ok.
 
 
