@@ -46,7 +46,7 @@
 		  uri = none,
 		  created = unknown,
 		  match = exact,
-		  invoke = single,
+		  invoke = single,	%% Possible values: single | roundrobin | random | first | last
 		  options = [],
           ids = [],
           last = 0 
@@ -92,7 +92,11 @@ get_registrations(Realm) ->
 get_registration(RegistrationId, Realm) ->
 	Tab = realm_to_table_name(Realm),
 	GetReg = fun() ->
-					 mnesia:index_read(Tab,RegistrationId,id)
+					 %% Fix by ETHRBH: mnesia:index_read/3 is not working for the "real" key attribute. In this case
+					 %% id is the primary key of the table, and -for same reason- mnesia:index_read/3 is not working.
+					 %% mnesia:index_read(Tab,RegistrationId,id)
+					 
+					 mnesia:read(Tab,RegistrationId,id)
 			 end,
 	case mnesia:transaction(GetReg) of 
 		{atomic, []} -> 
@@ -100,7 +104,13 @@ get_registration(RegistrationId, Realm) ->
         {atomic, [#erwa_procedure{uri=Uri, invoke=Invoke, id=Id, match=Match,
                              created=Created}]} ->
             {ok,#{uri => Uri, invoke => Invoke, id => Id, match => Match,
-                  created => Created}}
+                  created => Created}};
+		{aborted, ER} ->
+			error_logger:error_report(["Failed to find RegistrationId of ERWA", 
+									   [{registrationId, RegistrationId},
+										{error, ER}]
+									  ]),
+			{error, not_found}
     end.
 
 
@@ -352,14 +362,11 @@ create_table_for_realm(Realm) ->
 		_-> do_nothing
 	end,
 	{atomic, ok} = mnesia:create_table(Table, [{disc_copies, []},
-														   {ram_copies,
-															[node()]}, 
-														   {type, set},
-														   {record_name,
-															erwa_procedure},
-														   {attributes,
-															record_info(fields,
-																		erwa_procedure)},{index,[uri,match]}]),
+											   {ram_copies,[node()]}, 
+											   {type, set},
+											   {record_name,erwa_procedure},
+											   {attributes,record_info(fields,erwa_procedure)},
+											   {index,[uri,match]}]),
 	ok.
 
 
