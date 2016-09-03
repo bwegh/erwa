@@ -132,8 +132,18 @@ handle_incomming_wamp(Data, #state{transport=Transport, socket=Socket}=State) ->
 	
 
 deserialize_and_handle_incomming_messages(Data,State) ->
-	{Messages, State} = deserialize_messages_update_state(Data,State),
-	handle_incomming_wamp_messages( Messages, State ).
+	%% Fix for Erwa issue #31 by ETHRBH.
+	%%
+	%% The problem was, the original solution does not handled the case when State is not equal with the State value produced
+	%% by  deserialize_messages_update_state/2. This function calls wamper_protocol:deserialize/2, what produces the Message and the Buffer.
+	%% The original State#state.buffer will be update by the Buffer, these the original and the new State will not be matched.
+	%% As I traced, the State#state.buffer is never changed in "normal" operation, when Data is not too big, just few bytes,
+	%% in this case the buffer always an empty byte, <<>>. But when Data is big (I did not measured what is the value what
+    %% causes the buffer change), it will be changed. This case alsoe needs to be handle.
+	%% Now the updated State variable will be used for handle_incomming_wamp_messages/2, and no crash, error :-)
+	
+	{Messages, StateNew} = deserialize_messages_update_state(Data,State),
+	handle_incomming_wamp_messages( Messages, StateNew ).
 
 deserialize_messages_update_state(Data,#state{buffer=Buffer, enc=Enc} = State) ->
 	{Messages, NewBuffer} = wamper_protocol:deserialize(<<Buffer/binary, Data/binary>>,Enc),
