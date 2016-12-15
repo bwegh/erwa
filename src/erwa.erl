@@ -75,16 +75,40 @@ start_websocket(Path, Port, PathToCertfile, Acceptors) ->
 								 non_neg_integer(), Handlers :: [term()] ) -> ok.
 start_websocket(Path, Port, no_cert, Acceptors, Handlers) ->
   Dispatch = cowboy_router:compile([{'_',[ {Path, erwa_in_ws, [] } | Handlers] }]),
-  {ok, _} = cowboy:start_http(erwa_http, Acceptors, [{port, Port}], [{env, [{dispatch, Dispatch}]}]),
+  
+  {ok, CowboyVsn} = application:get_key(cowboy,vsn),
+  case string:str(CowboyVsn, "1.") of
+	  1 ->
+		  %% This is for cowboy-1.x
+		  {ok, _} = cowboy:start_http(erwa_http, Acceptors, [{port, Port}], [{env, [{dispatch, Dispatch}]}]);
+	  _->
+		   %% This is for cowboy-2.x or newer
+		  {ok, _} = cowboy:start_clear(erwa_http, Acceptors, [{port,  Port}], #{env => #{dispatch => Dispatch}})
+  end,	
   ok;
 start_websocket(Path, Port, PathToCertfile, Acceptors, Handlers) ->
-	Dispatch = cowboy_router:compile([{'_',[ {Path, erwa_in_ws,
-																						[] } | Handlers] }]),
-  {ok, _} = cowboy:start_http(erwa_http, Acceptors, [{port,
-                                                      Port},{certfile,PathToCertfile}], [{env,
-																																			[{dispatch,
-																																				Dispatch}]}]),
-	ok.
+	Dispatch = cowboy_router:compile([{'_',[ {Path, erwa_in_ws,[] } | Handlers] }]),
+	
+	{ok, CowboyVsn} = application:get_key(cowboy,vsn),
+	
+  	case string:str(CowboyVsn, "1.") of
+		1 ->
+			%% This is for cowboy-1.x
+			{ok, _} = cowboy:start_http(erwa_http, Acceptors, [
+													   {port,Port},
+													   {certfile,PathToCertfile}], 
+								[{env,
+								  [{dispatch,Dispatch}]}
+								]
+							   ),
+			ok;
+		_->
+			%% This is for cowboy-2.x
+			{ok, _} = cowboy:start_clear(erwa_http, Acceptors, [{port,  Port},
+																{certfile,PathToCertfile}], 
+										 #{env => #{dispatch => Dispatch}}),
+			ok
+	end.
 
 
 %% @doc start the router listening for raw tcp, ssl, connections
