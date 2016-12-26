@@ -5,7 +5,7 @@ ERLC_OPTS = +debug_info
 
 
 DEPS = cowboy ranch wamper lager
-dep_cowboy = git https://github.com/ninenines/cowboy.git
+dep_cowboy = git https://github.com/ninenines/cowboy master
 dep_wamper = git https://github.com/bwegh/wamper master
 dep_lager = git https://github.com/basho/lager 3.2.4
 
