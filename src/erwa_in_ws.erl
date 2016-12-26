@@ -34,13 +34,16 @@
 % cowboy 1.x
 -export([init/3]).
 -export([websocket_init/3]).
+-export([websocket_handle/3]).
+-export([websocket_info/3]).
 
 %cowboy 2.x
 -export([init/2]).
+-export([websocket_init/1]).
+-export([websocket_handle/2]).
+-export([websocket_info/2]).
 
 % both cowboy versions
--export([websocket_handle/3]).
--export([websocket_info/3]).
 -export([terminate/3]).
 
 -define(TIMEOUT,60000).
@@ -60,7 +63,9 @@
                routing = undefined
               }).
 
-% for cowboy 1.x
+%% ********************************************************
+%% for cowboy 1.x
+%% ********************************************************
 init(_, Req, _ ) ->
   {upgrade, protocol, cowboy_websocket, Req, []}.
 
@@ -79,25 +84,6 @@ websocket_init( _Type, Req, _Opts) ->
       % unsupported
       {shutdown,Req1}
   end.
-
-init( Req, _Opts) ->
-  % need to check for the wamp.2.json or wamp.2.msgpack
-  Protocols = cowboy_req:parse_header(?SUBPROTHEADER, Req),
-  lager:debug("protocols are ~p~n",[Protocols]),
-  case find_supported_protocol(Protocols) of
-    {Enc,WsEncoding,Header} ->
-      Req1  = cowboy_req:set_resp_header(?SUBPROTHEADER,Header,Req),
-      %% Peer = cowboy_req:peer(Req1),
-      Routing = erwa_routing:init(),
-      %% Routing1 = erwa_routing:set_peer(Peer,Routing),
-      %% Routing2 = erwa_routing:set_source(websocket,Routing1),
-      {cowboy_websocket,Req1,#state{enc=Enc,ws_enc=WsEncoding,routing=Routing}};
-    _ ->
-      % unsupported
-      {shutdown,Req}
-  end.
-
-
 
 websocket_handle({WsEnc, Data}, Req, #state{ws_enc=WsEnc,enc=Enc,buffer=Buffer,routing=Routing}=State) ->
   {MList,NewBuffer} = wamper_protocol:deserialize(<<Buffer/binary, Data/binary>>,Enc),
@@ -128,9 +114,86 @@ websocket_info({erwa,Msg}, Req, #state{routing=Routing,ws_enc=WsEnc,enc=Enc}=Sta
 websocket_info(_Data, Req, State) ->
   {ok,Req,State}.
 
+%% ********************************************************
+%% for cowboy 2.x
+%% ********************************************************
+init(Req, _State) ->
+	error_logger:info_report(["ERWA_IN_WS init.",
+							  {req, Req},
+							  {state, _State}]),
+	
+	% need to check for the wamp.2.json or wamp.2.msgpack
+	Protocols = cowboy_req:parse_header(?SUBPROTHEADER, Req),
+	lager:debug("protocols are ~p~n",[Protocols]),
+	case find_supported_protocol(Protocols) of
+		{Enc, WsEncoding, Header} ->
+			Req1  = cowboy_req:set_resp_header(?SUBPROTHEADER,Header,Req),
+			
+			error_logger:info_report(["ERWA_IN_WS init - reply.",
+									  {req, Req1},
+									  {state, [{enc, Enc},
+											   {ws_enc, WsEncoding}]}]),
+			{cowboy_websocket, Req1, #state{enc = Enc,
+											ws_enc = WsEncoding
+										   }};
+		_ ->
+			% unsupported
+			{shutdown,Req}
+	end.
+
+websocket_init(State) ->
+	Routing = erwa_routing:init(),
+	error_logger:info_report(["ERWA_IN_WS websocket_init.",
+							  {handlerState, State},
+							  {routing, Routing}]),
+	
+	{ok, State#state{routing = Routing}}.
+
+websocket_handle({WsEnc, Data}, #state{ws_enc=WsEnc,enc=Enc,buffer=Buffer,routing=Routing}=State) ->
+	error_logger:info_report(["ERWA_IN_WS websocket_handle.",
+							  {wsEnc, WsEnc},
+							  {data, Data}]),
+	
+	{MList,NewBuffer} = wamper_protocol:deserialize(<<Buffer/binary, Data/binary>>,Enc),
+	{ok,OutFrames,NewRouting} = handle_messages(MList,[],Routing,State),
+	
+	error_logger:info_report(["ERWA_IN_WS websocket_handle - reply.",
+							  {outFrames, OutFrames},
+							  {state, [{buffer, NewBuffer},
+									   {routing, NewRouting}]}]),
+	{reply, OutFrames, State#state{buffer=NewBuffer,routing=NewRouting}};
+websocket_handle(Data, State) ->
+	erlang:error(unsupported,[Data, State]),
+	{ok, State}.
+
+websocket_info(erwa_stop, State) ->
+	{stop, State};
+websocket_info({erwa,Msg}, #state{routing=Routing,ws_enc=WsEnc,enc=Enc}=State) when is_tuple(Msg)->
+	error_logger:info_report(["ERWA_IN_WS websocket_into.",
+							  {msg, Msg}]),
+	
+	Encode = fun(M) ->
+					 {WsEnc,wamper_protocol:serialize(M,Enc)}
+			 end,
+	case erwa_routing:handle_info(Msg, Routing) of
+		{ok, NewRouting} ->
+			{ok, State#state{routing=NewRouting}};
+		{send, OutMsg, NewRouting} ->
+			{reply, Encode(OutMsg), State#state{routing=NewRouting}};
+		{send_stop, OutMsg, NewRouting} ->
+			self() ! erwa_stop,
+			{reply, Encode(OutMsg), State#state{routing=NewRouting}};
+		{stop, NewRouting} ->
+			{stop, State#state{routing=NewRouting}}
+	end;
+websocket_info(_Data, State) ->
+	{ok, State}.
+
+%% ********************************************************
+%% for all cowboy versions
+%% ********************************************************
 terminate(_Reason, _Req, _State) ->
   ok.
-
 
 handle_messages([],ToSend,Routing,_State) ->
   {ok,lists:reverse(ToSend),Routing};
