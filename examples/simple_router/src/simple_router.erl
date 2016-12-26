@@ -29,6 +29,16 @@ init([]) ->
                                            {"/static/[...]", cowboy_static, {priv_dir, simple_router, "static"}}
                                            ]}
                                     ]),
-  {ok, _} = cowboy:start_http(http, 100, [{port, 8080}],[{env, [{dispatch, Dispatch}]}]),
+  
+  {ok, CowboyVsn} = application:get_key(cowboy,vsn),
+  case string:str(CowboyVsn, "1.") of
+	  1 ->
+		  %% This is for cowboy-1.x
+		  {ok, _} = cowboy:start_http(http, 100, [{port, 8080}],[{env, [{dispatch, Dispatch}]}]);
+	  _->
+		  %% This is for cowboy-2.x or newer
+		  {ok, _} = cowboy:start_clear(http, 100, [{port, 8080}],#{env => #{dispatch => Dispatch}})
+  end,
+  
   {ok,_} = ranch:start_listener(erwa_tcp, 5, ranch_tcp, [{port,5555}], erwa_in_tcp, []),
   {ok, {{one_for_one, 10, 10}, []}}.
