@@ -118,21 +118,12 @@ websocket_info(_Data, Req, State) ->
 %% for cowboy 2.x
 %% ********************************************************
 init(Req, _State) ->
-	error_logger:info_report(["ERWA_IN_WS init.",
-							  {req, Req},
-							  {state, _State}]),
-	
 	% need to check for the wamp.2.json or wamp.2.msgpack
 	Protocols = cowboy_req:parse_header(?SUBPROTHEADER, Req),
 	lager:debug("protocols are ~p~n",[Protocols]),
 	case find_supported_protocol(Protocols) of
 		{Enc, WsEncoding, Header} ->
 			Req1  = cowboy_req:set_resp_header(?SUBPROTHEADER,Header,Req),
-			
-			error_logger:info_report(["ERWA_IN_WS init - reply.",
-									  {req, Req1},
-									  {state, [{enc, Enc},
-											   {ws_enc, WsEncoding}]}]),
 			{cowboy_websocket, Req1, #state{enc = Enc,
 											ws_enc = WsEncoding
 										   }};
@@ -143,24 +134,11 @@ init(Req, _State) ->
 
 websocket_init(State) ->
 	Routing = erwa_routing:init(),
-	error_logger:info_report(["ERWA_IN_WS websocket_init.",
-							  {handlerState, State},
-							  {routing, Routing}]),
-	
 	{ok, State#state{routing = Routing}}.
 
 websocket_handle({WsEnc, Data}, #state{ws_enc=WsEnc,enc=Enc,buffer=Buffer,routing=Routing}=State) ->
-	error_logger:info_report(["ERWA_IN_WS websocket_handle.",
-							  {wsEnc, WsEnc},
-							  {data, Data}]),
-	
 	{MList,NewBuffer} = wamper_protocol:deserialize(<<Buffer/binary, Data/binary>>,Enc),
 	{ok,OutFrames,NewRouting} = handle_messages(MList,[],Routing,State),
-	
-	error_logger:info_report(["ERWA_IN_WS websocket_handle - reply.",
-							  {outFrames, OutFrames},
-							  {state, [{buffer, NewBuffer},
-									   {routing, NewRouting}]}]),
 	{reply, OutFrames, State#state{buffer=NewBuffer,routing=NewRouting}};
 websocket_handle(Data, State) ->
 	erlang:error(unsupported,[Data, State]),
@@ -169,9 +147,6 @@ websocket_handle(Data, State) ->
 websocket_info(erwa_stop, State) ->
 	{stop, State};
 websocket_info({erwa,Msg}, #state{routing=Routing,ws_enc=WsEnc,enc=Enc}=State) when is_tuple(Msg)->
-	error_logger:info_report(["ERWA_IN_WS websocket_into.",
-							  {msg, Msg}]),
-	
 	Encode = fun(M) ->
 					 {WsEnc,wamper_protocol:serialize(M,Enc)}
 			 end,
