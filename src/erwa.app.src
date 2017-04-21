@@ -30,12 +30,18 @@
     erwa_user_db
   ]},
 	{applications, [
+		%% Locals applications
 		kernel,
 		stdlib,
-        wamper,
 		mnesia,
+        crypto,
+        
+        %% External applications
+        cowboy,
+        ranch,
+        wamper,
         lager,
-        crypto
+        awre
 	]},
 	{mod, {erwa_app, []}},
 	{env, []}
