@@ -4,7 +4,7 @@ CT_OPTS = -cover test/cover.spec
 ERLC_OPTS = +debug_info 
 
 
-DEPS = cowboy ranch wamper lager
+DEPS = cowboy wmper lager
 %%dep_cowboy = git https://github.com/ninenines/cowboy master
 dep_cowboy_commit = master
 dep_wamper = git https://github.com/bwegh/wamper master
