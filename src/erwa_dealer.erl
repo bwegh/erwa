@@ -323,7 +323,8 @@ get_callee([H|_],single,_) ->
     H;
 get_callee(Callees,random,_) ->
     Len = length(Callees),
-    lists:nth(crypto:rand_uniform(1,Len+1),Callees);
+    %%lists:nth(crypto:rand_uniform(1,Len+1),Callees);
+    lists:nth(rand:uniform(Len+1),Callees);
 get_callee(Callees,roundrobin,NextIn) ->
     Next = case NextIn > length(Callees) of 
                true ->
@@ -381,7 +382,8 @@ realm_to_table_name(Realm) ->
 
 
 gen_id() ->
-  crypto:rand_uniform(0,9007199254740993).
+  %%crypto:rand_uniform(0,9007199254740993).
+  rand:uniform(9007199254740993).
 
 publish_metaevent(Event,Args) ->
     #{uri := ProcedureUri, id := ProcId, session := SessionId, realm := Realm} = Args,
