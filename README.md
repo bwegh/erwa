@@ -1,4 +1,4 @@
-Erwa will be archived soon, please consider using (https://github.com/cargotube/cargotube)[CargoTube].
+Erwa will be archived soon, please consider using [CargoTube](https://github.com/cargotube/cargotube).
 
 Erwa
 ====
