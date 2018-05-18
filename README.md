@@ -1,3 +1,5 @@
+Erwa will be archived soon, please consider using (https://github.com/cargotube/cargotube)[CargoTube].
+
 Erwa
 ====
 [![passing or failing?](https://travis-ci.org/bwegh/erwa.svg?branch=master)](https://travis-ci.org/bwegh/erwa/)
