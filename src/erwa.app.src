@@ -35,7 +35,9 @@
         wamper,
 		mnesia,
         lager,
-        crypto
+        crypto,
+        cowboy,
+        ranch
 	]},
 	{mod, {erwa_app, []}},
 	{env, []}

@@ -344,8 +344,8 @@ realm_to_tablename(Realm) ->
 	binary_to_atom(<< Prefix/binary, Realm/binary >>, utf8 ).
 
 gen_id() ->
-	crypto:rand_uniform(0,9007199254740993).
-
+	%%crypto:rand_uniform(0,9007199254740993).
+	rand:uniform(9007199254740993).
 
 %%
 %% **********  UNIT TESTING   *************************

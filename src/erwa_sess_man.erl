@@ -112,7 +112,8 @@ create_session() ->
     Res.
 
 ensure_unique_id() ->
-    ID = crypto:rand_uniform(0,9007199254740993),
+    %%ID = crypto:rand_uniform(0,9007199254740993),
+	ID = rand:uniform(9007199254740993),
     case mnesia:read({erwa_session_record,ID}) of
         [] -> ID;
         _ -> ensure_unique_id()
