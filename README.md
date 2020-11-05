@@ -1,3 +1,5 @@
+Erwa will be archived soon, please consider using [CargoTube](https://github.com/cargotube/).
+
 Erwa
 ====
 [![passing or failing?](https://travis-ci.org/bwegh/erwa.svg?branch=master)](https://travis-ci.org/bwegh/erwa/)
@@ -127,4 +129,4 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 [Back to TOC](#table-of-contents)
 
-#wampws
+# wampws
