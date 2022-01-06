@@ -8,7 +8,7 @@ DEPS = cowboy wamper lager
 %%dep_cowboy = git https://github.com/ninenines/cowboy master
 dep_cowboy_commit = master
 dep_wamper = git https://github.com/ethrbh/wamper master
-dep_lager = git https://github.com/erlang-lager/lager 3.8.1
+dep_lager = git https://github.com/erlang-lager/lager 3.9.2
 
 
 
