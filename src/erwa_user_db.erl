@@ -78,7 +78,7 @@ start_link() ->
 
 
 -spec allow_anonymous(Realm :: binary(), Transport::atom()) -> true | false.
-allow_anonymous(Realm,Transport) -> 
+allow_anonymous(_Realm,_Transport) -> 
   %% case can_join(anonymous, Realm, Transport) of 
   %%   {true,_} -> true;
   %%   _ -> false 
